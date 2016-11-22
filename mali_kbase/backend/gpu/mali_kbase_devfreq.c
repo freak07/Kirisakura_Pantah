@@ -106,7 +106,7 @@ kbase_devfreq_target(struct device *dev, unsigned long *target_freq, u32 flags)
 	kbdev->current_voltage = voltage;
 	kbdev->current_freq = freq;
 
-	kbase_tlstream_aux_devfreq_target((u64)freq);
+	KBASE_TLSTREAM_AUX_DEVFREQ_TARGET((u64)freq);
 
 	kbase_pm_reset_dvfs_utilisation(kbdev);
 
@@ -134,14 +134,6 @@ kbase_devfreq_status(struct device *dev, struct devfreq_dev_status *stat)
 			&stat->total_time, &stat->busy_time);
 
 	stat->private_data = NULL;
-
-#ifdef CONFIG_DEVFREQ_THERMAL
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 3, 0)
-	if (kbdev->devfreq_cooling)
-		memcpy(&kbdev->devfreq_cooling->last_status, stat,
-				sizeof(*stat));
-#endif
-#endif
 
 	return 0;
 }
