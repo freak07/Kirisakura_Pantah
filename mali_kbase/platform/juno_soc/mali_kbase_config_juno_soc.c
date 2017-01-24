@@ -97,13 +97,7 @@ static int juno_protected_mode_reset(struct kbase_device *kbdev)
 		JUNO_SMC_PROTECTED_RESET_FUNC, false,
 		0, 0, 0);
 
-	/* TODO: Remove this reset, it should be done by the firmware */
-	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND),
-						GPU_COMMAND_HARD_RESET, NULL);
-
-	while ((kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_RAWSTAT), NULL)
-			& RESET_COMPLETED) != RESET_COMPLETED)
-		;
+	/* The GPU should now be reset */
 
 	return ret;
 }

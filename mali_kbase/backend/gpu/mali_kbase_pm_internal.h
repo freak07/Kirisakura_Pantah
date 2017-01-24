@@ -288,14 +288,12 @@ void kbase_pm_update_cores_state(struct kbase_device *kbdev);
 void kbase_pm_cancel_deferred_poweroff(struct kbase_device *kbdev);
 
 /**
- * kbasep_pm_read_present_cores - Read the bitmasks of present cores.
- *
- * This information is cached to avoid having to perform register reads whenever
- * the information is required.
+ * kbasep_pm_init_core_use_bitmaps - Initialise data tracking the required
+ *                                   and used cores.
  *
  * @kbdev: The kbase device structure for the device (must be a valid pointer)
  */
-void kbasep_pm_read_present_cores(struct kbase_device *kbdev);
+void kbasep_pm_init_core_use_bitmaps(struct kbase_device *kbdev);
 
 /**
  * kbasep_pm_metrics_init - Initialize the metrics gathering framework.

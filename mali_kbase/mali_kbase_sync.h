@@ -97,4 +97,12 @@ struct sync_pt *kbase_sync_pt_alloc(struct sync_timeline *parent);
  */
 void kbase_sync_signal_pt(struct sync_pt *pt, int result);
 
+/**
+ * kbase_sync_status_string() - Get string matching @status
+ * @status: Value of fence status.
+ *
+ * Return: Pointer to string describing @status.
+ */
+const char *kbase_sync_status_string(int status);
+
 #endif

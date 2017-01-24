@@ -1522,6 +1522,9 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 	if (new_ref_count == 0 &&
 		(!kbasep_js_is_submit_allowed(js_devdata, kctx) ||
 							kbdev->pm.suspending)) {
+		int num_slots = kbdev->gpu_props.num_job_slots;
+		int slot;
+
 		/* Last reference, and we've been told to remove this context
 		 * from the Run Pool */
 		dev_dbg(kbdev->dev, "JS: RunPool Remove Context %p because as_busy_refcount=%d, jobs=%d, allowed=%d",
@@ -1565,6 +1568,13 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 		 * other thread will be operating in this
 		 * code whilst we are
 		 */
+
+		/* Recalculate pullable status for all slots */
+		for (slot = 0; slot < num_slots; slot++) {
+			if (kbase_js_ctx_pullable(kctx, slot, false))
+				kbase_js_ctx_list_add_pullable_nolock(kbdev,
+						kctx, slot);
+		}
 
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
@@ -2550,12 +2560,16 @@ struct kbase_jd_atom *kbase_js_complete_atom(struct kbase_jd_atom *katom,
 void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 {
 	struct kbasep_js_device_data *js_devdata;
+	struct kbase_context *last_active;
 	bool timer_sync = false;
+	bool ctx_waiting = false;
 
 	js_devdata = &kbdev->js_data;
 
 	down(&js_devdata->schedule_sem);
 	mutex_lock(&js_devdata->queue_mutex);
+
+	last_active = kbdev->hwaccess.active_kctx;
 
 	while (js_mask) {
 		int js;
@@ -2634,17 +2648,39 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 				js_mask &= ~(1 << js);
 
 			if (!kbase_ctx_flag(kctx, KCTX_PULLED)) {
-				/* Failed to pull jobs - push to head of list */
-				if (kbase_js_ctx_pullable(kctx, js, true))
+				bool pullable = kbase_js_ctx_pullable(kctx, js,
+						true);
+
+				/* Failed to pull jobs - push to head of list.
+				 * Unless this context is already 'active', in
+				 * which case it's effectively already scheduled
+				 * so push it to the back of the list. */
+				if (pullable && kctx == last_active)
+					timer_sync |=
+					kbase_js_ctx_list_add_pullable_nolock(
+							kctx->kbdev,
+							kctx, js);
+				else if (pullable)
 					timer_sync |=
 					kbase_js_ctx_list_add_pullable_head_nolock(
-								kctx->kbdev,
-								kctx, js);
+							kctx->kbdev,
+							kctx, js);
 				else
 					timer_sync |=
 					kbase_js_ctx_list_add_unpullable_nolock(
 								kctx->kbdev,
 								kctx, js);
+
+				/* If this context is not the active context,
+				 * but the active context is pullable on this
+				 * slot, then we need to remove the active
+				 * marker to prevent it from submitting atoms in
+				 * the IRQ handler, which would prevent this
+				 * context from making progress. */
+				if (last_active && kctx != last_active &&
+						kbase_js_ctx_pullable(
+						last_active, js, true))
+					ctx_waiting = true;
 
 				if (context_idle) {
 					kbase_jm_idle_ctx(kbdev, kctx);
@@ -2683,6 +2719,9 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 
 	if (timer_sync)
 		kbase_js_sync_timers(kbdev);
+
+	if (kbdev->hwaccess.active_kctx == last_active && ctx_waiting)
+		kbdev->hwaccess.active_kctx = NULL;
 
 	mutex_unlock(&js_devdata->queue_mutex);
 	up(&js_devdata->schedule_sem);

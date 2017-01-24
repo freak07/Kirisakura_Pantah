@@ -15,7 +15,7 @@
 
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= "r3p0-00rel0"
+MALI_RELEASE_NAME ?= "r4p0-01rel0"
 
 # Paths required for build
 KBASE_PATH = $(src)
@@ -77,7 +77,6 @@ SRC := \
 	mali_kbase_cache_policy.c \
 	mali_kbase_mem.c \
 	mali_kbase_mmu.c \
-	mali_kbase_ipa.c \
 	mali_kbase_jd.c \
 	mali_kbase_jd_debugfs.c \
 	mali_kbase_jm.c \
@@ -115,6 +114,9 @@ SRC := \
 	mali_kbase_strings.c \
 	mali_kbase_as_fault_debugfs.c \
 	mali_kbase_regs_history_debugfs.c
+
+
+
 
 ifeq ($(MALI_UNIT_TEST),1)
 	SRC += mali_kbase_tlstream_test.c
@@ -199,6 +201,11 @@ obj-$(CONFIG_MALI_MIDGARD) += mali_kbase.o
 # Tell the Linux build system to enable building of our .c files
 mali_kbase-y := $(SRC:.c=.o)
 
+ifeq ($(CONFIG_DEVFREQ_THERMAL),y)
+include  $(src)/ipa/Kbuild
+mali_kbase-y += $(IPA:.c=.o)
+endif
+
 mali_kbase-$(CONFIG_MALI_DMA_FENCE) += mali_kbase_dma_fence.o
 
 MALI_BACKEND_PATH ?= backend
@@ -214,6 +221,7 @@ endif
 
 include  $(src)/$(MALI_BACKEND_PATH)/$(CONFIG_MALI_BACKEND_REAL)/Kbuild
 mali_kbase-y += $(BACKEND:.c=.o)
+
 
 ccflags-y += -I$(src)/$(MALI_BACKEND_PATH)/$(CONFIG_MALI_BACKEND_REAL)
 subdir-ccflags-y += -I$(src)/$(MALI_BACKEND_PATH)/$(CONFIG_MALI_BACKEND_REAL)

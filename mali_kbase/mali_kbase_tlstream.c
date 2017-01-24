@@ -159,7 +159,11 @@ enum tl_msg_id_aux {
 	KBASE_AUX_PM_STATE,
 	KBASE_AUX_PAGEFAULT,
 	KBASE_AUX_PAGESALLOC,
-	KBASE_AUX_DEVFREQ_TARGET
+	KBASE_AUX_DEVFREQ_TARGET,
+	KBASE_AUX_PROTECTED_ENTER_START,
+	KBASE_AUX_PROTECTED_ENTER_END,
+	KBASE_AUX_PROTECTED_LEAVE_START,
+	KBASE_AUX_PROTECTED_LEAVE_END
 };
 
 /*****************************************************************************/
@@ -520,6 +524,34 @@ static const struct tp_desc tp_desc_aux[] = {
 		"New device frequency target",
 		"@L",
 		"target_freq"
+	},
+	{
+		KBASE_AUX_PROTECTED_ENTER_START,
+		__stringify(KBASE_AUX_PROTECTED_ENTER_START),
+		"enter protected mode start",
+		"@p",
+		"gpu"
+	},
+	{
+		KBASE_AUX_PROTECTED_ENTER_END,
+		__stringify(KBASE_AUX_PROTECTED_ENTER_END),
+		"enter protected mode end",
+		"@p",
+		"gpu"
+	},
+	{
+		KBASE_AUX_PROTECTED_LEAVE_START,
+		__stringify(KBASE_AUX_PROTECTED_LEAVE_START),
+		"leave protected mode start",
+		"@p",
+		"gpu"
+	},
+	{
+		KBASE_AUX_PROTECTED_LEAVE_END,
+		__stringify(KBASE_AUX_PROTECTED_LEAVE_END),
+		"leave protected mode end",
+		"@p",
+		"gpu"
 	}
 };
 
@@ -1387,6 +1419,16 @@ int kbase_tlstream_acquire(struct kbase_context *kctx, int *fd, u32 flags)
 				&autoflush_timer,
 				jiffies + msecs_to_jiffies(AUTOFLUSH_INTERVAL));
 		CSTD_UNUSED(rcode);
+
+		/* If job dumping is enabled, readjust the software event's
+		 * timeout as the default value of 3 seconds is often
+		 * insufficient. */
+		if (flags & BASE_TLSTREAM_JOB_DUMPING_ENABLED) {
+			dev_info(kctx->kbdev->dev,
+					"Job dumping is enabled, readjusting the software event's timeout\n");
+			atomic_set(&kctx->kbdev->js_data.soft_job_timeout_ms,
+					1800000);
+		}
 
 	} else {
 		*fd = -EBUSY;
@@ -2340,3 +2382,92 @@ void __kbase_tlstream_aux_devfreq_target(u64 target_freq)
 	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_AUX, flags);
 }
 
+void __kbase_tlstream_aux_protected_enter_start(void *gpu)
+{
+	const u32     msg_id = KBASE_AUX_PROTECTED_ENTER_START;
+	const size_t  msg_size =
+		sizeof(msg_id) + sizeof(u64) + sizeof(gpu);
+	unsigned long flags;
+	char          *buffer;
+	size_t        pos = 0;
+
+	buffer = kbasep_tlstream_msgbuf_acquire(
+			TL_STREAM_TYPE_AUX,
+			msg_size, &flags);
+	KBASE_DEBUG_ASSERT(buffer);
+
+	pos = kbasep_tlstream_write_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_tlstream_write_timestamp(buffer, pos);
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &gpu, sizeof(gpu));
+	KBASE_DEBUG_ASSERT(msg_size == pos);
+
+	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_AUX, flags);
+}
+void __kbase_tlstream_aux_protected_enter_end(void *gpu)
+{
+	const u32     msg_id = KBASE_AUX_PROTECTED_ENTER_END;
+	const size_t  msg_size =
+		sizeof(msg_id) + sizeof(u64) + sizeof(gpu);
+	unsigned long flags;
+	char          *buffer;
+	size_t        pos = 0;
+
+	buffer = kbasep_tlstream_msgbuf_acquire(
+			TL_STREAM_TYPE_AUX,
+			msg_size, &flags);
+	KBASE_DEBUG_ASSERT(buffer);
+
+	pos = kbasep_tlstream_write_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_tlstream_write_timestamp(buffer, pos);
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &gpu, sizeof(gpu));
+	KBASE_DEBUG_ASSERT(msg_size == pos);
+
+	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_AUX, flags);
+}
+
+void __kbase_tlstream_aux_protected_leave_start(void *gpu)
+{
+	const u32     msg_id = KBASE_AUX_PROTECTED_LEAVE_START;
+	const size_t  msg_size =
+		sizeof(msg_id) + sizeof(u64) + sizeof(gpu);
+	unsigned long flags;
+	char          *buffer;
+	size_t        pos = 0;
+
+	buffer = kbasep_tlstream_msgbuf_acquire(
+			TL_STREAM_TYPE_AUX,
+			msg_size, &flags);
+	KBASE_DEBUG_ASSERT(buffer);
+
+	pos = kbasep_tlstream_write_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_tlstream_write_timestamp(buffer, pos);
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &gpu, sizeof(gpu));
+	KBASE_DEBUG_ASSERT(msg_size == pos);
+
+	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_AUX, flags);
+}
+void __kbase_tlstream_aux_protected_leave_end(void *gpu)
+{
+	const u32     msg_id = KBASE_AUX_PROTECTED_LEAVE_END;
+	const size_t  msg_size =
+		sizeof(msg_id) + sizeof(u64) + sizeof(gpu);
+	unsigned long flags;
+	char          *buffer;
+	size_t        pos = 0;
+
+	buffer = kbasep_tlstream_msgbuf_acquire(
+			TL_STREAM_TYPE_AUX,
+			msg_size, &flags);
+	KBASE_DEBUG_ASSERT(buffer);
+
+	pos = kbasep_tlstream_write_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_tlstream_write_timestamp(buffer, pos);
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &gpu, sizeof(gpu));
+	KBASE_DEBUG_ASSERT(msg_size == pos);
+
+	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_AUX, flags);
+}

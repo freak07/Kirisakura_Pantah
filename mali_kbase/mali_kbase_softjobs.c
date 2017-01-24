@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -387,16 +387,6 @@ void kbasep_complete_triggered_soft_events(struct kbase_context *kctx, u64 evt)
 }
 
 #ifdef CONFIG_MALI_FENCE_DEBUG
-static char *kbase_fence_debug_status_string(int status)
-{
-	if (status == 0)
-		return "signaled";
-	else if (status > 0)
-		return "active";
-	else
-		return "error";
-}
-
 static void kbase_fence_debug_check_atom(struct kbase_jd_atom *katom)
 {
 	struct kbase_context *kctx = katom->kctx;
@@ -421,7 +411,7 @@ static void kbase_fence_debug_check_atom(struct kbase_jd_atom *katom)
 					 "\tVictim trigger atom %d fence [%p] %s: %s\n",
 					 kbase_jd_atom_id(kctx, dep),
 					 fence, fence->name,
-					 kbase_fence_debug_status_string(status));
+					 kbase_sync_status_string(status));
 			}
 
 			kbase_fence_debug_check_atom(dep);
@@ -446,7 +436,7 @@ static void kbase_fence_debug_wait_timeout(struct kbase_jd_atom *katom)
 		 fence, timeout_ms);
 	dev_warn(dev, "\tGuilty fence [%p] %s: %s\n",
 		 fence, fence->name,
-		 kbase_fence_debug_status_string(status));
+		 kbase_sync_status_string(status));
 
 	/* Search for blocked trigger atoms */
 	kbase_fence_debug_check_atom(katom);
@@ -994,6 +984,7 @@ static int kbase_jit_allocate_prepare(struct kbase_jd_atom *katom)
 {
 	__user void *data = (__user void *)(uintptr_t) katom->jc;
 	struct base_jit_alloc_info *info;
+	struct kbase_context *kctx = katom->kctx;
 	int ret;
 
 	/* Fail the job if there is no info structure */
@@ -1034,6 +1025,10 @@ static int kbase_jit_allocate_prepare(struct kbase_jd_atom *katom)
 
 	/* Replace the user pointer with our kernel allocated info structure */
 	katom->jc = (u64)(uintptr_t) info;
+	katom->jit_blocked = false;
+
+	lockdep_assert_held(&kctx->jctx.lock);
+	list_add_tail(&katom->jit_node, &kctx->jit_atoms_head);
 
 	/*
 	 * Note:
@@ -1055,7 +1050,15 @@ fail:
 	return ret;
 }
 
-static void kbase_jit_allocate_process(struct kbase_jd_atom *katom)
+static u8 kbase_jit_free_get_id(struct kbase_jd_atom *katom)
+{
+	if (WARN_ON(katom->core_req != BASE_JD_REQ_SOFT_JIT_FREE))
+		return 0;
+
+	return (u8) katom->jc;
+}
+
+static int kbase_jit_allocate_process(struct kbase_jd_atom *katom)
 {
 	struct kbase_context *kctx = katom->kctx;
 	struct base_jit_alloc_info *info;
@@ -1063,25 +1066,66 @@ static void kbase_jit_allocate_process(struct kbase_jd_atom *katom)
 	struct kbase_vmap_struct mapping;
 	u64 *ptr;
 
+	if (katom->jit_blocked) {
+		list_del(&katom->queue);
+		katom->jit_blocked = false;
+	}
+
 	info = (struct base_jit_alloc_info *) (uintptr_t) katom->jc;
 
 	/* The JIT ID is still in use so fail the allocation */
 	if (kctx->jit_alloc[info->id]) {
 		katom->event_code = BASE_JD_EVENT_MEM_GROWTH_FAILED;
-		return;
+		return 0;
 	}
-
-	/*
-	 * Mark the allocation so we know it's in use even if the
-	 * allocation itself fails.
-	 */
-	kctx->jit_alloc[info->id] = (struct kbase_va_region *) -1;
 
 	/* Create a JIT allocation */
 	reg = kbase_jit_allocate(kctx, info);
 	if (!reg) {
-		katom->event_code = BASE_JD_EVENT_MEM_GROWTH_FAILED;
-		return;
+		struct kbase_jd_atom *jit_atom;
+		bool can_block = false;
+
+		lockdep_assert_held(&kctx->jctx.lock);
+
+		jit_atom = list_first_entry(&kctx->jit_atoms_head,
+				struct kbase_jd_atom, jit_node);
+
+		list_for_each_entry(jit_atom, &kctx->jit_atoms_head, jit_node) {
+			if (jit_atom == katom)
+				break;
+			if (jit_atom->core_req == BASE_JD_REQ_SOFT_JIT_FREE) {
+				u8 free_id = kbase_jit_free_get_id(jit_atom);
+
+				if (free_id && kctx->jit_alloc[free_id]) {
+					/* A JIT free which is active and
+					 * submitted before this atom
+					 */
+					can_block = true;
+					break;
+				}
+			}
+		}
+
+		if (!can_block) {
+			/* Mark the allocation so we know it's in use even if
+			 * the allocation itself fails.
+			 */
+			kctx->jit_alloc[info->id] =
+				(struct kbase_va_region *) -1;
+
+			katom->event_code = BASE_JD_EVENT_MEM_GROWTH_FAILED;
+			return 0;
+		}
+
+		/* There are pending frees for an active allocation
+		 * so we should wait to see whether they free the memory.
+		 * Add to the beginning of the list to ensure that the atom is
+		 * processed only once in kbase_jit_free_finish
+		 */
+		list_add(&katom->queue, &kctx->jit_pending_alloc);
+		katom->jit_blocked = true;
+
+		return 1;
 	}
 
 	/*
@@ -1096,7 +1140,7 @@ static void kbase_jit_allocate_process(struct kbase_jd_atom *katom)
 		 * submitted anyway.
 		 */
 		katom->event_code = BASE_JD_EVENT_JOB_INVALID;
-		return;
+		return 0;
 	}
 
 	*ptr = reg->start_pfn << PAGE_SHIFT;
@@ -1109,21 +1153,43 @@ static void kbase_jit_allocate_process(struct kbase_jd_atom *katom)
 	 * the JIT free racing this JIT alloc job.
 	 */
 	kctx->jit_alloc[info->id] = reg;
+
+	return 0;
 }
 
 static void kbase_jit_allocate_finish(struct kbase_jd_atom *katom)
 {
 	struct base_jit_alloc_info *info;
 
+	lockdep_assert_held(&katom->kctx->jctx.lock);
+
+	/* Remove atom from jit_atoms_head list */
+	list_del(&katom->jit_node);
+
+	if (katom->jit_blocked) {
+		list_del(&katom->queue);
+		katom->jit_blocked = false;
+	}
+
 	info = (struct base_jit_alloc_info *) (uintptr_t) katom->jc;
 	/* Free the info structure */
 	kfree(info);
 }
 
+static int kbase_jit_free_prepare(struct kbase_jd_atom *katom)
+{
+	struct kbase_context *kctx = katom->kctx;
+
+	lockdep_assert_held(&kctx->jctx.lock);
+	list_add_tail(&katom->jit_node, &kctx->jit_atoms_head);
+
+	return 0;
+}
+
 static void kbase_jit_free_process(struct kbase_jd_atom *katom)
 {
 	struct kbase_context *kctx = katom->kctx;
-	u8 id = (u8) katom->jc;
+	u8 id = kbase_jit_free_get_id(katom);
 
 	/*
 	 * If the ID is zero or it is not in use yet then fail the job.
@@ -1141,6 +1207,43 @@ static void kbase_jit_free_process(struct kbase_jd_atom *katom)
 		kbase_jit_free(kctx, kctx->jit_alloc[id]);
 
 	kctx->jit_alloc[id] = NULL;
+}
+
+static void kbasep_jit_free_finish_worker(struct work_struct *work)
+{
+	struct kbase_jd_atom *katom = container_of(work, struct kbase_jd_atom,
+			work);
+	struct kbase_context *kctx = katom->kctx;
+	int resched;
+
+	mutex_lock(&kctx->jctx.lock);
+	kbase_finish_soft_job(katom);
+	resched = jd_done_nolock(katom, NULL);
+	mutex_unlock(&kctx->jctx.lock);
+
+	if (resched)
+		kbase_js_sched_all(kctx->kbdev);
+}
+
+static void kbase_jit_free_finish(struct kbase_jd_atom *katom)
+{
+	struct list_head *i, *tmp;
+	struct kbase_context *kctx = katom->kctx;
+
+	lockdep_assert_held(&kctx->jctx.lock);
+	/* Remove this atom from the kctx->jit_atoms_head list */
+	list_del(&katom->jit_node);
+
+	list_for_each_safe(i, tmp, &kctx->jit_pending_alloc) {
+		struct kbase_jd_atom *pending_atom = list_entry(i,
+				struct kbase_jd_atom, queue);
+		if (kbase_jit_allocate_process(pending_atom) == 0) {
+			/* Atom has completed */
+			INIT_WORK(&pending_atom->work,
+					kbasep_jit_free_finish_worker);
+			queue_work(kctx->jctx.job_done_wq, &pending_atom->work);
+		}
+	}
 }
 
 static int kbase_ext_res_prepare(struct kbase_jd_atom *katom)
@@ -1307,11 +1410,8 @@ int kbase_process_soft_job(struct kbase_jd_atom *katom)
 		break;
 	}
 	case BASE_JD_REQ_SOFT_JIT_ALLOC:
-		return -EINVAL; /* Temporarily disabled */
-		kbase_jit_allocate_process(katom);
-		break;
+		return kbase_jit_allocate_process(katom);
 	case BASE_JD_REQ_SOFT_JIT_FREE:
-		return -EINVAL; /* Temporarily disabled */
 		kbase_jit_free_process(katom);
 		break;
 	case BASE_JD_REQ_SOFT_EXT_RES_MAP:
@@ -1408,8 +1508,9 @@ int kbase_prepare_soft_job(struct kbase_jd_atom *katom)
 	case BASE_JD_REQ_SOFT_JIT_ALLOC:
 		return kbase_jit_allocate_prepare(katom);
 	case BASE_JD_REQ_SOFT_REPLAY:
-	case BASE_JD_REQ_SOFT_JIT_FREE:
 		break;
+	case BASE_JD_REQ_SOFT_JIT_FREE:
+		return kbase_jit_free_prepare(katom);
 	case BASE_JD_REQ_SOFT_EVENT_WAIT:
 	case BASE_JD_REQ_SOFT_EVENT_SET:
 	case BASE_JD_REQ_SOFT_EVENT_RESET:
@@ -1463,6 +1564,9 @@ void kbase_finish_soft_job(struct kbase_jd_atom *katom)
 		break;
 	case BASE_JD_REQ_SOFT_EXT_RES_UNMAP:
 		kbase_ext_res_finish(katom);
+		break;
+	case BASE_JD_REQ_SOFT_JIT_FREE:
+		kbase_jit_free_finish(katom);
 		break;
 	}
 }

@@ -147,6 +147,10 @@ void __kbase_tlstream_aux_pm_state(u32 core_type, u64 state);
 void __kbase_tlstream_aux_pagefault(u32 ctx_nr, u64 page_count_change);
 void __kbase_tlstream_aux_pagesalloc(u32 ctx_nr, u64 page_count);
 void __kbase_tlstream_aux_devfreq_target(u64 target_freq);
+void __kbase_tlstream_aux_protected_enter_start(void *gpu);
+void __kbase_tlstream_aux_protected_enter_end(void *gpu);
+void __kbase_tlstream_aux_protected_leave_start(void *gpu);
+void __kbase_tlstream_aux_protected_leave_end(void *gpu);
 
 #define TLSTREAM_ENABLED (1 << 31)
 
@@ -520,6 +524,7 @@ extern atomic_t kbase_tlstream_enabled;
 #define KBASE_TLSTREAM_JD_GPU_SOFT_RESET(gpu) \
 	__TRACE_IF_ENABLED(jd_gpu_soft_reset, gpu)
 
+
 /**
  * KBASE_TLSTREAM_AUX_PM_STATE - timeline message: power management state
  * @core_type: core type (shader, tiler, l2 cache, l3 cache)
@@ -553,6 +558,50 @@ extern atomic_t kbase_tlstream_enabled;
  */
 #define KBASE_TLSTREAM_AUX_DEVFREQ_TARGET(target_freq) \
 	__TRACE_IF_ENABLED(aux_devfreq_target, target_freq)
+
+/**
+ * KBASE_TLSTREAM_AUX_PROTECTED_ENTER_START - The GPU has started transitioning
+ *                                            to protected mode
+ * @gpu: name of the GPU object
+ *
+ * Function emits a timeline message indicating the GPU is starting to
+ * transition to protected mode.
+ */
+#define KBASE_TLSTREAM_AUX_PROTECTED_ENTER_START(gpu) \
+	__TRACE_IF_ENABLED_LATENCY(aux_protected_enter_start, gpu)
+
+/**
+ * KBASE_TLSTREAM_AUX_PROTECTED_ENTER_END - The GPU has finished transitioning
+ *                                          to protected mode
+ * @gpu: name of the GPU object
+ *
+ * Function emits a timeline message indicating the GPU has finished
+ * transitioning to protected mode.
+ */
+#define KBASE_TLSTREAM_AUX_PROTECTED_ENTER_END(gpu) \
+	__TRACE_IF_ENABLED_LATENCY(aux_protected_enter_end, gpu)
+
+/**
+ * KBASE_TLSTREAM_AUX_PROTECTED_LEAVE_START - The GPU has started transitioning
+ *                                            to non-protected mode
+ * @gpu: name of the GPU object
+ *
+ * Function emits a timeline message indicating the GPU is starting to
+ * transition to non-protected mode.
+ */
+#define KBASE_TLSTREAM_AUX_PROTECTED_LEAVE_START(gpu) \
+	__TRACE_IF_ENABLED_LATENCY(aux_protected_leave_start, gpu)
+
+/**
+ * KBASE_TLSTREAM_AUX_PROTECTED_LEAVE_END - The GPU has finished transitioning
+ *                                          to non-protected mode
+ * @gpu: name of the GPU object
+ *
+ * Function emits a timeline message indicating the GPU has finished
+ * transitioning to non-protected mode.
+ */
+#define KBASE_TLSTREAM_AUX_PROTECTED_LEAVE_END(gpu) \
+	__TRACE_IF_ENABLED_LATENCY(aux_protected_leave_end, gpu)
 
 #endif /* _KBASE_TLSTREAM_H */
 

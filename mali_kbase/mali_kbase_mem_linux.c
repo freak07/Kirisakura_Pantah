@@ -152,7 +152,8 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 		goto no_region;
 	}
 
-	kbase_update_region_flags(kctx, reg, *flags);
+	if (kbase_update_region_flags(kctx, reg, *flags) != 0)
+		goto invalid_flags;
 
 	if (kbase_reg_prepare_native(reg, kctx) != 0) {
 		dev_err(dev, "Failed to prepare region");
@@ -244,6 +245,7 @@ no_cookie:
 no_mem:
 	kbase_mem_phy_alloc_put(reg->cpu_alloc);
 	kbase_mem_phy_alloc_put(reg->gpu_alloc);
+invalid_flags:
 prepare_failed:
 	kfree(reg);
 no_region:
@@ -995,27 +997,16 @@ static struct kbase_va_region *kbase_mem_from_umm(struct kbase_context *kctx, in
 	/* No pages to map yet */
 	reg->gpu_alloc->nents = 0;
 
+	if (kbase_update_region_flags(kctx, reg, *flags) != 0)
+		goto invalid_flags;
+
 	reg->flags &= ~KBASE_REG_FREE;
 	reg->flags |= KBASE_REG_GPU_NX;	/* UMM is always No eXecute */
 	reg->flags &= ~KBASE_REG_GROWABLE;	/* UMM cannot be grown */
 	reg->flags |= KBASE_REG_GPU_CACHED;
 
-	if (*flags & BASE_MEM_PROT_CPU_WR)
-		reg->flags |= KBASE_REG_CPU_WR;
-
-	if (*flags & BASE_MEM_PROT_CPU_RD)
-		reg->flags |= KBASE_REG_CPU_RD;
-
-	if (*flags & BASE_MEM_PROT_GPU_WR)
-		reg->flags |= KBASE_REG_GPU_WR;
-
-	if (*flags & BASE_MEM_PROT_GPU_RD)
-		reg->flags |= KBASE_REG_GPU_RD;
-
 	if (*flags & BASE_MEM_SECURE)
 		reg->flags |= KBASE_REG_SECURE;
-
-	/* no read or write permission given on import, only on run do we give the right permissions */
 
 	reg->gpu_alloc->type = KBASE_MEM_TYPE_IMPORTED_UMM;
 	reg->gpu_alloc->imported.umm.sgt = NULL;
@@ -1026,6 +1017,8 @@ static struct kbase_va_region *kbase_mem_from_umm(struct kbase_context *kctx, in
 
 	return reg;
 
+invalid_flags:
+	kbase_mem_phy_alloc_put(reg->gpu_alloc);
 no_alloc_obj:
 	kfree(reg);
 no_region:
@@ -1038,6 +1031,16 @@ no_buf:
 }
 #endif  /* CONFIG_DMA_SHARED_BUFFER */
 
+static u32 kbase_get_cache_line_alignment(struct kbase_context *kctx)
+{
+	u32 cpu_cache_line_size = cache_line_size();
+	u32 gpu_cache_line_size =
+		(1UL << kctx->kbdev->gpu_props.props.l2_props.log2_line_size);
+
+	return ((cpu_cache_line_size > gpu_cache_line_size) ?
+				cpu_cache_line_size :
+				gpu_cache_line_size);
+}
 
 static struct kbase_va_region *kbase_mem_from_user_buffer(
 		struct kbase_context *kctx, unsigned long address,
@@ -1047,6 +1050,23 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 	long faulted_pages;
 	int zone = KBASE_REG_ZONE_CUSTOM_VA;
 	bool shared_zone = false;
+	u32 cache_line_alignment = kbase_get_cache_line_alignment(kctx);
+
+	if ((address & (cache_line_alignment - 1)) != 0 ||
+			(size & (cache_line_alignment - 1)) != 0) {
+		/* Coherency must be enabled to handle partial cache lines */
+		if (*flags & (BASE_MEM_COHERENT_SYSTEM |
+			BASE_MEM_COHERENT_SYSTEM_REQUIRED)) {
+			/* Force coherent system required flag, import will
+			 * then fail if coherency isn't available
+			 */
+			*flags |= BASE_MEM_COHERENT_SYSTEM_REQUIRED;
+		} else {
+			dev_warn(kctx->kbdev->dev,
+					"User buffer is not cache line aligned and no coherency enabled\n");
+			goto bad_size;
+		}
+	}
 
 	*va_pages = (PAGE_ALIGN(address + size) >> PAGE_SHIFT) -
 		PFN_DOWN(address);
@@ -1090,21 +1110,12 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 
 	reg->cpu_alloc = kbase_mem_phy_alloc_get(reg->gpu_alloc);
 
+	if (kbase_update_region_flags(kctx, reg, *flags) != 0)
+		goto invalid_flags;
+
 	reg->flags &= ~KBASE_REG_FREE;
 	reg->flags |= KBASE_REG_GPU_NX; /* User-buffers are always No eXecute */
 	reg->flags &= ~KBASE_REG_GROWABLE; /* Cannot be grown */
-
-	if (*flags & BASE_MEM_PROT_CPU_WR)
-		reg->flags |= KBASE_REG_CPU_WR;
-
-	if (*flags & BASE_MEM_PROT_CPU_RD)
-		reg->flags |= KBASE_REG_CPU_RD;
-
-	if (*flags & BASE_MEM_PROT_GPU_WR)
-		reg->flags |= KBASE_REG_GPU_WR;
-
-	if (*flags & BASE_MEM_PROT_GPU_RD)
-		reg->flags |= KBASE_REG_GPU_RD;
 
 	down_read(&current->mm->mmap_sem);
 
@@ -1118,9 +1129,13 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 0)
 	faulted_pages = get_user_pages(current, current->mm, address, *va_pages,
 			reg->flags & KBASE_REG_GPU_WR, 0, NULL, NULL);
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0)
 	faulted_pages = get_user_pages(address, *va_pages,
 			reg->flags & KBASE_REG_GPU_WR, 0, NULL, NULL);
+#else
+	faulted_pages = get_user_pages(address, *va_pages,
+			reg->flags & KBASE_REG_GPU_WR ? FOLL_WRITE : 0,
+			NULL, NULL);
 #endif
 	up_read(&current->mm->mmap_sem);
 
@@ -1145,6 +1160,8 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 
 no_page_array:
 fault_mismatch:
+invalid_flags:
+	kbase_mem_phy_alloc_put(reg->cpu_alloc);
 	kbase_mem_phy_alloc_put(reg->gpu_alloc);
 no_alloc_obj:
 	kfree(reg);
@@ -1221,7 +1238,8 @@ u64 kbase_mem_alias(struct kbase_context *kctx, u64 *flags, u64 stride,
 
 	reg->cpu_alloc = kbase_mem_phy_alloc_get(reg->gpu_alloc);
 
-	kbase_update_region_flags(kctx, reg, *flags);
+	if (kbase_update_region_flags(kctx, reg, *flags) != 0)
+		goto invalid_flags;
 
 	reg->gpu_alloc->imported.alias.nents = nents;
 	reg->gpu_alloc->imported.alias.stride = stride;
@@ -1330,6 +1348,7 @@ no_mmap:
 bad_handle:
 	kbase_gpu_vm_unlock(kctx);
 no_aliased_array:
+invalid_flags:
 	kbase_mem_phy_alloc_put(reg->cpu_alloc);
 	kbase_mem_phy_alloc_put(reg->gpu_alloc);
 no_alloc_obj:
@@ -1340,32 +1359,6 @@ bad_nents:
 bad_stride:
 bad_flags:
 	return 0;
-}
-
-static u32 kbase_get_cache_line_alignment(struct kbase_context *kctx)
-{
-	u32 cpu_cache_line_size = cache_line_size();
-	u32 gpu_cache_line_size =
-		(1UL << kctx->kbdev->gpu_props.props.l2_props.log2_line_size);
-
-	return ((cpu_cache_line_size > gpu_cache_line_size) ?
-				cpu_cache_line_size :
-				gpu_cache_line_size);
-}
-
-static int kbase_check_buffer_size(struct kbase_context *kctx, u64 size)
-{
-	u32 cache_line_align = kbase_get_cache_line_alignment(kctx);
-
-	return (size & (cache_line_align - 1)) == 0 ? 0 : -EINVAL;
-}
-
-static int kbase_check_buffer_cache_alignment(struct kbase_context *kctx,
-					void __user *ptr)
-{
-	u32 cache_line_align = kbase_get_cache_line_alignment(kctx);
-
-	return ((uintptr_t)ptr & (cache_line_align - 1)) == 0 ? 0 : -EINVAL;
 }
 
 int kbase_mem_import(struct kbase_context *kctx, enum base_mem_import_type type,
@@ -1428,20 +1421,6 @@ int kbase_mem_import(struct kbase_context *kctx, enum base_mem_import_type type,
 			else
 #endif
 				uptr = user_buffer.ptr.value;
-
-			if (0 != kbase_check_buffer_cache_alignment(kctx,
-									uptr)) {
-				dev_warn(kctx->kbdev->dev,
-				"User buffer is not cache line aligned!\n");
-				goto no_reg;
-			}
-
-			if (0 != kbase_check_buffer_size(kctx,
-					user_buffer.length)) {
-				dev_warn(kctx->kbdev->dev,
-				"User buffer size is not multiple of cache line size!\n");
-				goto no_reg;
-			}
 
 			reg = kbase_mem_from_user_buffer(kctx,
 					(unsigned long)uptr, user_buffer.length,
@@ -1533,8 +1512,6 @@ static void kbase_mem_shrink_cpu_mapping(struct kbase_context *kctx,
 		u64 new_pages, u64 old_pages)
 {
 	u64 gpu_va_start = reg->start_pfn;
-
-	lockdep_assert_held(&kctx->process_mm->mmap_sem);
 
 	if (new_pages == old_pages)
 		/* Nothing to do */
@@ -2563,7 +2540,8 @@ void *kbase_va_alloc(struct kbase_context *kctx, u32 size, struct kbase_hwc_dma_
 		goto no_reg;
 
 	reg->flags &= ~KBASE_REG_FREE;
-	kbase_update_region_flags(kctx, reg, flags);
+	if (kbase_update_region_flags(kctx, reg, flags) != 0)
+		goto invalid_flags;
 
 	reg->cpu_alloc = kbase_alloc_create(pages, KBASE_MEM_TYPE_RAW);
 	if (IS_ERR_OR_NULL(reg->cpu_alloc))
@@ -2590,6 +2568,7 @@ no_mmap:
 	kbase_mem_phy_alloc_put(reg->cpu_alloc);
 	kbase_mem_phy_alloc_put(reg->gpu_alloc);
 no_alloc:
+invalid_flags:
 	kfree(reg);
 no_reg:
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 8, 0))

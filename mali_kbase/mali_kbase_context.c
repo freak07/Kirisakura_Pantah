@@ -224,6 +224,14 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	kbase_pm_context_active(kbdev);
 
 	kbase_jd_zap_context(kctx);
+
+#ifdef CONFIG_DEBUG_FS
+	/* Removing the rest of the debugfs entries here as we want to keep the
+	 * atom debugfs interface alive until all atoms have completed. This
+	 * is useful for debugging hung contexts. */
+	debugfs_remove_recursive(kctx->kctx_dentry);
+#endif
+
 	kbase_event_cleanup(kctx);
 
 	/*

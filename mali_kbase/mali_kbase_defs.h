@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -409,7 +409,6 @@ struct kbase_ext_res {
 struct kbase_jd_atom {
 	struct work_struct work;
 	ktime_t start_timestamp;
-	u64 time_spent_us; /**< Total time spent on the GPU in microseconds */
 
 	struct base_jd_udata udata;
 	struct kbase_context *kctx;
@@ -548,7 +547,7 @@ struct kbase_jd_atom {
 	struct base_job_fault_event fault_event;
 #endif
 
-	/* List head used for two different purposes:
+	/* List head used for three different purposes:
 	 *  1. Overflow list for JS ring buffers. If an atom is ready to run,
 	 *     but there is no room in the JS ring buffer, then the atom is put
 	 *     on the ring buffer's overflow list using this list node.
@@ -556,7 +555,10 @@ struct kbase_jd_atom {
 	 */
 	struct list_head queue;
 
-	struct kbase_va_region *jit_addr_reg;
+	/* Used to keep track of all JIT free/alloc jobs in submission order
+	 */
+	struct list_head jit_node;
+	bool jit_blocked;
 
 	/* If non-zero, this indicates that the atom will fail with the set
 	 * event_code when the atom is processed. */
@@ -1097,10 +1099,13 @@ struct kbase_device {
 #else
 	struct thermal_cooling_device *devfreq_cooling;
 #endif
+	struct list_head ipa_power_models;
+	struct kbase_ipa_model *ipa_current_model;
+	struct kbase_ipa_model *ipa_configured_model;
+	struct kbase_ipa_model *ipa_fallback_model;
 #endif
 #endif
 
-	struct kbase_ipa_context *ipa_ctx;
 
 #ifdef CONFIG_MALI_TRACE_TIMELINE
 	struct kbase_trace_kbdev_timeline timeline;
@@ -1340,7 +1345,12 @@ struct kbase_context {
 
 	struct mutex            mmu_lock;
 	struct mutex            reg_lock; /* To be converted to a rwlock? */
-	struct rb_root          reg_rbtree; /* Red-Black tree of GPU regions (live regions) */
+	struct rb_root reg_rbtree_same; /* RB tree of GPU (live) regions,
+					 * SAME_VA zone */
+	struct rb_root reg_rbtree_exec; /* RB tree of GPU (live) regions,
+					 * EXEC zone */
+	struct rb_root reg_rbtree_custom; /* RB tree of GPU (live) regions,
+					 * CUSTOM_VA zone */
 
 	unsigned long    cookies;
 	struct kbase_va_region *pending_regions[BITS_PER_LONG];
@@ -1459,6 +1469,15 @@ struct kbase_context {
 	struct list_head jit_destroy_head;
 	struct mutex jit_evict_lock;
 	struct work_struct jit_work;
+
+	/* A list of the JIT soft-jobs in submission order
+	 * (protected by kbase_jd_context.lock)
+	 */
+	struct list_head jit_atoms_head;
+	/* A list of pending JIT alloc soft-jobs (using the 'queue' list_head)
+	 * (protected by kbase_jd_context.lock)
+	 */
+	struct list_head jit_pending_alloc;
 
 	/* External sticky resource management */
 	struct list_head ext_res_meta_head;

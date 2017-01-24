@@ -155,11 +155,42 @@ static const struct seq_operations ops = {
 	.show = debug_mem_show,
 };
 
+static int debug_mem_zone_open(struct rb_root *rbtree,
+						struct debug_mem_data *mem_data)
+{
+	int ret = 0;
+	struct rb_node *p;
+	struct kbase_va_region *reg;
+	struct debug_mem_mapping *mapping;
+
+	for (p = rb_first(rbtree); p; p = rb_next(p)) {
+		reg = rb_entry(p, struct kbase_va_region, rblink);
+
+		if (reg->gpu_alloc == NULL)
+			/* Empty region - ignore */
+			continue;
+
+		mapping = kmalloc(sizeof(*mapping), GFP_KERNEL);
+		if (!mapping) {
+			ret = -ENOMEM;
+			goto out;
+		}
+
+		mapping->alloc = kbase_mem_phy_alloc_get(reg->gpu_alloc);
+		mapping->start_pfn = reg->start_pfn;
+		mapping->nr_pages = reg->nr_pages;
+		mapping->flags = reg->flags;
+		list_add_tail(&mapping->node, &mem_data->mapping_list);
+	}
+
+out:
+	return ret;
+}
+
 static int debug_mem_open(struct inode *i, struct file *file)
 {
 	struct file *kctx_file = i->i_private;
 	struct kbase_context *kctx = kctx_file->private_data;
-	struct rb_node *p;
 	struct debug_mem_data *mem_data;
 	int ret;
 
@@ -181,28 +212,22 @@ static int debug_mem_open(struct inode *i, struct file *file)
 
 	kbase_gpu_vm_lock(kctx);
 
-	for (p = rb_first(&kctx->reg_rbtree); p; p = rb_next(p)) {
-		struct kbase_va_region *reg;
-		struct debug_mem_mapping *mapping;
+	ret = debug_mem_zone_open(&kctx->reg_rbtree_same, mem_data);
+	if (0 != ret) {
+		kbase_gpu_vm_unlock(kctx);
+		goto out;
+	}
 
-		reg = rb_entry(p, struct kbase_va_region, rblink);
+	ret = debug_mem_zone_open(&kctx->reg_rbtree_exec, mem_data);
+	if (0 != ret) {
+		kbase_gpu_vm_unlock(kctx);
+		goto out;
+	}
 
-		if (reg->gpu_alloc == NULL)
-			/* Empty region - ignore */
-			continue;
-
-		mapping = kmalloc(sizeof(*mapping), GFP_KERNEL);
-		if (!mapping) {
-			ret = -ENOMEM;
-			kbase_gpu_vm_unlock(kctx);
-			goto out;
-		}
-
-		mapping->alloc = kbase_mem_phy_alloc_get(reg->gpu_alloc);
-		mapping->start_pfn = reg->start_pfn;
-		mapping->nr_pages = reg->nr_pages;
-		mapping->flags = reg->flags;
-		list_add_tail(&mapping->node, &mem_data->mapping_list);
+	ret = debug_mem_zone_open(&kctx->reg_rbtree_custom, mem_data);
+	if (0 != ret) {
+		kbase_gpu_vm_unlock(kctx);
+		goto out;
 	}
 
 	kbase_gpu_vm_unlock(kctx);

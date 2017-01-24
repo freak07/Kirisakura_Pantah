@@ -24,18 +24,6 @@
 #include <linux/atomic.h>
 #include <linux/version.h>
 
-/* This function is only provided for backwards compatibility with kernels
- * which use the old carveout allocator.
- *
- * The forward declaration is to keep sparse happy.
- */
-int __init kbase_carveout_mem_reserve(
-		phys_addr_t size);
-int __init kbase_carveout_mem_reserve(phys_addr_t size)
-{
-	return 0;
-}
-
 #define pool_dbg(pool, format, ...) \
 	dev_dbg(pool->kbdev->dev, "%s-pool [%zu/%zu]: " format,	\
 		(pool->next_pool) ? "kctx" : "kbdev",	\

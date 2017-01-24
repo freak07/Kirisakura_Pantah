@@ -33,6 +33,7 @@ kbase_src = [
 	Glob('*.c'),
 	Glob('backend/*/*.c'),
 	Glob('internal/*/*.c'),
+	Glob('ipa/*.c'),
 	Glob('platform/%s/*.c' % env['platform_config']),
 ]
 

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2015-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2015-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -92,6 +92,7 @@ enum base_hw_issue {
 	BASE_HW_ISSUE_11042,
 	BASE_HW_ISSUE_11051,
 	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_T720_1386,
 	BASE_HW_ISSUE_T76X_26,
 	BASE_HW_ISSUE_T76X_1909,
 	BASE_HW_ISSUE_T76X_1963,
@@ -526,6 +527,7 @@ static const enum base_hw_issue base_hw_issues_t72x_r1p0[] = {
 	BASE_HW_ISSUE_11042,
 	BASE_HW_ISSUE_11051,
 	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_T720_1386,
 	BASE_HW_ISSUE_T76X_1909,
 	BASE_HW_ISSUE_T76X_1963,
 	BASE_HW_ISSUE_T76X_3964,
@@ -545,6 +547,7 @@ static const enum base_hw_issue base_hw_issues_t72x_r1p1[] = {
 	BASE_HW_ISSUE_11042,
 	BASE_HW_ISSUE_11051,
 	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_T720_1386,
 	BASE_HW_ISSUE_T76X_1909,
 	BASE_HW_ISSUE_T76X_1963,
 	BASE_HW_ISSUE_T76X_3964,
@@ -793,6 +796,7 @@ static const enum base_hw_issue base_hw_issues_t83x_r0p1[] = {
 	BASE_HW_ISSUE_10946,
 	BASE_HW_ISSUE_11051,
 	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_T720_1386,
 	BASE_HW_ISSUE_T76X_1909,
 	BASE_HW_ISSUE_T76X_1963,
 	BASE_HW_ISSUE_T76X_3086,
@@ -812,6 +816,7 @@ static const enum base_hw_issue base_hw_issues_t83x_r1p0[] = {
 	BASE_HW_ISSUE_10946,
 	BASE_HW_ISSUE_11051,
 	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_T720_1386,
 	BASE_HW_ISSUE_T76X_1963,
 	BASE_HW_ISSUE_T76X_3086,
 	BASE_HW_ISSUE_T76X_3700,
@@ -845,6 +850,7 @@ static const enum base_hw_issue base_hw_issues_t82x_r0p0[] = {
 	BASE_HW_ISSUE_10946,
 	BASE_HW_ISSUE_11051,
 	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_T720_1386,
 	BASE_HW_ISSUE_T76X_1909,
 	BASE_HW_ISSUE_T76X_1963,
 	BASE_HW_ISSUE_T76X_3086,
@@ -865,6 +871,7 @@ static const enum base_hw_issue base_hw_issues_t82x_r0p1[] = {
 	BASE_HW_ISSUE_10946,
 	BASE_HW_ISSUE_11051,
 	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_T720_1386,
 	BASE_HW_ISSUE_T76X_1909,
 	BASE_HW_ISSUE_T76X_1963,
 	BASE_HW_ISSUE_T76X_3086,
@@ -884,6 +891,7 @@ static const enum base_hw_issue base_hw_issues_t82x_r1p0[] = {
 	BASE_HW_ISSUE_10946,
 	BASE_HW_ISSUE_11051,
 	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_T720_1386,
 	BASE_HW_ISSUE_T76X_1963,
 	BASE_HW_ISSUE_T76X_3086,
 	BASE_HW_ISSUE_T76X_3700,
@@ -958,6 +966,7 @@ static const enum base_hw_issue base_hw_issues_tHEx_r0p0[] = {
 	BASE_HW_ISSUE_9435,
 	BASE_HW_ISSUE_10682,
 	BASE_HW_ISSUE_TMIX_7891,
+	BASE_HW_ISSUE_TMIX_8042,
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_END
 };
@@ -966,13 +975,13 @@ static const enum base_hw_issue base_hw_issues_model_tHEx[] = {
 	BASE_HW_ISSUE_5736,
 	BASE_HW_ISSUE_9435,
 	BASE_HW_ISSUE_TMIX_7891,
+	BASE_HW_ISSUE_TMIX_8042,
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_END
 };
 
 static const enum base_hw_issue base_hw_issues_tSIx_r0p0[] = {
 	BASE_HW_ISSUE_9435,
-	BASE_HW_ISSUE_TMIX_7891,
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_END
 };
@@ -980,7 +989,6 @@ static const enum base_hw_issue base_hw_issues_tSIx_r0p0[] = {
 static const enum base_hw_issue base_hw_issues_model_tSIx[] = {
 	BASE_HW_ISSUE_5736,
 	BASE_HW_ISSUE_9435,
-	BASE_HW_ISSUE_TMIX_7891,
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_END
 };

@@ -204,6 +204,13 @@ void page_fault_worker(struct work_struct *data)
 		goto fault_done;
 	}
 
+	if (region->gpu_alloc->type == KBASE_MEM_TYPE_IMPORTED_UMM) {
+		kbase_gpu_vm_unlock(kctx);
+		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
+				"DMA-BUF is not mapped on the GPU");
+		goto fault_done;
+	}
+
 	if ((region->flags & GROWABLE_FLAGS_REQUIRED)
 			!= GROWABLE_FLAGS_REQUIRED) {
 		kbase_gpu_vm_unlock(kctx);
@@ -909,7 +916,9 @@ static void kbase_mmu_flush_invalidate(struct kbase_context *kctx,
 		return;
 
 	kbdev = kctx->kbdev;
+	mutex_lock(&kbdev->js_data.queue_mutex);
 	ctx_is_in_runpool = kbasep_js_runpool_retain_ctx(kbdev, kctx);
+	mutex_unlock(&kbdev->js_data.queue_mutex);
 
 	if (ctx_is_in_runpool) {
 		KBASE_DEBUG_ASSERT(kctx->as_nr != KBASEP_AS_NR_INVALID);

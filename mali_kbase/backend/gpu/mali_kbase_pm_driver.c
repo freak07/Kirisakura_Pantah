@@ -45,9 +45,6 @@
 #define MOCKABLE(function) function
 #endif				/* MALI_MOCK_TEST */
 
-/* Special value to indicate that the JM_CONFIG reg isn't currently used. */
-#define KBASE_JM_CONFIG_UNUSED (1<<31)
-
 /**
  * enum kbasep_pm_action - Actions that can be performed on a core.
  *
@@ -246,8 +243,8 @@ static void kbase_pm_invoke(struct kbase_device *kbdev,
  *
  * This function gets information (chosen by @action) about a set of cores of
  * a type given by @core_type. It is a static function used by
- * kbase_pm_get_present_cores(), kbase_pm_get_active_cores(),
- * kbase_pm_get_trans_cores() and kbase_pm_get_ready_cores().
+ * kbase_pm_get_active_cores(), kbase_pm_get_trans_cores() and
+ * kbase_pm_get_ready_cores().
  *
  * @kbdev:     The kbase device structure of the device
  * @core_type: The type of core that the should be queried
@@ -272,7 +269,7 @@ static u64 kbase_pm_get_state(struct kbase_device *kbdev,
 	return (((u64) hi) << 32) | ((u64) lo);
 }
 
-void kbasep_pm_read_present_cores(struct kbase_device *kbdev)
+void kbasep_pm_init_core_use_bitmaps(struct kbase_device *kbdev)
 {
 	kbdev->shader_inuse_bitmap = 0;
 	kbdev->shader_needed_bitmap = 0;
@@ -285,8 +282,6 @@ void kbasep_pm_read_present_cores(struct kbase_device *kbdev)
 
 	memset(kbdev->shader_needed_cnt, 0, sizeof(kbdev->shader_needed_cnt));
 }
-
-KBASE_EXPORT_TEST_API(kbasep_pm_read_present_cores);
 
 /**
  * kbase_pm_get_present_cores - Get the cores that are present
@@ -443,6 +438,9 @@ static bool kbase_pm_transition_core_type(struct kbase_device *kbdev,
 	 * register reads */
 	trans &= ~ready;
 
+	if (trans) /* Do not progress if any cores are transitioning */
+		return false;
+
 	powering_on_trans = trans & *powering_on;
 	*powering_on = powering_on_trans;
 
@@ -510,7 +508,9 @@ static bool kbase_pm_transition_core_type(struct kbase_device *kbdev,
 
 	/* Perform transitions if any */
 	kbase_pm_invoke(kbdev, type, powerup, ACTION_PWRON);
+#if !PLATFORM_POWER_DOWN_ONLY
 	kbase_pm_invoke(kbdev, type, powerdown, ACTION_PWROFF);
+#endif
 
 	/* Recalculate cores transitioning on, and re-evaluate our state */
 	powering_on_trans |= powerup;
@@ -641,7 +641,6 @@ MOCKABLE(kbase_pm_check_transitions_nolock) (struct kbase_device *kbdev)
 	shader_transitioning_bitmap = kbase_pm_get_trans_cores(kbdev,
 							KBASE_PM_CORE_SHADER);
 	cores_powered = kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_SHADER);
-
 	cores_powered |= kbdev->pm.backend.desired_shader_state;
 
 #ifdef CONFIG_MALI_CORESTACK
@@ -1252,19 +1251,9 @@ static void kbase_pm_hw_issues_detect(struct kbase_device *kbdev)
 		kbdev->hw_quirks_mmu |= L2_MMU_CONFIG_ALLOW_SNOOP_DISPARITY;
 	}
 
+	kbdev->hw_quirks_jm = JM_CONFIG_UNUSED;
 	/* Only for T86x/T88x-based products after r2p0 */
 	if (prod_id >= 0x860 && prod_id <= 0x880 && major >= 2) {
-		/* The JM_CONFIG register is specified as follows in the
-		 T86x/T88x Engineering Specification Supplement:
-		 The values are read from device tree in order.
-		*/
-#define TIMESTAMP_OVERRIDE  1
-#define CLOCK_GATE_OVERRIDE (1<<1)
-#define JOB_THROTTLE_ENABLE (1<<2)
-#define JOB_THROTTLE_LIMIT_SHIFT 3
-
-		/* 6 bits in the register */
-		const u32 jm_max_limit = 0x3F;
 
 		if (of_property_read_u32_array(np,
 					"jm_config",
@@ -1274,23 +1263,43 @@ static void kbase_pm_hw_issues_detect(struct kbase_device *kbdev)
 			jm_values[0] = 0;
 			jm_values[1] = 0;
 			jm_values[2] = 0;
-			jm_values[3] = jm_max_limit; /* Max value */
+			jm_values[3] = JM_MAX_JOB_THROTTLE_LIMIT;
 		}
 
 		/* Limit throttle limit to 6 bits*/
-		if (jm_values[3] > jm_max_limit) {
+		if (jm_values[3] > JM_MAX_JOB_THROTTLE_LIMIT) {
 			dev_dbg(kbdev->dev, "JOB_THROTTLE_LIMIT supplied in device tree is too large. Limiting to MAX (63).");
-			jm_values[3] = jm_max_limit;
+			jm_values[3] = JM_MAX_JOB_THROTTLE_LIMIT;
 		}
 
 		/* Aggregate to one integer. */
-		kbdev->hw_quirks_jm = (jm_values[0] ? TIMESTAMP_OVERRIDE : 0);
-		kbdev->hw_quirks_jm |= (jm_values[1] ? CLOCK_GATE_OVERRIDE : 0);
-		kbdev->hw_quirks_jm |= (jm_values[2] ? JOB_THROTTLE_ENABLE : 0);
+		kbdev->hw_quirks_jm = (jm_values[0] ?
+				JM_TIMESTAMP_OVERRIDE : 0);
+		kbdev->hw_quirks_jm |= (jm_values[1] ?
+				JM_CLOCK_GATE_OVERRIDE : 0);
+		kbdev->hw_quirks_jm |= (jm_values[2] ?
+				JM_JOB_THROTTLE_ENABLE : 0);
 		kbdev->hw_quirks_jm |= (jm_values[3] <<
-				JOB_THROTTLE_LIMIT_SHIFT);
-	} else {
-		kbdev->hw_quirks_jm = KBASE_JM_CONFIG_UNUSED;
+				JM_JOB_THROTTLE_LIMIT_SHIFT);
+
+	} else if (GPU_ID_IS_NEW_FORMAT(prod_id) &&
+			   (GPU_ID2_MODEL_MATCH_VALUE(prod_id) ==
+					   GPU_ID2_PRODUCT_TMIX)) {
+		/* Only for tMIx */
+		u32 coherency_features;
+
+		coherency_features = kbase_reg_read(kbdev,
+				GPU_CONTROL_REG(COHERENCY_FEATURES), NULL);
+
+		/* (COHERENCY_ACE_LITE | COHERENCY_ACE) was incorrectly
+		 * documented for tMIx so force correct value here.
+		 */
+		if (coherency_features ==
+				COHERENCY_FEATURE_BIT(COHERENCY_ACE)) {
+			kbdev->hw_quirks_jm =
+				(COHERENCY_ACE_LITE | COHERENCY_ACE) <<
+				JM_FORCE_COHERENCY_FEATURES_SHIFT;
+		}
 	}
 
 #ifdef CONFIG_MALI_CORESTACK
@@ -1312,7 +1321,7 @@ static void kbase_pm_hw_issues_apply(struct kbase_device *kbdev)
 			kbdev->hw_quirks_mmu, NULL);
 
 
-	if (kbdev->hw_quirks_jm != KBASE_JM_CONFIG_UNUSED)
+	if (kbdev->hw_quirks_jm != JM_CONFIG_UNUSED)
 		kbase_reg_write(kbdev, GPU_CONTROL_REG(JM_CONFIG),
 				kbdev->hw_quirks_jm, NULL);
 
@@ -1486,6 +1495,10 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 	if (kbdev->protected_mode)
 		resume_vinstr = true;
 	kbdev->protected_mode = false;
+#ifdef CONFIG_DEVFREQ_THERMAL
+	kbase_ipa_model_use_configured_locked(kbdev);
+#endif
+
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, irq_flags);
 
 	if (err)

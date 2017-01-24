@@ -623,6 +623,8 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 					struct kbase_jd_atom *katom,
 					ktime_t *end_timestamp)
 {
+	struct kbase_context *kctx = katom->kctx;
+
 	switch (katom->gpu_rb_state) {
 	case KBASE_ATOM_GPU_RB_NOT_IN_SLOT_RB:
 		/* Should be impossible */
@@ -639,6 +641,14 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 		if (katom->core_req & BASE_JD_REQ_PERMON)
 			kbase_pm_release_gpu_cycle_counter_nolock(kbdev);
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
+
+		KBASE_TLSTREAM_TL_NRET_ATOM_LPU(katom,
+			&kbdev->gpu_props.props.raw_props.js_features
+				[katom->slot_nr]);
+		KBASE_TLSTREAM_TL_NRET_ATOM_AS(katom, &kbdev->as[kctx->as_nr]);
+		KBASE_TLSTREAM_TL_NRET_CTX_LPU(kctx,
+			&kbdev->gpu_props.props.raw_props.js_features
+				[katom->slot_nr]);
 
 	case KBASE_ATOM_GPU_RB_READY:
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
@@ -660,8 +670,14 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 
 		if (kbase_jd_katom_is_protected(katom) &&
 				(katom->protected_state.enter ==
-				KBASE_ATOM_ENTER_PROTECTED_IDLE_L2))
+				KBASE_ATOM_ENTER_PROTECTED_IDLE_L2)) {
 			kbase_vinstr_resume(kbdev->vinstr_ctx);
+#ifdef CONFIG_DEVFREQ_THERMAL
+			/* Go back to configured model for IPA */
+			kbase_ipa_model_use_configured_locked(kbdev);
+#endif
+		}
+
 
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
 
@@ -801,6 +817,7 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 
 	switch (katom[idx]->protected_state.enter) {
 	case KBASE_ATOM_ENTER_PROTECTED_CHECK:
+		KBASE_TLSTREAM_AUX_PROTECTED_ENTER_START(kbdev);
 		/* The checks in KBASE_ATOM_GPU_RB_WAITING_PROTECTED_MODE_PREV
 		 * should ensure that we are not already transitiong, and that
 		 * there are no atoms currently on the GPU. */
@@ -822,6 +839,11 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 			 */
 			return -EAGAIN;
 		}
+
+#ifdef CONFIG_DEVFREQ_THERMAL
+		/* Use generic model for IPA in protected mode */
+		kbase_ipa_model_use_fallback_locked(kbdev);
+#endif
 
 		/* Once reaching this point GPU must be
 		 * switched to protected mode or vinstr
@@ -867,7 +889,7 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 		 * the GPU.
 		 */
 		kbdev->protected_mode_transition = false;
-
+		KBASE_TLSTREAM_AUX_PROTECTED_ENTER_END(kbdev);
 		if (err) {
 			/*
 			 * Failed to switch into protected mode, resume
@@ -884,6 +906,11 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 				kbase_gpu_dequeue_atom(kbdev, js, NULL);
 				kbase_jm_return_atom_to_js(kbdev, katom[idx]);
 			}
+#ifdef CONFIG_DEVFREQ_THERMAL
+			/* Go back to configured model for IPA */
+			kbase_ipa_model_use_configured_locked(kbdev);
+#endif
+
 			return -EINVAL;
 		}
 
@@ -909,6 +936,7 @@ static int kbase_jm_exit_protected_mode(struct kbase_device *kbdev,
 
 	switch (katom[idx]->protected_state.exit) {
 	case KBASE_ATOM_EXIT_PROTECTED_CHECK:
+		KBASE_TLSTREAM_AUX_PROTECTED_LEAVE_START(kbdev);
 		/* The checks in KBASE_ATOM_GPU_RB_WAITING_PROTECTED_MODE_PREV
 		 * should ensure that we are not already transitiong, and that
 		 * there are no atoms currently on the GPU. */
@@ -961,6 +989,10 @@ static int kbase_jm_exit_protected_mode(struct kbase_device *kbdev,
 			}
 
 			kbase_vinstr_resume(kbdev->vinstr_ctx);
+#ifdef CONFIG_DEVFREQ_THERMAL
+			/* Use generic model for IPA in protected mode */
+			kbase_ipa_model_use_fallback_locked(kbdev);
+#endif
 
 			return -EINVAL;
 		}
@@ -976,7 +1008,7 @@ static int kbase_jm_exit_protected_mode(struct kbase_device *kbdev,
 
 		kbdev->protected_mode_transition = false;
 		kbdev->protected_mode = false;
-
+		KBASE_TLSTREAM_AUX_PROTECTED_LEAVE_END(kbdev);
 		/* protected mode sanity checks */
 		KBASE_DEBUG_ASSERT_MSG(
 			kbase_jd_katom_is_protected(katom[idx]) == kbase_gpu_in_protected_mode(kbdev),
@@ -1239,6 +1271,16 @@ bool kbase_gpu_irq_evict(struct kbase_device *kbdev, int js)
 		kbase_reg_write(kbdev, JOB_SLOT_REG(js, JS_COMMAND_NEXT),
 				JS_COMMAND_NOP, NULL);
 		next_katom->gpu_rb_state = KBASE_ATOM_GPU_RB_READY;
+
+		KBASE_TLSTREAM_TL_NRET_ATOM_LPU(katom,
+				&kbdev->gpu_props.props.raw_props.js_features
+					[katom->slot_nr]);
+		KBASE_TLSTREAM_TL_NRET_ATOM_AS(katom, &kbdev->as
+					[katom->kctx->as_nr]);
+		KBASE_TLSTREAM_TL_NRET_CTX_LPU(katom->kctx,
+				&kbdev->gpu_props.props.raw_props.js_features
+					[katom->slot_nr]);
+
 		return true;
 	}
 
@@ -1255,9 +1297,15 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_6787) &&
+	if ((kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_6787) || (katom->core_req &
+					BASE_JD_REQ_SKIP_CACHE_END)) &&
 			completion_code != BASE_JD_EVENT_DONE &&
 			!(completion_code & BASE_JD_SW_EVENT)) {
+		/* When a job chain fails, on a T60x or when
+		 * BASE_JD_REQ_SKIP_CACHE_END is set, the GPU cache is not
+		 * flushed. To prevent future evictions causing possible memory
+		 * corruption we need to flush the cache manually before any
+		 * affected memory gets reused. */
 		katom->need_cache_flush_cores_retained = katom->affinity;
 		kbase_pm_request_cores(kbdev, false, katom->affinity);
 	} else if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_10676)) {
@@ -1278,15 +1326,6 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 
 	katom = kbase_gpu_dequeue_atom(kbdev, js, end_timestamp);
 	kbase_timeline_job_slot_done(kbdev, katom->kctx, katom, js, 0);
-	KBASE_TLSTREAM_TL_NRET_ATOM_LPU(
-			katom,
-			&kbdev->gpu_props.props.raw_props.js_features[
-				katom->slot_nr]);
-	KBASE_TLSTREAM_TL_NRET_ATOM_AS(katom, &kbdev->as[kctx->as_nr]);
-	KBASE_TLSTREAM_TL_NRET_CTX_LPU(
-			kctx,
-			&kbdev->gpu_props.props.raw_props.js_features[
-				katom->slot_nr]);
 
 	if (completion_code == BASE_JD_EVENT_STOPPED) {
 		struct kbase_jd_atom *next_katom = kbase_gpu_inspect(kbdev, js,
@@ -1464,7 +1503,9 @@ void kbase_backend_reset(struct kbase_device *kbdev, ktime_t *end_timestamp)
 
 			if (!katom)
 				break;
-
+			if (katom->protected_state.exit ==
+					KBASE_ATOM_EXIT_PROTECTED_RESET_WAIT)
+				KBASE_TLSTREAM_AUX_PROTECTED_LEAVE_END(kbdev);
 			if (katom->gpu_rb_state < KBASE_ATOM_GPU_RB_SUBMITTED)
 				keep_in_jm_rb = true;
 
@@ -1750,13 +1791,11 @@ bool kbase_backend_soft_hard_stop_slot(struct kbase_device *kbdev,
 	return ret;
 }
 
-void kbase_gpu_cacheclean(struct kbase_device *kbdev,
-					struct kbase_jd_atom *katom)
+void kbase_gpu_cacheclean(struct kbase_device *kbdev)
 {
 	/* Limit the number of loops to avoid a hang if the interrupt is missed
 	 */
 	u32 max_loops = KBASE_CLEAN_CACHE_MAX_LOOPS;
-	unsigned long flags;
 
 	mutex_lock(&kbdev->cacheclean_lock);
 
@@ -1782,11 +1821,22 @@ void kbase_gpu_cacheclean(struct kbase_device *kbdev,
 	    "Instrumentation code was cleaning caches, but Job Management code cleared their IRQ - Instrumentation code will now hang.");
 
 	mutex_unlock(&kbdev->cacheclean_lock);
+}
 
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	kbase_pm_unrequest_cores(kbdev, false,
+void kbase_backend_cacheclean(struct kbase_device *kbdev,
+		struct kbase_jd_atom *katom)
+{
+	if (katom->need_cache_flush_cores_retained) {
+		unsigned long flags;
+
+		kbase_gpu_cacheclean(kbdev);
+
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbase_pm_unrequest_cores(kbdev, false,
 					katom->need_cache_flush_cores_retained);
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+		katom->need_cache_flush_cores_retained = 0;
+	}
 }
 
 void kbase_backend_complete_wq(struct kbase_device *kbdev,
@@ -1796,10 +1846,7 @@ void kbase_backend_complete_wq(struct kbase_device *kbdev,
 	 * If cache flush required due to HW workaround then perform the flush
 	 * now
 	 */
-	if (katom->need_cache_flush_cores_retained) {
-		kbase_gpu_cacheclean(kbdev, katom);
-		katom->need_cache_flush_cores_retained = 0;
-	}
+	kbase_backend_cacheclean(kbdev, katom);
 
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_10969)            &&
 	    (katom->core_req & BASE_JD_REQ_FS)                        &&

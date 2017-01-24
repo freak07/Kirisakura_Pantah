@@ -621,7 +621,20 @@ int kbase_add_va_region(struct kbase_context *kctx, struct kbase_va_region *reg,
 
 bool kbase_check_alloc_flags(unsigned long flags);
 bool kbase_check_import_flags(unsigned long flags);
-void kbase_update_region_flags(struct kbase_context *kctx,
+
+/**
+ * kbase_update_region_flags - Convert user space flags to kernel region flags
+ *
+ * @kctx:  kbase context
+ * @reg:   The region to update the flags on
+ * @flags: The flags passed from user space
+ *
+ * The user space flag BASE_MEM_COHERENT_SYSTEM_REQUIRED will be rejected and
+ * this function will fail if the system does not support system coherency.
+ *
+ * Return: 0 if successful, -EINVAL if the flags are not supported
+ */
+int kbase_update_region_flags(struct kbase_context *kctx,
 		struct kbase_va_region *reg, unsigned long flags);
 
 void kbase_gpu_vm_lock(struct kbase_context *kctx);

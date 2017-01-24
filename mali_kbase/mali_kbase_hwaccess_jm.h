@@ -133,6 +133,19 @@ void kbase_backend_release_ctx_noirq(struct kbase_device *kbdev,
 						struct kbase_context *kctx);
 
 /**
+ * kbase_backend_cacheclean - Perform a cache clean if the given atom requires
+ *                            one
+ * @kbdev:	Device pointer
+ * @katom:	Pointer to the failed atom
+ *
+ * On some GPUs, the GPU cache must be cleaned following a failed atom. This
+ * function performs a clean if it is required by @katom.
+ */
+void kbase_backend_cacheclean(struct kbase_device *kbdev,
+		struct kbase_jd_atom *katom);
+
+
+/**
  * kbase_backend_complete_wq() - Perform backend-specific actions required on
  *				 completing an atom.
  * @kbdev:	Device pointer

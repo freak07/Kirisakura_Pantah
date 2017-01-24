@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -40,25 +40,71 @@
 #include <mali_kbase_hwaccess_time.h>
 #include <mali_kbase_tlstream.h>
 
-/**
- * @brief Check the zone compatibility of two regions.
- */
-static int kbase_region_tracker_match_zone(struct kbase_va_region *reg1,
-		struct kbase_va_region *reg2)
+/* This function finds out which RB tree the given GPU VA region belongs to
+ * based on the region zone */
+static struct rb_root *kbase_reg_flags_to_rbtree(struct kbase_context *kctx,
+						    struct kbase_va_region *reg)
 {
-	return ((reg1->flags & KBASE_REG_ZONE_MASK) ==
-		(reg2->flags & KBASE_REG_ZONE_MASK));
+	struct rb_root *rbtree = NULL;
+
+	switch (reg->flags & KBASE_REG_ZONE_MASK) {
+	case KBASE_REG_ZONE_CUSTOM_VA:
+		rbtree = &kctx->reg_rbtree_custom;
+		break;
+	case KBASE_REG_ZONE_EXEC:
+		rbtree = &kctx->reg_rbtree_exec;
+		break;
+	case KBASE_REG_ZONE_SAME_VA:
+		rbtree = &kctx->reg_rbtree_same;
+		/* fall through */
+	default:
+		rbtree = &kctx->reg_rbtree_same;
+		break;
+	}
+
+	return rbtree;
 }
 
-KBASE_EXPORT_TEST_API(kbase_region_tracker_match_zone);
+/* This function finds out which RB tree the given pfn from the GPU VA belongs
+ * to based on the memory zone the pfn refers to */
+static struct rb_root *kbase_gpu_va_to_rbtree(struct kbase_context *kctx,
+								    u64 gpu_pfn)
+{
+	struct rb_root *rbtree = NULL;
+
+#ifdef CONFIG_64BIT
+	if (kbase_ctx_flag(kctx, KCTX_COMPAT)) {
+#endif /* CONFIG_64BIT */
+		if (gpu_pfn >= KBASE_REG_ZONE_CUSTOM_VA_BASE)
+			rbtree = &kctx->reg_rbtree_custom;
+		else if (gpu_pfn >= KBASE_REG_ZONE_EXEC_BASE)
+			rbtree = &kctx->reg_rbtree_exec;
+		else
+			rbtree = &kctx->reg_rbtree_same;
+#ifdef CONFIG_64BIT
+	} else {
+		if (gpu_pfn >= kctx->same_va_end)
+			rbtree = &kctx->reg_rbtree_custom;
+		else
+			rbtree = &kctx->reg_rbtree_same;
+	}
+#endif /* CONFIG_64BIT */
+
+	return rbtree;
+}
 
 /* This function inserts a region into the tree. */
-static void kbase_region_tracker_insert(struct kbase_context *kctx, struct kbase_va_region *new_reg)
+static void kbase_region_tracker_insert(struct kbase_context *kctx,
+						struct kbase_va_region *new_reg)
 {
 	u64 start_pfn = new_reg->start_pfn;
-	struct rb_node **link = &(kctx->reg_rbtree.rb_node);
+	struct rb_node **link = NULL;
 	struct rb_node *parent = NULL;
+	struct rb_root *rbtree = NULL;
 
+	rbtree = kbase_reg_flags_to_rbtree(kctx, new_reg);
+
+	link = &(rbtree->rb_node);
 	/* Find the right place in the tree using tree search */
 	while (*link) {
 		struct kbase_va_region *old_reg;
@@ -77,19 +123,24 @@ static void kbase_region_tracker_insert(struct kbase_context *kctx, struct kbase
 
 	/* Put the new node there, and rebalance tree */
 	rb_link_node(&(new_reg->rblink), parent, link);
-	rb_insert_color(&(new_reg->rblink), &(kctx->reg_rbtree));
+
+	rb_insert_color(&(new_reg->rblink), rbtree);
 }
 
 /* Find allocated region enclosing free range. */
 static struct kbase_va_region *kbase_region_tracker_find_region_enclosing_range_free(
 		struct kbase_context *kctx, u64 start_pfn, size_t nr_pages)
 {
-	struct rb_node *rbnode;
-	struct kbase_va_region *reg;
+	struct rb_node *rbnode = NULL;
+	struct kbase_va_region *reg = NULL;
+	struct rb_root *rbtree = NULL;
 
 	u64 end_pfn = start_pfn + nr_pages;
 
-	rbnode = kctx->reg_rbtree.rb_node;
+	rbtree = kbase_gpu_va_to_rbtree(kctx, start_pfn);
+
+	rbnode = rbtree->rb_node;
+
 	while (rbnode) {
 		u64 tmp_start_pfn, tmp_end_pfn;
 
@@ -116,12 +167,16 @@ struct kbase_va_region *kbase_region_tracker_find_region_enclosing_address(struc
 	struct rb_node *rbnode;
 	struct kbase_va_region *reg;
 	u64 gpu_pfn = gpu_addr >> PAGE_SHIFT;
+	struct rb_root *rbtree = NULL;
 
 	KBASE_DEBUG_ASSERT(NULL != kctx);
 
 	lockdep_assert_held(&kctx->reg_lock);
 
-	rbnode = kctx->reg_rbtree.rb_node;
+	rbtree = kbase_gpu_va_to_rbtree(kctx, gpu_pfn);
+
+	rbnode = rbtree->rb_node;
+
 	while (rbnode) {
 		u64 tmp_start_pfn, tmp_end_pfn;
 
@@ -148,14 +203,18 @@ KBASE_EXPORT_TEST_API(kbase_region_tracker_find_region_enclosing_address);
 struct kbase_va_region *kbase_region_tracker_find_region_base_address(struct kbase_context *kctx, u64 gpu_addr)
 {
 	u64 gpu_pfn = gpu_addr >> PAGE_SHIFT;
-	struct rb_node *rbnode;
-	struct kbase_va_region *reg;
+	struct rb_node *rbnode = NULL;
+	struct kbase_va_region *reg = NULL;
+	struct rb_root *rbtree = NULL;
 
 	KBASE_DEBUG_ASSERT(NULL != kctx);
 
 	lockdep_assert_held(&kctx->reg_lock);
 
-	rbnode = kctx->reg_rbtree.rb_node;
+	rbtree = kbase_gpu_va_to_rbtree(kctx, gpu_pfn);
+
+	rbnode = rbtree->rb_node;
+
 	while (rbnode) {
 		reg = rb_entry(rbnode, struct kbase_va_region, rblink);
 		if (reg->start_pfn > gpu_pfn)
@@ -175,17 +234,21 @@ KBASE_EXPORT_TEST_API(kbase_region_tracker_find_region_base_address);
 /* Find region meeting given requirements */
 static struct kbase_va_region *kbase_region_tracker_find_region_meeting_reqs(struct kbase_context *kctx, struct kbase_va_region *reg_reqs, size_t nr_pages, size_t align)
 {
-	struct rb_node *rbnode;
-	struct kbase_va_region *reg;
+	struct rb_node *rbnode = NULL;
+	struct kbase_va_region *reg = NULL;
+	struct rb_root *rbtree = NULL;
 
 	/* Note that this search is a linear search, as we do not have a target
 	   address in mind, so does not benefit from the rbtree search */
-	rbnode = rb_first(&(kctx->reg_rbtree));
+
+	rbtree = kbase_reg_flags_to_rbtree(kctx, reg_reqs);
+
+	rbnode = rb_first(rbtree);
+
 	while (rbnode) {
 		reg = rb_entry(rbnode, struct kbase_va_region, rblink);
 		if ((reg->nr_pages >= nr_pages) &&
-				(reg->flags & KBASE_REG_FREE) &&
-				kbase_region_tracker_match_zone(reg, reg_reqs)) {
+				(reg->flags & KBASE_REG_FREE)) {
 			/* Check alignment */
 			u64 start_pfn = (reg->start_pfn + align - 1) & ~(align - 1);
 
@@ -214,19 +277,25 @@ static int kbase_remove_va_region(struct kbase_context *kctx, struct kbase_va_re
 	struct kbase_va_region *prev = NULL;
 	struct rb_node *rbnext;
 	struct kbase_va_region *next = NULL;
+	struct rb_root *reg_rbtree = NULL;
 
 	int merged_front = 0;
 	int merged_back = 0;
 	int err = 0;
 
+	reg_rbtree = kbase_reg_flags_to_rbtree(kctx, reg);
+
 	/* Try to merge with the previous block first */
 	rbprev = rb_prev(&(reg->rblink));
 	if (rbprev) {
 		prev = rb_entry(rbprev, struct kbase_va_region, rblink);
-		if ((prev->flags & KBASE_REG_FREE) && kbase_region_tracker_match_zone(prev, reg)) {
-			/* We're compatible with the previous VMA, merge with it */
+		if (prev->flags & KBASE_REG_FREE) {
+			/* We're compatible with the previous VMA,
+			 * merge with it */
+			WARN_ON((prev->flags & KBASE_REG_ZONE_MASK) !=
+					    (reg->flags & KBASE_REG_ZONE_MASK));
 			prev->nr_pages += reg->nr_pages;
-			rb_erase(&(reg->rblink), &kctx->reg_rbtree);
+			rb_erase(&(reg->rblink), reg_rbtree);
 			reg = prev;
 			merged_front = 1;
 		}
@@ -238,10 +307,12 @@ static int kbase_remove_va_region(struct kbase_context *kctx, struct kbase_va_re
 	if (rbnext) {
 		/* We're compatible with the next VMA, merge with it */
 		next = rb_entry(rbnext, struct kbase_va_region, rblink);
-		if ((next->flags & KBASE_REG_FREE) && kbase_region_tracker_match_zone(next, reg)) {
+		if (next->flags & KBASE_REG_FREE) {
+			WARN_ON((next->flags & KBASE_REG_ZONE_MASK) !=
+					    (reg->flags & KBASE_REG_ZONE_MASK));
 			next->start_pfn = reg->start_pfn;
 			next->nr_pages += reg->nr_pages;
-			rb_erase(&(reg->rblink), &kctx->reg_rbtree);
+			rb_erase(&(reg->rblink), reg_rbtree);
 			merged_back = 1;
 			if (merged_front) {
 				/* We already merged with prev, free it */
@@ -263,8 +334,7 @@ static int kbase_remove_va_region(struct kbase_context *kctx, struct kbase_va_re
 			err = -ENOMEM;
 			goto out;
 		}
-
-		rb_replace_node(&(reg->rblink), &(free_reg->rblink), &(kctx->reg_rbtree));
+		rb_replace_node(&(reg->rblink), &(free_reg->rblink), reg_rbtree);
 	}
 
  out:
@@ -278,7 +348,10 @@ KBASE_EXPORT_TEST_API(kbase_remove_va_region);
  */
 static int kbase_insert_va_region_nolock(struct kbase_context *kctx, struct kbase_va_region *new_reg, struct kbase_va_region *at_reg, u64 start_pfn, size_t nr_pages)
 {
+	struct rb_root *reg_rbtree = NULL;
 	int err = 0;
+
+	reg_rbtree = kbase_reg_flags_to_rbtree(kctx, at_reg);
 
 	/* Must be a free region */
 	KBASE_DEBUG_ASSERT((at_reg->flags & KBASE_REG_FREE) != 0);
@@ -292,7 +365,8 @@ static int kbase_insert_va_region_nolock(struct kbase_context *kctx, struct kbas
 
 	/* Regions are a whole use, so swap and delete old one. */
 	if (at_reg->start_pfn == start_pfn && at_reg->nr_pages == nr_pages) {
-		rb_replace_node(&(at_reg->rblink), &(new_reg->rblink), &(kctx->reg_rbtree));
+		rb_replace_node(&(at_reg->rblink), &(new_reg->rblink),
+								reg_rbtree);
 		kbase_free_alloced_region(at_reg);
 	}
 	/* New region replaces the start of the old one, so insert before. */
@@ -367,9 +441,7 @@ int kbase_add_va_region(struct kbase_context *kctx,
 			err = -ENOMEM;
 			goto exit;
 		}
-
-		if ((!kbase_region_tracker_match_zone(tmp, reg)) ||
-				(!(tmp->flags & KBASE_REG_FREE))) {
+		if (!(tmp->flags & KBASE_REG_FREE)) {
 			dev_warn(dev, "Zone mismatch: %lu != %lu", tmp->flags & KBASE_REG_ZONE_MASK, reg->flags & KBASE_REG_ZONE_MASK);
 			dev_warn(dev, "!(tmp->flags & KBASE_REG_FREE): tmp->start_pfn=0x%llx tmp->flags=0x%lx tmp->nr_pages=0x%zx gpu_pfn=0x%llx nr_pages=0x%zx\n", tmp->start_pfn, tmp->flags, tmp->nr_pages, gpu_pfn, nr_pages);
 			dev_warn(dev, "in function %s (%p, %p, 0x%llx, 0x%zx, 0x%zx)\n", __func__, kctx, reg, addr, nr_pages, align);
@@ -434,29 +506,41 @@ static void kbase_region_tracker_ds_init(struct kbase_context *kctx,
 		struct kbase_va_region *exec_reg,
 		struct kbase_va_region *custom_va_reg)
 {
-	kctx->reg_rbtree = RB_ROOT;
+	kctx->reg_rbtree_same = RB_ROOT;
 	kbase_region_tracker_insert(kctx, same_va_reg);
 
-	/* exec and custom_va_reg doesn't always exist */
-	if (exec_reg && custom_va_reg) {
+	/* Although exec and custom_va_reg don't always exist,
+	 * initialize unconditionally because of the mem_view debugfs
+	 * implementation which relies on these being empty */
+	kctx->reg_rbtree_exec = RB_ROOT;
+	kctx->reg_rbtree_custom = RB_ROOT;
+
+	if (exec_reg)
 		kbase_region_tracker_insert(kctx, exec_reg);
+	if (custom_va_reg)
 		kbase_region_tracker_insert(kctx, custom_va_reg);
-	}
 }
 
-void kbase_region_tracker_term(struct kbase_context *kctx)
+static void kbase_region_tracker_erase_rbtree(struct rb_root *rbtree)
 {
 	struct rb_node *rbnode;
 	struct kbase_va_region *reg;
 
 	do {
-		rbnode = rb_first(&(kctx->reg_rbtree));
+		rbnode = rb_first(rbtree);
 		if (rbnode) {
-			rb_erase(rbnode, &(kctx->reg_rbtree));
+			rb_erase(rbnode, rbtree);
 			reg = rb_entry(rbnode, struct kbase_va_region, rblink);
 			kbase_free_alloced_region(reg);
 		}
 	} while (rbnode);
+}
+
+void kbase_region_tracker_term(struct kbase_context *kctx)
+{
+	kbase_region_tracker_erase_rbtree(&kctx->reg_rbtree_same);
+	kbase_region_tracker_erase_rbtree(&kctx->reg_rbtree_exec);
+	kbase_region_tracker_erase_rbtree(&kctx->reg_rbtree_custom);
 }
 
 /**
@@ -628,6 +712,7 @@ int kbase_region_tracker_init_jit(struct kbase_context *kctx, u64 jit_va_pages)
 				kctx->same_va_end,
 				jit_va_pages,
 				KBASE_REG_ZONE_CUSTOM_VA);
+
 	if (!custom_va_reg) {
 		/*
 		 * The context will be destroyed if we fail here so no point
@@ -1231,7 +1316,7 @@ int kbase_mem_free(struct kbase_context *kctx, u64 gpu_addr)
 
 KBASE_EXPORT_TEST_API(kbase_mem_free);
 
-void kbase_update_region_flags(struct kbase_context *kctx,
+int kbase_update_region_flags(struct kbase_context *kctx,
 		struct kbase_va_region *reg, unsigned long flags)
 {
 	KBASE_DEBUG_ASSERT(NULL != reg);
@@ -1259,11 +1344,18 @@ void kbase_update_region_flags(struct kbase_context *kctx,
 	if (0 == (flags & BASE_MEM_PROT_GPU_EX))
 		reg->flags |= KBASE_REG_GPU_NX;
 
-	if (flags & BASE_MEM_COHERENT_SYSTEM ||
-			flags & BASE_MEM_COHERENT_SYSTEM_REQUIRED)
+	if (!kbase_device_is_cpu_coherent(kctx->kbdev)) {
+		if (flags & BASE_MEM_COHERENT_SYSTEM_REQUIRED)
+			return -EINVAL;
+	} else if (flags & (BASE_MEM_COHERENT_SYSTEM |
+			BASE_MEM_COHERENT_SYSTEM_REQUIRED)) {
 		reg->flags |= KBASE_REG_SHARE_BOTH;
-	else if (flags & BASE_MEM_COHERENT_LOCAL)
+	}
+
+	if (!(reg->flags & KBASE_REG_SHARE_BOTH) &&
+			flags & BASE_MEM_COHERENT_LOCAL) {
 		reg->flags |= KBASE_REG_SHARE_IN;
+	}
 
 	/* Set up default MEMATTR usage */
 	if (kctx->kbdev->system_coherency == COHERENCY_ACE &&
@@ -1274,8 +1366,9 @@ void kbase_update_region_flags(struct kbase_context *kctx,
 		reg->flags |=
 			KBASE_REG_MEMATTR_INDEX(AS_MEMATTR_INDEX_DEFAULT);
 	}
+
+	return 0;
 }
-KBASE_EXPORT_TEST_API(kbase_update_region_flags);
 
 int kbase_alloc_phy_pages_helper(
 	struct kbase_mem_phy_alloc *alloc,
@@ -1798,6 +1891,9 @@ int kbase_jit_init(struct kbase_context *kctx)
 	INIT_LIST_HEAD(&kctx->jit_destroy_head);
 	INIT_WORK(&kctx->jit_work, kbase_jit_destroy_worker);
 
+	INIT_LIST_HEAD(&kctx->jit_pending_alloc);
+	INIT_LIST_HEAD(&kctx->jit_atoms_head);
+
 	return 0;
 }
 
@@ -1932,11 +2028,9 @@ out_unlocked:
 void kbase_jit_free(struct kbase_context *kctx, struct kbase_va_region *reg)
 {
 	/* The physical backing of memory in the pool is always reclaimable */
-	down_read(&kctx->process_mm->mmap_sem);
 	kbase_gpu_vm_lock(kctx);
 	kbase_mem_evictable_make(reg->gpu_alloc);
 	kbase_gpu_vm_unlock(kctx);
-	up_read(&kctx->process_mm->mmap_sem);
 
 	mutex_lock(&kctx->jit_evict_lock);
 	list_move(&reg->jit_node, &kctx->jit_pool_head);
@@ -2054,12 +2148,18 @@ static int kbase_jd_user_buf_map(struct kbase_context *kctx,
 			alloc->imported.user_buf.nr_pages,
 			reg->flags & KBASE_REG_GPU_WR,
 			0, pages, NULL);
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0)
 	pinned_pages = get_user_pages_remote(NULL, mm,
 			address,
 			alloc->imported.user_buf.nr_pages,
 			reg->flags & KBASE_REG_GPU_WR,
 			0, pages, NULL);
+#else
+	pinned_pages = get_user_pages_remote(NULL, mm,
+			address,
+			alloc->imported.user_buf.nr_pages,
+			reg->flags & KBASE_REG_GPU_WR ? FOLL_WRITE : 0,
+			pages, NULL);
 #endif
 
 	if (pinned_pages <= 0)

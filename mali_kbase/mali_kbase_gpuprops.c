@@ -322,6 +322,8 @@ void kbase_gpuprops_set_features(struct kbase_device *kbdev)
 	/*
 	 * Copy the raw value from the register, later this will get turned
 	 * into the selected coherency mode.
+	 * Additionally, add non-coherent mode, as this is always supported.
 	 */
-	gpu_props->raw_props.coherency_mode = regdump.coherency_features;
+	gpu_props->raw_props.coherency_mode = regdump.coherency_features |
+		COHERENCY_FEATURE_BIT(COHERENCY_NONE);
 }

@@ -976,7 +976,6 @@ bool jd_submit_atom(struct kbase_context *kctx, const struct base_jd_atom_v2 *us
 	jctx->job_nr++;
 
 	katom->start_timestamp.tv64 = 0;
-	katom->time_spent_us = 0;
 	katom->udata = user_atom->udata;
 	katom->kctx = kctx;
 	katom->nr_extres = user_atom->nr_extres;

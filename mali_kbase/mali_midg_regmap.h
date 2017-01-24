@@ -595,4 +595,18 @@
 
 /* End TILER_CONFIG register */
 
+/* JM_CONFIG register */
+
+#define JM_TIMESTAMP_OVERRIDE  (1ul << 0)
+#define JM_CLOCK_GATE_OVERRIDE (1ul << 1)
+#define JM_JOB_THROTTLE_ENABLE (1ul << 2)
+#define JM_JOB_THROTTLE_LIMIT_SHIFT (3)
+#define JM_MAX_JOB_THROTTLE_LIMIT (0x3F)
+#define JM_FORCE_COHERENCY_FEATURES_SHIFT (2)
+#define JM_IDVS_GROUP_SIZE_SHIFT (16)
+#define JM_MAX_IDVS_GROUP_SIZE (0x3F)
+#define JM_CONFIG_UNUSED (1ul << 31)
+/* End JM_CONFIG register */
+
+
 #endif /* _MIDGARD_REGMAP_H_ */

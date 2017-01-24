@@ -219,29 +219,6 @@ static void kbasep_job_slot_update_head_start_timestamp(
 }
 
 /**
- * kbasep_trace_tl_nret_atom_lpu - Call nret_atom_lpu timeline tracepoint
- * @kbdev: kbase device
- * @js: job slot
- *
- * Get kbase atom by calling kbase_gpu_inspect for given job slot.
- * Then use obtained katom and name of slot associated with the given
- * job slot number in tracepoint call to the instrumentation module
- * informing that given atom is no longer executed on given lpu (job slot).
- */
-static void kbasep_trace_tl_nret_atom_lpu(struct kbase_device *kbdev, int js)
-{
-	int i;
-	for (i = 0;
-	     i < kbase_backend_nr_atoms_submitted(kbdev, js);
-	     i++) {
-		struct kbase_jd_atom *katom = kbase_gpu_inspect(kbdev, js, i);
-
-		KBASE_TLSTREAM_TL_NRET_ATOM_LPU(katom,
-			&kbdev->gpu_props.props.raw_props.js_features[js]);
-	}
-}
-
-/**
  * kbasep_trace_tl_event_lpu_softstop - Call event_lpu_softstop timeline
  * tracepoint
  * @kbdev: kbase device
@@ -319,9 +296,6 @@ void kbase_job_done(struct kbase_device *kbdev, u32 done)
 #endif
 
 					kbasep_trace_tl_event_lpu_softstop(
-						kbdev, i);
-
-					kbasep_trace_tl_nret_atom_lpu(
 						kbdev, i);
 
 					/* Soft-stopped job - read the value of

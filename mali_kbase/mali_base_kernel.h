@@ -171,7 +171,7 @@ enum {
 	BASE_MEM_SAME_VA = (1U << 13), /**< Must have same VA on both the GPU
 					    and the CPU */
 /* OUT */
-	BASE_MEM_NEED_MMAP = (1U << 14), /**< Must call mmap to aquire a GPU
+	BASE_MEM_NEED_MMAP = (1U << 14), /**< Must call mmap to acquire a GPU
 					     address for the alloc */
 /* IN */
 	BASE_MEM_COHERENT_SYSTEM_REQUIRED = (1U << 15), /**< Page coherence
@@ -363,7 +363,7 @@ typedef struct base_fence {
 /**
  * @brief Per-job data
  *
- * This structure is used to store per-job data, and is completly unused
+ * This structure is used to store per-job data, and is completely unused
  * by the Base driver. It can be used to store things such as callback
  * function pointer, data to handle job completion. It is guaranteed to be
  * untouched by the Base driver.
@@ -529,7 +529,7 @@ typedef u32 base_jd_core_req;
 /**
  * SW Only requirement : Replay job.
  *
- * If the preceeding job fails, the replay job will cause the jobs specified in
+ * If the preceding job fails, the replay job will cause the jobs specified in
  * the list of base_jd_replay_payload pointed to by the jc pointer to be
  * replayed.
  *
@@ -540,10 +540,10 @@ typedef u32 base_jd_core_req;
  * The replayed jobs will require a number of atom IDs. If there are not enough
  * free atom IDs then the replay job will fail.
  *
- * If the preceeding job does not fail, then the replay job is returned as
+ * If the preceding job does not fail, then the replay job is returned as
  * completed.
  *
- * The replayed jobs will never be returned to userspace. The preceeding failed
+ * The replayed jobs will never be returned to userspace. The preceding failed
  * job will be returned to userspace as failed; the status of this job should
  * be ignored. Completion should be determined by the status of the replay soft
  * job.
@@ -706,6 +706,14 @@ typedef u32 base_jd_core_req;
  */
 #define BASE_JD_REQ_SOFT_JOB_TYPE (BASE_JD_REQ_SOFT_JOB | 0x1f)
 
+/*
+ * Returns non-zero value if core requirements passed define a soft job or
+ * a dependency only job.
+ */
+#define BASE_JD_REQ_SOFT_JOB_OR_DEP(core_req) \
+	((core_req & BASE_JD_REQ_SOFT_JOB) || \
+	(core_req & BASE_JD_REQ_ATOM_TYPE) == BASE_JD_REQ_DEP)
+
 /**
  * @brief States to model state machine processed by kbasep_js_job_check_ref_cores(), which
  * handles retaining cores for power management and affinity management.
@@ -722,7 +730,7 @@ typedef u32 base_jd_core_req;
  * -# the currently running atoms (which are causing the violation) to
  * finish
  * -# and, the atoms that had their affinity chosen during powerup to
- * finish. These are run preferrentially because they don't cause a
+ * finish. These are run preferentially because they don't cause a
  * violation, but instead continue to cause the violation in others.
  * -# or, the attacker is scheduled out (which might not happen for just 2
  * contexts)
@@ -1228,7 +1236,7 @@ typedef struct base_dump_cpu_gpu_counters {
  * has been configured correctly with the right set of Platform Config
  * Compile-time Properties.
  *
- * As a consistant guide across the entire DDK, the choice for dynamic or
+ * As a consistent guide across the entire DDK, the choice for dynamic or
  * compile-time should consider the following, in order:
  * -# Can the code be written so that it doesn't need to know the
  * implementation limits at all?
@@ -1393,9 +1401,9 @@ typedef struct base_dump_cpu_gpu_counters {
  * population count, since faulty cores may be disabled during production,
  * producing a non-contiguous mask.
  *
- * The memory requirements for this algoirthm can be determined either by a u64
+ * The memory requirements for this algorithm can be determined either by a u64
  * population count on the L2_PRESENT mask (a LUT helper already is
- * requried for the above), or simple assumption that there can be no more than
+ * required for the above), or simple assumption that there can be no more than
  * 16 coherent groups, since core groups are typically 4 cores.
  */
 
@@ -1620,7 +1628,7 @@ struct gpu_raw_gpu_props {
 /**
  * Return structure for _mali_base_get_gpu_props().
  *
- * NOTE: the raw_props member in this datastructure contains the register
+ * NOTE: the raw_props member in this data structure contains the register
  * values from which the value of the other members are derived. The derived
  * members exist to allow for efficient access and/or shielding the details
  * of the layout of the registers.
@@ -1814,6 +1822,11 @@ typedef struct base_profiling_controls {
  * TL_ATOM_DONE, TL_ATOM_PRIO_CHANGE, TL_ATOM_EVENT_POST) */
 #define BASE_TLSTREAM_ENABLE_LATENCY_TRACEPOINTS (1 << 0)
 
-#define BASE_TLSTREAM_FLAGS_MASK (BASE_TLSTREAM_ENABLE_LATENCY_TRACEPOINTS)
+/* Indicate that job dumping is enabled. This could affect certain timers
+ * to account for the performance impact. */
+#define BASE_TLSTREAM_JOB_DUMPING_ENABLED (1 << 1)
+
+#define BASE_TLSTREAM_FLAGS_MASK (BASE_TLSTREAM_ENABLE_LATENCY_TRACEPOINTS | \
+		BASE_TLSTREAM_JOB_DUMPING_ENABLED)
 
 #endif				/* _BASE_KERNEL_H_ */

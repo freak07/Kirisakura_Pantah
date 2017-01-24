@@ -153,4 +153,12 @@ void kbase_job_slot_halt(struct kbase_device *kbdev);
  */
 void kbase_job_slot_term(struct kbase_device *kbdev);
 
+/**
+ * kbase_gpu_cacheclean - Cause a GPU cache clean & flush
+ * @kbdev: Device pointer
+ *
+ * Caller must not be in IRQ context
+ */
+void kbase_gpu_cacheclean(struct kbase_device *kbdev);
+
 #endif /* _KBASE_JM_HWACCESS_H_ */

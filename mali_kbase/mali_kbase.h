@@ -65,7 +65,11 @@
 #include "mali_kbase_gpuprops.h"
 #include "mali_kbase_jm.h"
 #include "mali_kbase_vinstr.h"
-#include "mali_kbase_ipa.h"
+
+#ifdef CONFIG_DEVFREQ_THERMAL
+#include "ipa/mali_kbase_ipa.h"
+#endif
+
 #ifdef CONFIG_GPU_TRACEPOINTS
 #include <trace/events/gpu.h>
 #endif
@@ -152,8 +156,6 @@ void kbase_jd_dep_clear_locked(struct kbase_jd_atom *katom);
 
 void kbase_job_done(struct kbase_device *kbdev, u32 done);
 
-void kbase_gpu_cacheclean(struct kbase_device *kbdev,
-					struct kbase_jd_atom *katom);
 /**
  * kbase_job_slot_ctx_priority_check_locked(): - Check for lower priority atoms
  *                                               and soft stop them
