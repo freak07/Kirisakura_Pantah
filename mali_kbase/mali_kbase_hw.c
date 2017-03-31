@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2012-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2012-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -109,16 +109,33 @@ int kbase_hw_set_issues_mask(struct kbase_device *kbdev)
 				issues = base_hw_issues_tMIx_r0p0;
 				break;
 			default:
-				if ((gpu_id & GPU_ID2_PRODUCT_MODEL) ==
-							GPU_ID2_PRODUCT_TMIX) {
+				switch (gpu_id & GPU_ID2_PRODUCT_MODEL) {
+				case GPU_ID2_PRODUCT_TMIX:
 					issues = base_hw_issues_tMIx_r0p0;
-				} else if ((gpu_id & GPU_ID2_PRODUCT_MODEL) ==
-							GPU_ID2_PRODUCT_THEX) {
+					break;
+				case GPU_ID2_PRODUCT_THEX:
 					issues = base_hw_issues_tHEx_r0p0;
-				} else if ((gpu_id & GPU_ID2_PRODUCT_MODEL) ==
-							GPU_ID2_PRODUCT_TSIX) {
-					issues = base_hw_issues_tSIx_r0p0;
-				} else {
+					break;
+				case GPU_ID2_PRODUCT_TSIX:
+					switch (gpu_id & (GPU_ID2_VERSION_MAJOR |
+							  GPU_ID2_VERSION_MINOR)) {
+					case GPU_ID2_VERSION_MAKE(0, 0, 0):
+						issues = base_hw_issues_tSIx_r0p0;
+						break;
+					case GPU_ID2_VERSION_MAKE(0, 1, 0):
+						issues = base_hw_issues_tSIx_r0p1;
+						break;
+					case GPU_ID2_VERSION_MAKE(1, 0, 0):
+						issues = base_hw_issues_tSIx_r1p0;
+						break;
+					default:
+						dev_err(kbdev->dev,
+							"Unknown GPU ID %x",
+							gpu_id);
+						return -EINVAL;
+					}
+					break;
+				default:
 					dev_err(kbdev->dev,
 						"Unknown GPU ID %x", gpu_id);
 					return -EINVAL;

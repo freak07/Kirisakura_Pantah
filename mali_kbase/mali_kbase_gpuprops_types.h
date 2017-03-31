@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -81,11 +81,6 @@ struct kbase_gpu_props {
 
 	struct kbase_gpu_mem_props mem;
 	struct kbase_gpu_mmu_props mmu;
-
-	/**
-	 * Implementation specific irq throttle value (us), should be adjusted during integration.
-	 */
-	int irq_throttle_time_us;
 
 	/* Properties shared with userspace */
 	base_gpu_props props;

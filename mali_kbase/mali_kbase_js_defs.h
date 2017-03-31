@@ -67,16 +67,6 @@ typedef void (*kbasep_js_ctx_job_cb)(struct kbase_device *kbdev, struct kbase_jd
 #define KBASE_JS_MAX_JOB_SUBMIT_PER_SLOT_PER_IRQ 2
 
 /**
- * @brief the IRQ_THROTTLE time in microseconds
- *
- * This will be converted via the GPU's clock frequency into a cycle-count.
- *
- * @note we can make an estimate of the GPU's frequency by periodically
- * sampling its CYCLE_COUNT register
- */
-#define KBASE_JS_IRQ_THROTTLE_TIME_US 20
-
-/**
  * @brief Context attributes
  *
  * Each context attribute can be thought of as a boolean value that caches some

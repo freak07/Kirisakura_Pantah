@@ -1,5 +1,5 @@
 #
-# (C) COPYRIGHT 2012,2014 ARM Limited. All rights reserved.
+# (C) COPYRIGHT 2012-2016 ARM Limited. All rights reserved.
 #
 # This program is free software and is provided to you under the terms of the
 # GNU General Public License version 2 as published by the Free Software
@@ -15,7 +15,7 @@
 
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= "r4p0-01rel0"
+MALI_RELEASE_NAME ?= "r5p0-01rel0"
 
 # Paths required for build
 KBASE_PATH = $(src)
@@ -163,37 +163,7 @@ ifeq ($(CONFIG_MALI_PLATFORM_FAKE),y)
 		platform/vexpress_6xvirtex7_10mhz/mali_kbase_cpu_vexpress.c
 		ccflags-y += -I$(src)/platform/vexpress_6xvirtex7_10mhz
 	endif
-
-	ifeq ($(CONFIG_MALI_PLATFORM_A7_KIPLING),y)
-		SRC += platform/a7_kipling/mali_kbase_config_a7_kipling.c \
-		platform/a7_kipling/mali_kbase_cpu_a7_kipling.c
-		ccflags-y += -I$(src)/platform/a7_kipling
-	endif
-
-	ifeq ($(CONFIG_MALI_PLATFORM_THIRDPARTY),y)
-	# remove begin and end quotes from the Kconfig string type
-	platform_name := $(shell echo $(CONFIG_MALI_PLATFORM_THIRDPARTY_NAME))
-	MALI_PLATFORM_THIRDPARTY_DIR := platform/$(platform_name)
-	ccflags-y += -I$(src)/$(MALI_PLATFORM_THIRDPARTY_DIR)
-	ifeq ($(CONFIG_MALI_MIDGARD),m)
-	include  $(src)/platform/$(platform_name)/Kbuild
-	else ifeq ($(CONFIG_MALI_MIDGARD),y)
-	obj-$(CONFIG_MALI_MIDGARD) += platform/
-	endif
-	endif
 endif # CONFIG_MALI_PLATFORM_FAKE=y
-
-ifeq ($(CONFIG_MALI_PLATFORM_THIRDPARTY),y)
-# remove begin and end quotes from the Kconfig string type
-platform_name := $(shell echo $(CONFIG_MALI_PLATFORM_THIRDPARTY_NAME))
-MALI_PLATFORM_THIRDPARTY_DIR := platform/$(platform_name)
-ccflags-y += -I$(src)/$(MALI_PLATFORM_THIRDPARTY_DIR)
-ifeq ($(CONFIG_MALI_MIDGARD),m)
-include  $(src)/platform/$(platform_name)/Kbuild
-else ifeq ($(CONFIG_MALI_MIDGARD),y)
-obj-$(CONFIG_MALI_MIDGARD) += platform/
-endif
-endif
 
 # Tell the Linux build system from which .o file to create the kernel module
 obj-$(CONFIG_MALI_MIDGARD) += mali_kbase.o
@@ -201,9 +171,16 @@ obj-$(CONFIG_MALI_MIDGARD) += mali_kbase.o
 # Tell the Linux build system to enable building of our .c files
 mali_kbase-y := $(SRC:.c=.o)
 
+ifeq ($(CONFIG_MALI_PLATFORM_THIRDPARTY),y)
+  # Kconfig passes in the name with quotes for in-tree builds - remove them.
+  platform_name := $(shell echo $(CONFIG_MALI_PLATFORM_THIRDPARTY_NAME))
+  MALI_PLATFORM_THIRDPARTY_DIR := platform/$(platform_name)
+  ccflags-y += -I$(src)/$(MALI_PLATFORM_THIRDPARTY_DIR)
+  include $(src)/$(MALI_PLATFORM_THIRDPARTY_DIR)/Kbuild
+endif
+
 ifeq ($(CONFIG_DEVFREQ_THERMAL),y)
-include  $(src)/ipa/Kbuild
-mali_kbase-y += $(IPA:.c=.o)
+  include $(src)/ipa/Kbuild
 endif
 
 mali_kbase-$(CONFIG_MALI_DMA_FENCE) += mali_kbase_dma_fence.o

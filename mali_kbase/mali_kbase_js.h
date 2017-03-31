@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -849,71 +849,6 @@ static inline struct kbase_context *kbasep_js_runpool_lookup_ctx_noretain(struct
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	return found_kctx;
-}
-
-/**
- * This will provide a conversion from time (us) to ticks of the gpu clock
- * based on the minimum available gpu frequency.
- * This is usually good to compute best/worst case (where the use of current
- * frequency is not valid due to DVFS).
- * e.g.: when you need the number of cycles to guarantee you won't wait for
- * longer than 'us' time (you might have a shorter wait).
- */
-static inline u32 kbasep_js_convert_us_to_gpu_ticks_min_freq(struct kbase_device *kbdev, u32 us)
-{
-	u32 gpu_freq = kbdev->gpu_props.props.core_props.gpu_freq_khz_min;
-
-	KBASE_DEBUG_ASSERT(0 != gpu_freq);
-	return us * (gpu_freq / 1000);
-}
-
-/**
- * This will provide a conversion from time (us) to ticks of the gpu clock
- * based on the maximum available gpu frequency.
- * This is usually good to compute best/worst case (where the use of current
- * frequency is not valid due to DVFS).
- * e.g.: When you need the number of cycles to guarantee you'll wait at least
- * 'us' amount of time (but you might wait longer).
- */
-static inline u32 kbasep_js_convert_us_to_gpu_ticks_max_freq(struct kbase_device *kbdev, u32 us)
-{
-	u32 gpu_freq = kbdev->gpu_props.props.core_props.gpu_freq_khz_max;
-
-	KBASE_DEBUG_ASSERT(0 != gpu_freq);
-	return us * (u32) (gpu_freq / 1000);
-}
-
-/**
- * This will provide a conversion from ticks of the gpu clock to time (us)
- * based on the minimum available gpu frequency.
- * This is usually good to compute best/worst case (where the use of current
- * frequency is not valid due to DVFS).
- * e.g.: When you need to know the worst-case wait that 'ticks' cycles will
- * take (you guarantee that you won't wait any longer than this, but it may
- * be shorter).
- */
-static inline u32 kbasep_js_convert_gpu_ticks_to_us_min_freq(struct kbase_device *kbdev, u32 ticks)
-{
-	u32 gpu_freq = kbdev->gpu_props.props.core_props.gpu_freq_khz_min;
-
-	KBASE_DEBUG_ASSERT(0 != gpu_freq);
-	return ticks / gpu_freq * 1000;
-}
-
-/**
- * This will provide a conversion from ticks of the gpu clock to time (us)
- * based on the maximum available gpu frequency.
- * This is usually good to compute best/worst case (where the use of current
- * frequency is not valid due to DVFS).
- * e.g.: When you need to know the best-case wait for 'tick' cycles (you
- * guarantee to be waiting for at least this long, but it may be longer).
- */
-static inline u32 kbasep_js_convert_gpu_ticks_to_us_max_freq(struct kbase_device *kbdev, u32 ticks)
-{
-	u32 gpu_freq = kbdev->gpu_props.props.core_props.gpu_freq_khz_max;
-
-	KBASE_DEBUG_ASSERT(0 != gpu_freq);
-	return ticks / gpu_freq * 1000;
 }
 
 /*

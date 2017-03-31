@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -2161,5 +2161,6 @@ static const char * const hardware_counters_mali_t88x[] = {
 #include "mali_kbase_gator_hwcnt_names_thex.h"
 
 #include "mali_kbase_gator_hwcnt_names_tsix.h"
+
 
 #endif

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -191,15 +191,15 @@ static const char * const hardware_counters_mali_tSIx[] = {
 	"TSIx_ARITH_INSTR_DOUBLE",
 	"TSIx_ARITH_INSTR_MSG",
 	"TSIx_ARITH_INSTR_MSG_ONLY",
-	"TSIx_TEX_INSTR",
-	"TSIx_TEX_INSTR_MIPMAP",
-	"TSIx_TEX_INSTR_COMPRESSED",
-	"TSIx_TEX_INSTR_3D",
-	"TSIx_TEX_INSTR_TRILINEAR",
-	"TSIx_TEX_COORD_ISSUE",
-	"TSIx_TEX_COORD_STALL",
-	"TSIx_TEX_STARVE_CACHE",
-	"TSIx_TEX_STARVE_FILTER",
+	"TSIx_TEX_MSGI_NUM_QUADS",
+	"TSIx_TEX_DFCH_NUM_PASSES",
+	"TSIx_TEX_DFCH_NUM_PASSES_MISS",
+	"TSIx_TEX_DFCH_NUM_PASSES_MIP_MAP",
+	"TSIx_TEX_TIDX_NUM_SPLIT_MIP_MAP",
+	"TSIx_TEX_TFCH_NUM_LINES_FETCHED",
+	"TSIx_TEX_TFCH_NUM_LINES_FETCHED_BLOCK_COMPRESSED",
+	"TSIx_TEX_TFCH_NUM_OPERATIONS",
+	"TSIx_TEX_FILT_NUM_OPERATIONS",
 	"TSIx_LS_MEM_READ_FULL",
 	"TSIx_LS_MEM_READ_SHORT",
 	"TSIx_LS_MEM_WRITE_FULL",

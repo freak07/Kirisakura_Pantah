@@ -945,6 +945,18 @@ struct kbase_mem_pool {
 	struct kbase_mem_pool *next_pool;
 };
 
+/**
+ * struct kbase_devfreq_opp - Lookup table for converting between nominal OPP
+ *                            frequency, and real frequency and core mask
+ * @opp_freq:  Nominal OPP frequency
+ * @real_freq: Real GPU frequency
+ * @core_mask: Shader core mask
+ */
+struct kbase_devfreq_opp {
+	u64 opp_freq;
+	u64 real_freq;
+	u64 core_mask;
+};
 
 #define DEVNAME_SIZE	16
 
@@ -1067,9 +1079,6 @@ struct kbase_device {
 
 	struct kbase_vinstr_context *vinstr_ctx;
 
-	/*value to be written to the irq_throttle register each time an irq is served */
-	atomic_t irq_throttle_cycles;
-
 #if KBASE_TRACE_ENABLE
 	spinlock_t              trace_lock;
 	u16                     trace_first_out;
@@ -1092,17 +1101,28 @@ struct kbase_device {
 	struct devfreq_dev_profile devfreq_profile;
 	struct devfreq *devfreq;
 	unsigned long current_freq;
+	unsigned long current_nominal_freq;
 	unsigned long current_voltage;
+	u64 current_core_mask;
+	struct kbase_devfreq_opp *opp_table;
+	int num_opps;
 #ifdef CONFIG_DEVFREQ_THERMAL
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0)
 	struct devfreq_cooling_device *devfreq_cooling;
 #else
 	struct thermal_cooling_device *devfreq_cooling;
 #endif
-	struct list_head ipa_power_models;
-	struct kbase_ipa_model *ipa_current_model;
-	struct kbase_ipa_model *ipa_configured_model;
-	struct kbase_ipa_model *ipa_fallback_model;
+	/* Current IPA model - true for configured model, false for fallback */
+	atomic_t ipa_use_configured_model;
+	struct {
+		/* Access to this struct must be with ipa.lock held */
+		struct mutex lock;
+		unsigned long last_model_dyn_power_coeff;
+		unsigned long last_static_power_coeff;
+		struct list_head power_models;
+		struct kbase_ipa_model *configured_model;
+		struct kbase_ipa_model *fallback_model;
+	} ipa;
 #endif
 #endif
 

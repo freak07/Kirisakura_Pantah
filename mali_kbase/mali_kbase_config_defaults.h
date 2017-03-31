@@ -29,16 +29,6 @@
 #include <mali_kbase_config_platform.h>
 
 /**
- * Irq throttle. It is the minimum desired time in between two
- * consecutive gpu interrupts (given in 'us'). The irq throttle
- * gpu register will be configured after this, taking into
- * account the configured max frequency.
- *
- * Attached value: number in micro seconds
- */
-#define DEFAULT_IRQ_THROTTLE_TIME_US 20
-
-/**
 * Boolean indicating whether the driver is configured to be secure at
 * a potential loss of performance.
 *

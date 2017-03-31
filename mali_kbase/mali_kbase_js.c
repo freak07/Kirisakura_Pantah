@@ -577,15 +577,6 @@ int kbasep_js_devdata_init(struct kbase_device * const kbdev)
 	dev_dbg(kbdev->dev, "Note: The JS tick timer (if coded) will still be run, but do nothing.");
 #endif
 
-	/* setup the number of irq throttle cycles base on given time */
-	{
-		int time_us = kbdev->gpu_props.irq_throttle_time_us;
-		int cycles = kbasep_js_convert_us_to_gpu_ticks_max_freq(kbdev,
-				time_us);
-
-		atomic_set(&kbdev->irq_throttle_cycles, cycles);
-	}
-
 	/* Clear the AS data, including setting NULL pointers */
 	memset(&jsdd->runpool_irq.per_as_data[0], 0,
 			sizeof(jsdd->runpool_irq.per_as_data));

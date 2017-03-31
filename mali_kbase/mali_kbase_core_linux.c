@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -23,6 +23,9 @@
 #include <mali_kbase_mem_linux.h>
 #ifdef CONFIG_MALI_DEVFREQ
 #include <backend/gpu/mali_kbase_devfreq.h>
+#ifdef CONFIG_DEVFREQ_THERMAL
+#include <ipa/mali_kbase_ipa_debugfs.h>
+#endif /* CONFIG_DEVFREQ_THERMAL */
 #endif /* CONFIG_MALI_DEVFREQ */
 #ifdef CONFIG_MALI_NO_MALI
 #include "mali_kbase_model_linux.h"
@@ -250,9 +253,9 @@ enum {
 	inited_vinstr = (1u << 8),
 
 	inited_job_fault = (1u << 10),
-	inited_misc_register = (1u << 11),
-	inited_get_device = (1u << 12),
-	inited_sysfs_group = (1u << 13),
+	inited_sysfs_group = (1u << 11),
+	inited_misc_register = (1u << 12),
+	inited_get_device = (1u << 13),
 	inited_dev_list = (1u << 14),
 	inited_debugfs = (1u << 15),
 	inited_gpu_device = (1u << 16),
@@ -3324,7 +3327,8 @@ if (kbdev->clock != NULL) {
 
 static void power_control_term(struct kbase_device *kbdev)
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)) || \
+		defined(LSK_OPPV2_BACKPORT)
 	dev_pm_opp_of_remove_table(kbdev->dev);
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
 	of_free_opp_table(kbdev->dev);
@@ -3381,6 +3385,7 @@ DEFINE_SIMPLE_ATTRIBUTE(fops_##type##_quirks, type##_quirks_get,\
 MAKE_QUIRK_ACCESSORS(sc);
 MAKE_QUIRK_ACCESSORS(tiler);
 MAKE_QUIRK_ACCESSORS(mmu);
+MAKE_QUIRK_ACCESSORS(jm);
 
 #endif /* KBASE_GPU_RESET_EN */
 
@@ -3464,6 +3469,8 @@ static int kbase_device_debugfs_init(struct kbase_device *kbdev)
 	kbasep_gpu_memory_debugfs_init(kbdev);
 	kbase_as_fault_debugfs_init(kbdev);
 #if KBASE_GPU_RESET_EN
+	/* fops_* variables created by invocations of macro
+	 * MAKE_QUIRK_ACCESSORS() above. */
 	debugfs_create_file("quirks_sc", 0644,
 			kbdev->mali_debugfs_directory, kbdev,
 			&fops_sc_quirks);
@@ -3473,6 +3480,9 @@ static int kbase_device_debugfs_init(struct kbase_device *kbdev)
 	debugfs_create_file("quirks_mmu", 0644,
 			kbdev->mali_debugfs_directory, kbdev,
 			&fops_mmu_quirks);
+	debugfs_create_file("quirks_jm", 0644,
+			kbdev->mali_debugfs_directory, kbdev,
+			&fops_jm_quirks);
 #endif /* KBASE_GPU_RESET_EN */
 
 #ifndef CONFIG_MALI_COH_USER
@@ -3498,6 +3508,13 @@ static int kbase_device_debugfs_init(struct kbase_device *kbdev)
 #ifdef CONFIG_MALI_TRACE_TIMELINE
 	kbasep_trace_timeline_debugfs_init(kbdev);
 #endif /* CONFIG_MALI_TRACE_TIMELINE */
+
+#ifdef CONFIG_MALI_DEVFREQ
+#ifdef CONFIG_DEVFREQ_THERMAL
+	if (kbdev->inited_subsys & inited_devfreq)
+		kbase_ipa_debugfs_init(kbdev);
+#endif /* CONFIG_DEVFREQ_THERMAL */
+#endif /* CONFIG_MALI_DEVFREQ */
 
 #ifdef CONFIG_DEBUG_FS
 	debugfs_create_file("serialize_jobs", S_IRUGO | S_IWUSR,
@@ -3639,10 +3656,6 @@ static int kbase_platform_device_remove(struct platform_device *pdev)
 	}
 #endif
 
-	if (kbdev->inited_subsys & inited_sysfs_group) {
-		sysfs_remove_group(&kbdev->dev->kobj, &kbase_attr_group);
-		kbdev->inited_subsys &= ~inited_sysfs_group;
-	}
 
 	if (kbdev->inited_subsys & inited_dev_list) {
 		dev_list = kbase_dev_list_get();
@@ -3654,6 +3667,11 @@ static int kbase_platform_device_remove(struct platform_device *pdev)
 	if (kbdev->inited_subsys & inited_misc_register) {
 		misc_deregister(&kbdev->mdev);
 		kbdev->inited_subsys &= ~inited_misc_register;
+	}
+
+	if (kbdev->inited_subsys & inited_sysfs_group) {
+		sysfs_remove_group(&kbdev->dev->kobj, &kbase_attr_group);
+		kbdev->inited_subsys &= ~inited_sysfs_group;
 	}
 
 	if (kbdev->inited_subsys & inited_get_device) {
@@ -3788,7 +3806,7 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	dev_set_drvdata(kbdev->dev, kbdev);
 
 #ifdef CONFIG_DEVFREQ_THERMAL
-	INIT_LIST_HEAD(&kbdev->ipa_power_models);
+	INIT_LIST_HEAD(&kbdev->ipa.power_models);
 #endif
 
 #ifdef CONFIG_MALI_NO_MALI
@@ -3850,8 +3868,6 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	core_props = &(kbdev->gpu_props.props.core_props);
 	core_props->gpu_freq_khz_min = GPU_FREQ_KHZ_MIN;
 	core_props->gpu_freq_khz_max = GPU_FREQ_KHZ_MAX;
-
-	kbdev->gpu_props.irq_throttle_time_us = DEFAULT_IRQ_THROTTLE_TIME_US;
 
 	err = kbase_device_init(kbdev);
 	if (err) {
@@ -3919,12 +3935,10 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_MALI_DEVFREQ
 	err = kbase_devfreq_init(kbdev);
-	if (err) {
-		dev_err(kbdev->dev, "Devfreq initialization failed\n");
-		kbase_platform_device_remove(pdev);
-		return err;
-	}
-	kbdev->inited_subsys |= inited_devfreq;
+	if (!err)
+		kbdev->inited_subsys |= inited_devfreq;
+	else
+		dev_err(kbdev->dev, "Continuing without devfreq\n");
 #endif /* CONFIG_MALI_DEVFREQ */
 
 	kbdev->vinstr_ctx = kbase_vinstr_init(kbdev);
@@ -3962,6 +3976,26 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	kbdev->mdev.parent = get_device(kbdev->dev);
 	kbdev->inited_subsys |= inited_get_device;
 
+	/* This needs to happen before registering the device with misc_register(),
+	 * otherwise it causes a race condition between registering the device and a
+	 * uevent event being generated for userspace, causing udev rules to run
+	 * which might expect certain sysfs attributes present. As a result of the
+	 * race condition we avoid, some Mali sysfs entries may have appeared to
+	 * udev to not exist.
+
+	 * For more information, see
+	 * https://www.kernel.org/doc/Documentation/driver-model/device.txt, the
+	 * paragraph that starts with "Word of warning", currently the second-last
+	 * paragraph.
+	 */
+	err = sysfs_create_group(&kbdev->dev->kobj, &kbase_attr_group);
+	if (err) {
+		dev_err(&pdev->dev, "SysFS group creation failed\n");
+		kbase_platform_device_remove(pdev);
+		return err;
+	}
+	kbdev->inited_subsys |= inited_sysfs_group;
+
 	err = misc_register(&kbdev->mdev);
 	if (err) {
 		dev_err(kbdev->dev, "Misc device registration failed for %s\n",
@@ -3971,14 +4005,6 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	}
 	kbdev->inited_subsys |= inited_misc_register;
 
-
-	err = sysfs_create_group(&kbdev->dev->kobj, &kbase_attr_group);
-	if (err) {
-		dev_err(&pdev->dev, "SysFS group creation failed\n");
-		kbase_platform_device_remove(pdev);
-		return err;
-	}
-	kbdev->inited_subsys |= inited_sysfs_group;
 
 #ifdef CONFIG_MALI_FPGA_BUS_LOGGER
 	err = bl_core_client_register(kbdev->devname,
@@ -4021,9 +4047,10 @@ static int kbase_device_suspend(struct device *dev)
 	if (!kbdev)
 		return -ENODEV;
 
-#if defined(CONFIG_PM_DEVFREQ) && \
+#if defined(CONFIG_MALI_DEVFREQ) && \
 		(LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
-	devfreq_suspend_device(kbdev->devfreq);
+	if (kbdev->inited_subsys & inited_devfreq)
+		devfreq_suspend_device(kbdev->devfreq);
 #endif
 
 	kbase_pm_suspend(kbdev);
@@ -4048,9 +4075,10 @@ static int kbase_device_resume(struct device *dev)
 
 	kbase_pm_resume(kbdev);
 
-#if defined(CONFIG_PM_DEVFREQ) && \
+#if defined(CONFIG_MALI_DEVFREQ) && \
 		(LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
-	devfreq_resume_device(kbdev->devfreq);
+	if (kbdev->inited_subsys & inited_devfreq)
+		devfreq_resume_device(kbdev->devfreq);
 #endif
 	return 0;
 }
@@ -4074,9 +4102,10 @@ static int kbase_device_runtime_suspend(struct device *dev)
 	if (!kbdev)
 		return -ENODEV;
 
-#if defined(CONFIG_PM_DEVFREQ) && \
+#if defined(CONFIG_MALI_DEVFREQ) && \
 		(LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
-	devfreq_suspend_device(kbdev->devfreq);
+	if (kbdev->inited_subsys & inited_devfreq)
+		devfreq_suspend_device(kbdev->devfreq);
 #endif
 
 	if (kbdev->pm.backend.callback_power_runtime_off) {
@@ -4111,9 +4140,10 @@ static int kbase_device_runtime_resume(struct device *dev)
 		dev_dbg(dev, "runtime resume\n");
 	}
 
-#if defined(CONFIG_PM_DEVFREQ) && \
+#if defined(CONFIG_MALI_DEVFREQ) && \
 		(LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
-	devfreq_resume_device(kbdev->devfreq);
+	if (kbdev->inited_subsys & inited_devfreq)
+		devfreq_resume_device(kbdev->devfreq);
 #endif
 
 	return ret;
