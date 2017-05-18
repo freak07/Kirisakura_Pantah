@@ -18,3 +18,7 @@ mali_kbase-y += \
 	ipa/mali_kbase_ipa.o
 
 mali_kbase-$(CONFIG_DEBUG_FS) += ipa/mali_kbase_ipa_debugfs.o
+
+ifneq ($(wildcard $(src)/ipa/mali_kbase_ipa_tmix.c),)
+  mali_kbase-y += ipa/mali_kbase_ipa_tmix.o
+endif

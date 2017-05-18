@@ -84,6 +84,9 @@ struct kbase_gpu_props {
 
 	/* Properties shared with userspace */
 	base_gpu_props props;
+
+	u32 prop_buffer_size;
+	void *prop_buffer;
 };
 
 #endif				/* _KBASE_GPUPROPS_TYPES_H_ */

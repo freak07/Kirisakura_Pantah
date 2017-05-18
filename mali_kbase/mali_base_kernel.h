@@ -118,33 +118,44 @@ typedef union kbase_pointer {
  */
 
 /**
- * @brief Memory allocation, access/hint flags
+ * typedef base_mem_alloc_flags - Memory allocation, access/hint flags.
  *
  * A combination of MEM_PROT/MEM_HINT flags must be passed to each allocator
  * in order to determine the best cache policy. Some combinations are
- * of course invalid (eg @c MEM_PROT_CPU_WR | @c MEM_HINT_CPU_RD),
- * which defines a @a write-only region on the CPU side, which is
+ * of course invalid (e.g. MEM_PROT_CPU_WR | MEM_HINT_CPU_RD),
+ * which defines a write-only region on the CPU side, which is
  * heavily read by the CPU...
  * Other flags are only meaningful to a particular allocator.
  * More flags can be added to this list, as long as they don't clash
- * (see ::BASE_MEM_FLAGS_NR_BITS for the number of the first free bit).
+ * (see BASE_MEM_FLAGS_NR_BITS for the number of the first free bit).
  */
 typedef u32 base_mem_alloc_flags;
 
-/**
- * @brief Memory allocation, access/hint flags
+/* Memory allocation, access/hint flags.
  *
- * See ::base_mem_alloc_flags.
- *
+ * See base_mem_alloc_flags.
  */
-enum {
+
 /* IN */
-	BASE_MEM_PROT_CPU_RD = (1U << 0),      /**< Read access CPU side */
-	BASE_MEM_PROT_CPU_WR = (1U << 1),      /**< Write access CPU side */
-	BASE_MEM_PROT_GPU_RD = (1U << 2),      /**< Read access GPU side */
-	BASE_MEM_PROT_GPU_WR = (1U << 3),      /**< Write access GPU side */
-	BASE_MEM_PROT_GPU_EX = (1U << 4),      /**< Execute allowed on the GPU
-						    side */
+/* Read access CPU side
+ */
+#define BASE_MEM_PROT_CPU_RD ((base_mem_alloc_flags)1 << 0)
+
+/* Write access CPU side
+ */
+#define BASE_MEM_PROT_CPU_WR ((base_mem_alloc_flags)1 << 1)
+
+/* Read access GPU side
+ */
+#define BASE_MEM_PROT_GPU_RD ((base_mem_alloc_flags)1 << 2)
+
+/* Write access GPU side
+ */
+#define BASE_MEM_PROT_GPU_WR ((base_mem_alloc_flags)1 << 3)
+
+/* Execute allowed on the GPU side
+ */
+#define BASE_MEM_PROT_GPU_EX ((base_mem_alloc_flags)1 << 4)
 
 	/* BASE_MEM_HINT flags have been removed, but their values are reserved
 	 * for backwards compatibility with older user-space drivers. The values
@@ -157,54 +168,66 @@ enum {
 	 * RESERVED: (1U << 8)
 	 */
 
-	BASE_MEM_GROW_ON_GPF = (1U << 9),      /**< Grow backing store on GPU
-						    Page Fault */
+/* Grow backing store on GPU Page Fault
+ */
+#define BASE_MEM_GROW_ON_GPF ((base_mem_alloc_flags)1 << 9)
 
-	BASE_MEM_COHERENT_SYSTEM = (1U << 10), /**< Page coherence Outer
-						    shareable, if available */
-	BASE_MEM_COHERENT_LOCAL = (1U << 11),  /**< Page coherence Inner
-						    shareable */
-	BASE_MEM_CACHED_CPU = (1U << 12),      /**< Should be cached on the
-						    CPU */
+/* Page coherence Outer shareable, if available
+ */
+#define BASE_MEM_COHERENT_SYSTEM ((base_mem_alloc_flags)1 << 10)
+
+/* Page coherence Inner shareable
+ */
+#define BASE_MEM_COHERENT_LOCAL ((base_mem_alloc_flags)1 << 11)
+
+/* Should be cached on the CPU
+ */
+#define BASE_MEM_CACHED_CPU ((base_mem_alloc_flags)1 << 12)
 
 /* IN/OUT */
-	BASE_MEM_SAME_VA = (1U << 13), /**< Must have same VA on both the GPU
-					    and the CPU */
-/* OUT */
-	BASE_MEM_NEED_MMAP = (1U << 14), /**< Must call mmap to acquire a GPU
-					     address for the alloc */
-/* IN */
-	BASE_MEM_COHERENT_SYSTEM_REQUIRED = (1U << 15), /**< Page coherence
-					     Outer shareable, required. */
-	BASE_MEM_SECURE = (1U << 16),          /**< Secure memory */
-	BASE_MEM_DONT_NEED = (1U << 17),       /**< Not needed physical
-						    memory */
-	BASE_MEM_IMPORT_SHARED = (1U << 18),   /**< Must use shared CPU/GPU zone
-						    (SAME_VA zone) but doesn't
-						    require the addresses to
-						    be the same */
-};
+/* Must have same VA on both the GPU and the CPU
+ */
+#define BASE_MEM_SAME_VA ((base_mem_alloc_flags)1 << 13)
 
-/**
- * @brief Number of bits used as flags for base memory management
+/* OUT */
+/* Must call mmap to acquire a GPU address for the alloc
+ */
+#define BASE_MEM_NEED_MMAP ((base_mem_alloc_flags)1 << 14)
+
+/* IN */
+/* Page coherence Outer shareable, required.
+ */
+#define BASE_MEM_COHERENT_SYSTEM_REQUIRED ((base_mem_alloc_flags)1 << 15)
+
+/* Secure memory
+ */
+#define BASE_MEM_SECURE ((base_mem_alloc_flags)1 << 16)
+
+/* Not needed physical memory
+ */
+#define BASE_MEM_DONT_NEED ((base_mem_alloc_flags)1 << 17)
+
+/* Must use shared CPU/GPU zone (SAME_VA zone) but doesn't require the
+ * addresses to be the same
+ */
+#define BASE_MEM_IMPORT_SHARED ((base_mem_alloc_flags)1 << 18)
+
+/* Number of bits used as flags for base memory management
  *
- * Must be kept in sync with the ::base_mem_alloc_flags flags
+ * Must be kept in sync with the base_mem_alloc_flags flags
  */
 #define BASE_MEM_FLAGS_NR_BITS 19
 
-/**
-  * A mask for all output bits, excluding IN/OUT bits.
-  */
+/* A mask for all output bits, excluding IN/OUT bits.
+ */
 #define BASE_MEM_FLAGS_OUTPUT_MASK BASE_MEM_NEED_MMAP
 
-/**
-  * A mask for all input bits, including IN/OUT bits.
-  */
+/* A mask for all input bits, including IN/OUT bits.
+ */
 #define BASE_MEM_FLAGS_INPUT_MASK \
 	(((1 << BASE_MEM_FLAGS_NR_BITS) - 1) & ~BASE_MEM_FLAGS_OUTPUT_MASK)
 
-/**
- * A mask for all the flags which are modifiable via the base_mem_set_flags
+/* A mask for all the flags which are modifiable via the base_mem_set_flags
  * interface.
  */
 #define BASE_MEM_FLAGS_MODIFIABLE \
@@ -294,7 +317,6 @@ struct base_mem_import_user_buffer {
  */
 typedef enum base_backing_threshold_status {
 	BASE_BACKING_THRESHOLD_OK = 0,			    /**< Resize successful */
-	BASE_BACKING_THRESHOLD_ERROR_NOT_GROWABLE = -1,	    /**< Not a growable tmem object */
 	BASE_BACKING_THRESHOLD_ERROR_OOM = -2,		    /**< Increase failed due to an out-of-memory condition */
 	BASE_BACKING_THRESHOLD_ERROR_INVALID_ARGUMENTS = -4 /**< Invalid arguments (not tmem, illegal size request, etc.) */
 } base_backing_threshold_status;
@@ -1429,9 +1451,9 @@ struct mali_base_gpu_core_props {
 
 	/**
 	 * Status of the GPU release.
-     * No defined values, but starts at 0 and increases by one for each release
-     * status (alpha, beta, EAC, etc.).
-     * 4 bit values (0-15).
+	 * No defined values, but starts at 0 and increases by one for each
+	 * release status (alpha, beta, EAC, etc.).
+	 * 4 bit values (0-15).
 	 */
 	u16 version_status;
 
@@ -1450,8 +1472,11 @@ struct mali_base_gpu_core_props {
 	u16 padding;
 
 	/**
-	 * @usecase GPU clock speed is not specified in the Midgard Architecture, but is
-	 * <b>necessary for OpenCL's clGetDeviceInfo() function</b>.
+	 * This property is deprecated since it has not contained the real current
+	 * value of GPU clock speed. It is kept here only for backwards compatibility.
+	 * For the new ioctl interface, it is ignored and is treated as a padding
+	 * to keep the structure of the same size and retain the placement of its
+	 * members.
 	 */
 	u32 gpu_speed_mhz;
 
@@ -1459,6 +1484,7 @@ struct mali_base_gpu_core_props {
 	 * @usecase GPU clock max/min speed is required for computing best/worst case
 	 * in tasks as job scheduling ant irq_throttling. (It is not specified in the
 	 *  Midgard Architecture).
+	 * Also, GPU clock max speed is used for OpenCL's clGetDeviceInfo() function.
 	 */
 	u32 gpu_freq_khz_max;
 	u32 gpu_freq_khz_min;

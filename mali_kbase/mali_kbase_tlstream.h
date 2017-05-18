@@ -38,7 +38,6 @@ void kbase_tlstream_term(void);
 /**
  * kbase_tlstream_acquire - acquire timeline stream file descriptor
  * @kctx:  kernel common context
- * @fd:    timeline stream file descriptor
  * @flags: timeline stream flags
  *
  * This descriptor is meant to be used by userspace timeline to gain access to
@@ -46,12 +45,11 @@ void kbase_tlstream_term(void);
  * timeline client.
  * Only one entity can own the descriptor at any given time. Descriptor shall be
  * closed if unused. If descriptor cannot be obtained (i.e. when it is already
- * being used) argument fd will contain negative value.
+ * being used) return will be a negative value.
  *
- * Return: zero on success (this does not necessarily mean that stream
- *         descriptor could be returned), negative number on error
+ * Return: file descriptor on success, negative number on error
  */
-int kbase_tlstream_acquire(struct kbase_context *kctx, int *fd, u32 flags);
+int kbase_tlstream_acquire(struct kbase_context *kctx, u32 flags);
 
 /**
  * kbase_tlstream_flush_streams - flush timeline streams.
@@ -137,6 +135,8 @@ void __kbase_tlstream_tl_attrib_atom_config(
 void __kbase_tlstream_tl_attrib_atom_priority(void *atom, u32 prio);
 void __kbase_tlstream_tl_attrib_atom_state(void *atom, u32 state);
 void __kbase_tlstream_tl_attrib_atom_priority_change(void *atom);
+void __kbase_tlstream_tl_attrib_atom_jit(
+		void *atom, u64 edit_addr, u64 new_addr);
 void __kbase_tlstream_tl_attrib_as_config(
 		void *as, u64 transtab, u64 memattr, u64 transcfg);
 void __kbase_tlstream_tl_event_atom_softstop_ex(void *atom);
@@ -168,6 +168,13 @@ extern atomic_t kbase_tlstream_enabled;
 		int enabled = atomic_read(&kbase_tlstream_enabled);     \
 		if (enabled & BASE_TLSTREAM_ENABLE_LATENCY_TRACEPOINTS) \
 			__kbase_tlstream_##trace_name(__VA_ARGS__);     \
+	} while (0)
+
+#define __TRACE_IF_ENABLED_JD(trace_name, ...)                      \
+	do {                                                        \
+		int enabled = atomic_read(&kbase_tlstream_enabled); \
+		if (enabled & BASE_TLSTREAM_JOB_DUMPING_ENABLED)    \
+			__kbase_tlstream_##trace_name(__VA_ARGS__); \
 	} while (0)
 
 /*****************************************************************************/
@@ -480,6 +487,15 @@ extern atomic_t kbase_tlstream_enabled;
  */
 #define KBASE_TLSTREAM_TL_ATTRIB_ATOM_PRIORITY_CHANGE(atom) \
 	__TRACE_IF_ENABLED_LATENCY(tl_attrib_atom_priority_change, atom)
+
+/**
+ * KBASE_TLSTREAM_TL_ATTRIB_ATOM_JIT - jit happened on atom
+ * @atom:       atom identifier
+ * @edit_addr:  address edited by jit
+ * @new_addr:   address placed into the edited location
+ */
+#define KBASE_TLSTREAM_TL_ATTRIB_ATOM_JIT(atom, edit_addr, new_addr) \
+	__TRACE_IF_ENABLED_JD(tl_attrib_atom_jit, atom, edit_addr, new_addr)
 
 /**
  * KBASE_TLSTREAM_TL_ATTRIB_AS_CONFIG - address space attributes

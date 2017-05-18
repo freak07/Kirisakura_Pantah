@@ -29,6 +29,7 @@
 #include <mali_kbase_vinstr.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_hwaccess_jm.h>
+#include <mali_kbase_ctx_sched.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_irq_internal.h>
 #include <backend/gpu/mali_kbase_js_affinity.h>
@@ -1155,7 +1156,6 @@ static void kbasep_reset_timeout_worker(struct work_struct *data)
 {
 	unsigned long flags;
 	struct kbase_device *kbdev;
-	int i;
 	ktime_t end_timestamp = ktime_get();
 	struct kbasep_js_device_data *js_devdata;
 	bool try_schedule = false;
@@ -1193,6 +1193,7 @@ static void kbasep_reset_timeout_worker(struct work_struct *data)
 						KBASE_RESET_GPU_NOT_PENDING);
 		kbase_disjoint_state_down(kbdev);
 		wake_up(&kbdev->hwaccess.backend.reset_wait);
+		kbase_vinstr_resume(kbdev->vinstr_ctx);
 		return;
 	}
 
@@ -1265,18 +1266,9 @@ static void kbasep_reset_timeout_worker(struct work_struct *data)
 	mutex_lock(&js_devdata->runpool_mutex);
 
 	mutex_lock(&kbdev->mmu_hw_mutex);
-	/* Reprogram the GPU's MMU */
-	for (i = 0; i < kbdev->nr_hw_address_spaces; i++) {
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-
-		if (js_devdata->runpool_irq.per_as_data[i].kctx)
-			kbase_mmu_update(
-				js_devdata->runpool_irq.per_as_data[i].kctx);
-		else
-			kbase_mmu_disable_as(kbdev, i);
-
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-	}
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbase_ctx_sched_restore_all_as(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 	mutex_unlock(&kbdev->mmu_hw_mutex);
 
 	kbase_pm_enable_interrupts(kbdev);

@@ -66,9 +66,7 @@
 #include "mali_kbase_jm.h"
 #include "mali_kbase_vinstr.h"
 
-#ifdef CONFIG_DEVFREQ_THERMAL
 #include "ipa/mali_kbase_ipa.h"
-#endif
 
 #ifdef CONFIG_GPU_TRACEPOINTS
 #include <trace/events/gpu.h>
@@ -106,22 +104,27 @@ void kbase_release_device(struct kbase_device *kbdev);
 
 void kbase_set_profiling_control(struct kbase_device *kbdev, u32 control, u32 value);
 
-u32 kbase_get_profiling_control(struct kbase_device *kbdev, u32 control);
-
 struct kbase_context *
 kbase_create_context(struct kbase_device *kbdev, bool is_compat);
 void kbase_destroy_context(struct kbase_context *kctx);
 
 int kbase_jd_init(struct kbase_context *kctx);
 void kbase_jd_exit(struct kbase_context *kctx);
-#ifdef BASE_LEGACY_UK6_SUPPORT
+
+/**
+ * kbase_jd_submit - Submit atoms to the job dispatcher
+ *
+ * @kctx: The kbase context to submit to
+ * @user_addr: The address in user space of the struct base_jd_atom_v2 array
+ * @nr_atoms: The number of atoms in the array
+ * @stride: sizeof(struct base_jd_atom_v2)
+ * @uk6_atom: true if the atoms are legacy atoms (struct base_jd_atom_v2_uk6)
+ *
+ * Return: 0 on success or error code
+ */
 int kbase_jd_submit(struct kbase_context *kctx,
-		const struct kbase_uk_job_submit *submit_data,
-		int uk6_atom);
-#else
-int kbase_jd_submit(struct kbase_context *kctx,
-		const struct kbase_uk_job_submit *submit_data);
-#endif
+		void __user *user_addr, u32 nr_atoms, u32 stride,
+		bool uk6_atom);
 
 /**
  * kbase_jd_done_worker - Handle a job completion
@@ -195,8 +198,10 @@ int kbase_prepare_soft_job(struct kbase_jd_atom *katom);
 void kbase_finish_soft_job(struct kbase_jd_atom *katom);
 void kbase_cancel_soft_job(struct kbase_jd_atom *katom);
 void kbase_resume_suspended_soft_jobs(struct kbase_device *kbdev);
-void kbasep_add_waiting_soft_job(struct kbase_jd_atom *katom);
 void kbasep_remove_waiting_soft_job(struct kbase_jd_atom *katom);
+#if defined(CONFIG_SYNC) || defined(CONFIG_SYNC_FILE)
+void kbase_soft_event_wait_callback(struct kbase_jd_atom *katom);
+#endif
 int kbase_soft_event_update(struct kbase_context *kctx,
 			    u64 event,
 			    unsigned char new_status);

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -142,26 +142,6 @@ enum {
 typedef u32 kbasep_js_atom_done_code;
 
 /**
- * Data used by the scheduler that is unique for each Address Space.
- *
- * This is used in IRQ context and hwaccess_lock must be held whilst accessing
- * this data (inculding reads and atomic decisions based on the read).
- */
-struct kbasep_js_per_as_data {
-	/**
-	 * Ref count of whether this AS is busy, and must not be scheduled out
-	 *
-	 * When jobs are running this is always positive. However, it can still be
-	 * positive when no jobs are running. If all you need is a heuristic to
-	 * tell you whether jobs might be running, this should be sufficient.
-	 */
-	int as_busy_refcount;
-
-	/** Pointer to the current context on this address space, or NULL for no context */
-	struct kbase_context *kctx;
-};
-
-/**
  * @brief KBase Device Data Job Scheduler sub-structure
  *
  * This encapsulates the current context of the Job Scheduler on a particular
@@ -181,10 +161,8 @@ struct kbasep_js_device_data {
 	struct runpool_irq {
 		/** Bitvector indicating whether a currently scheduled context is allowed to submit jobs.
 		 * When bit 'N' is set in this, it indicates whether the context bound to address space
-		 * 'N' (per_as_data[N].kctx) is allowed to submit jobs.
-		 *
-		 * It is placed here because it's much more memory efficient than having a u8 in
-		 * struct kbasep_js_per_as_data to store this flag  */
+		 * 'N' is allowed to submit jobs.
+		 */
 		u16 submit_allowed;
 
 		/** Context Attributes:
@@ -202,9 +180,6 @@ struct kbasep_js_device_data {
 		 * the compiler can optimize for that never happening (thus, no masking
 		 * is required on updating the variable) */
 		s8 ctx_attr_ref_count[KBASEP_JS_CTX_ATTR_COUNT];
-
-		/** Data that is unique for each AS */
-		struct kbasep_js_per_as_data per_as_data[BASE_MAX_NR_AS];
 
 		/*
 		 * Affinity management and tracking
@@ -255,8 +230,6 @@ struct kbasep_js_device_data {
 	 * jobs currently running.
 	 */
 	struct list_head ctx_list_unpullable[BASE_JM_MAX_NR_SLOTS];
-
-	u16 as_free;				/**< Bitpattern of free Address Spaces */
 
 	/** Number of currently scheduled user contexts (excluding ones that are not submitting jobs) */
 	s8 nr_user_contexts_running;

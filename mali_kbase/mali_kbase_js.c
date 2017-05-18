@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -27,6 +27,7 @@
 #endif
 #include <mali_kbase_tlstream.h>
 #include <mali_kbase_hw.h>
+#include <mali_kbase_ctx_sched.h>
 
 #include <mali_kbase_defs.h>
 #include <mali_kbase_config_defaults.h>
@@ -82,57 +83,11 @@ static void kbase_js_foreach_ctx_job(struct kbase_context *kctx,
 static int kbasep_js_trace_get_refcnt(struct kbase_device *kbdev,
 		struct kbase_context *kctx)
 {
-	unsigned long flags;
-	struct kbasep_js_device_data *js_devdata;
-	int as_nr;
-	int refcnt = 0;
-
-	js_devdata = &kbdev->js_data;
-
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	as_nr = kctx->as_nr;
-	if (as_nr != KBASEP_AS_NR_INVALID) {
-		struct kbasep_js_per_as_data *js_per_as_data;
-
-		js_per_as_data = &js_devdata->runpool_irq.per_as_data[as_nr];
-
-		refcnt = js_per_as_data->as_busy_refcount;
-	}
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-
-	return refcnt;
-}
-
-static int kbasep_js_trace_get_refcnt_nolock(struct kbase_device *kbdev,
-						struct kbase_context *kctx)
-{
-	struct kbasep_js_device_data *js_devdata;
-	int as_nr;
-	int refcnt = 0;
-
-	js_devdata = &kbdev->js_data;
-
-	as_nr = kctx->as_nr;
-	if (as_nr != KBASEP_AS_NR_INVALID) {
-		struct kbasep_js_per_as_data *js_per_as_data;
-
-		js_per_as_data = &js_devdata->runpool_irq.per_as_data[as_nr];
-
-		refcnt = js_per_as_data->as_busy_refcount;
-	}
-
-	return refcnt;
+	return atomic_read(&kctx->refcount);
 }
 #else				/* KBASE_TRACE_ENABLE  */
 static int kbasep_js_trace_get_refcnt(struct kbase_device *kbdev,
 		struct kbase_context *kctx)
-{
-	CSTD_UNUSED(kbdev);
-	CSTD_UNUSED(kctx);
-	return 0;
-}
-static int kbasep_js_trace_get_refcnt_nolock(struct kbase_device *kbdev,
-						struct kbase_context *kctx)
 {
 	CSTD_UNUSED(kbdev);
 	CSTD_UNUSED(kctx);
@@ -181,12 +136,11 @@ static void kbase_js_sync_timers(struct kbase_device *kbdev)
 	mutex_unlock(&kbdev->js_data.runpool_mutex);
 }
 
-/* Hold the hwaccess_lock for this */
+/* Hold the mmu_hw_mutex and hwaccess_lock for this */
 bool kbasep_js_runpool_retain_ctx_nolock(struct kbase_device *kbdev,
 		struct kbase_context *kctx)
 {
 	struct kbasep_js_device_data *js_devdata;
-	struct kbasep_js_per_as_data *js_per_as_data;
 	bool result = false;
 	int as_nr;
 
@@ -194,19 +148,15 @@ bool kbasep_js_runpool_retain_ctx_nolock(struct kbase_device *kbdev,
 	KBASE_DEBUG_ASSERT(kctx != NULL);
 	js_devdata = &kbdev->js_data;
 
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
 	as_nr = kctx->as_nr;
-	if (as_nr != KBASEP_AS_NR_INVALID) {
-		int new_refcnt;
-
+	if (atomic_read(&kctx->refcount) > 0) {
 		KBASE_DEBUG_ASSERT(as_nr >= 0);
-		js_per_as_data = &js_devdata->runpool_irq.per_as_data[as_nr];
 
-		KBASE_DEBUG_ASSERT(js_per_as_data->kctx != NULL);
-
-		new_refcnt = ++(js_per_as_data->as_busy_refcount);
-
+		kbase_ctx_sched_retain_ctx_refcount(kctx);
 		KBASE_TRACE_ADD_REFCOUNT(kbdev, JS_RETAIN_CTX_NOLOCK, kctx,
-				NULL, 0u, new_refcnt);
+				NULL, 0u, atomic_read(&kctx->refcount));
 		result = true;
 	}
 
@@ -470,25 +420,11 @@ int kbasep_js_devdata_init(struct kbase_device * const kbdev)
 {
 	struct kbasep_js_device_data *jsdd;
 	int i;
-	u16 as_present;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 
 	jsdd = &kbdev->js_data;
 
-	/* These two must be recalculated if nr_hw_address_spaces changes
-	 * (e.g. for HW workarounds) */
-	as_present = (1U << kbdev->nr_hw_address_spaces) - 1;
-	kbdev->nr_user_address_spaces = kbdev->nr_hw_address_spaces;
-	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8987)) {
-		bool use_workaround;
-
-		use_workaround = DEFAULT_SECURE_BUT_LOSS_OF_PERFORMANCE;
-		if (use_workaround) {
-			dev_dbg(kbdev->dev, "GPU has HW ISSUE 8987, and driver configured for security workaround: 1 address space only");
-			kbdev->nr_user_address_spaces = 1;
-		}
-	}
 #ifdef CONFIG_MALI_DEBUG
 	/* Soft-stop will be disabled on a single context by default unless
 	 * softstop_always is set */
@@ -498,8 +434,6 @@ int kbasep_js_devdata_init(struct kbase_device * const kbdev)
 	jsdd->nr_user_contexts_running = 0;
 	jsdd->nr_contexts_pullable = 0;
 	atomic_set(&jsdd->nr_contexts_runnable, 0);
-	/* All ASs initially free */
-	jsdd->as_free = as_present;
 	/* No ctx allowed to submit */
 	jsdd->runpool_irq.submit_allowed = 0u;
 	memset(jsdd->runpool_irq.ctx_attr_ref_count, 0,
@@ -576,10 +510,6 @@ int kbasep_js_devdata_init(struct kbase_device * const kbdev)
 #if KBASE_DISABLE_SCHEDULING_SOFT_STOPS && KBASE_DISABLE_SCHEDULING_HARD_STOPS
 	dev_dbg(kbdev->dev, "Note: The JS tick timer (if coded) will still be run, but do nothing.");
 #endif
-
-	/* Clear the AS data, including setting NULL pointers */
-	memset(&jsdd->runpool_irq.per_as_data[0], 0,
-			sizeof(jsdd->runpool_irq.per_as_data));
 
 	for (i = 0; i < kbdev->gpu_props.num_job_slots; ++i)
 		jsdd->js_reqs[i] = core_reqs_from_jsn_features(
@@ -1189,7 +1119,7 @@ bool kbasep_js_add_job(struct kbase_context *kctx,
 	enqueue_required = kbase_js_dep_resolved_submit(kctx, atom);
 
 	KBASE_TRACE_ADD_REFCOUNT(kbdev, JS_ADD_JOB, kctx, atom, atom->jc,
-				kbasep_js_trace_get_refcnt_nolock(kbdev, kctx));
+				kbasep_js_trace_get_refcnt(kbdev, kctx));
 
 	/* Context Attribute Refcounting */
 	kbasep_js_ctx_attr_ctx_retain_atom(kbdev, kctx, atom);
@@ -1303,11 +1233,11 @@ bool kbasep_js_runpool_retain_ctx(struct kbase_device *kbdev,
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	js_devdata = &kbdev->js_data;
 
-	/* KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_RETAIN_CTX, kctx, NULL, 0,
-	   kbasep_js_trace_get_refcnt(kbdev, kctx)); */
+	mutex_lock(&kbdev->mmu_hw_mutex);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	result = kbasep_js_runpool_retain_ctx_nolock(kbdev, kctx);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	mutex_unlock(&kbdev->mmu_hw_mutex);
 
 	return result;
 }
@@ -1318,44 +1248,19 @@ struct kbase_context *kbasep_js_runpool_lookup_ctx(struct kbase_device *kbdev,
 	unsigned long flags;
 	struct kbasep_js_device_data *js_devdata;
 	struct kbase_context *found_kctx = NULL;
-	struct kbasep_js_per_as_data *js_per_as_data;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	KBASE_DEBUG_ASSERT(0 <= as_nr && as_nr < BASE_MAX_NR_AS);
 	js_devdata = &kbdev->js_data;
-	js_per_as_data = &js_devdata->runpool_irq.per_as_data[as_nr];
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
-	found_kctx = js_per_as_data->kctx;
+	found_kctx = kbdev->as_to_kctx[as_nr];
 
 	if (found_kctx != NULL)
-		++(js_per_as_data->as_busy_refcount);
+		kbase_ctx_sched_retain_ctx_refcount(found_kctx);
 
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-
-	return found_kctx;
-}
-
-struct kbase_context *kbasep_js_runpool_lookup_ctx_nolock(
-		struct kbase_device *kbdev, int as_nr)
-{
-	struct kbasep_js_device_data *js_devdata;
-	struct kbase_context *found_kctx = NULL;
-	struct kbasep_js_per_as_data *js_per_as_data;
-
-	KBASE_DEBUG_ASSERT(kbdev != NULL);
-	KBASE_DEBUG_ASSERT(0 <= as_nr && as_nr < BASE_MAX_NR_AS);
-
-	lockdep_assert_held(&kbdev->hwaccess_lock);
-
-	js_devdata = &kbdev->js_data;
-	js_per_as_data = &js_devdata->runpool_irq.per_as_data[as_nr];
-
-	found_kctx = js_per_as_data->kctx;
-
-	if (found_kctx != NULL)
-		++(js_per_as_data->as_busy_refcount);
 
 	return found_kctx;
 }
@@ -1445,7 +1350,6 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 	unsigned long flags;
 	struct kbasep_js_device_data *js_devdata;
 	struct kbasep_js_kctx_info *js_kctx_info;
-	struct kbasep_js_per_as_data *js_per_as_data;
 
 	kbasep_js_release_result release_result = 0u;
 	bool runpool_ctx_attr_change = false;
@@ -1461,16 +1365,9 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 	/* Ensure context really is scheduled in */
 	KBASE_DEBUG_ASSERT(kbase_ctx_flag(kctx, KCTX_SCHEDULED));
 
-	/* kctx->as_nr and js_per_as_data are only read from here. The caller's
-	 * js_ctx_mutex provides a barrier that ensures they are up-to-date.
-	 *
-	 * They will not change whilst we're reading them, because the refcount
-	 * is non-zero (and we ASSERT on that last fact).
-	 */
 	kctx_as_nr = kctx->as_nr;
 	KBASE_DEBUG_ASSERT(kctx_as_nr != KBASEP_AS_NR_INVALID);
-	js_per_as_data = &js_devdata->runpool_irq.per_as_data[kctx_as_nr];
-	KBASE_DEBUG_ASSERT(js_per_as_data->as_busy_refcount > 0);
+	KBASE_DEBUG_ASSERT(atomic_read(&kctx->refcount) > 0);
 
 	/*
 	 * Transaction begins on AS and runpool_irq
@@ -1479,14 +1376,14 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 	 */
 	current_as = &kbdev->as[kctx_as_nr];
 	mutex_lock(&kbdev->pm.lock);
-	mutex_lock(&kbdev->mmu_hw_mutex);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	KBASE_DEBUG_ASSERT(kctx_as_nr == kctx->as_nr);
-	KBASE_DEBUG_ASSERT(js_per_as_data->as_busy_refcount > 0);
+	KBASE_DEBUG_ASSERT(atomic_read(&kctx->refcount) > 0);
 
 	/* Update refcount */
-	new_ref_count = --(js_per_as_data->as_busy_refcount);
+	kbase_ctx_sched_release_ctx(kctx);
+	new_ref_count = atomic_read(&kctx->refcount);
 
 	/* Release the atom if it finished (i.e. wasn't soft-stopped) */
 	if (kbasep_js_has_atom_finished(katom_retained_state))
@@ -1496,7 +1393,7 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 	KBASE_TRACE_ADD_REFCOUNT(kbdev, JS_RELEASE_CTX, kctx, NULL, 0u,
 			new_ref_count);
 
-	if (new_ref_count == 1 && kbase_ctx_flag(kctx, KCTX_PRIVILEGED) &&
+	if (new_ref_count == 2 && kbase_ctx_flag(kctx, KCTX_PRIVILEGED) &&
 			!kbase_pm_is_suspending(kbdev)) {
 		/* Context is kept scheduled into an address space even when
 		 * there are no jobs, in this case we have to handle the
@@ -1509,8 +1406,10 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 		kbasep_js_set_submit_allowed(js_devdata, kctx);
 	}
 
-	/* Make a set of checks to see if the context should be scheduled out */
-	if (new_ref_count == 0 &&
+	/* Make a set of checks to see if the context should be scheduled out.
+	 * Note that there'll always be at least 1 reference to the context
+	 * which was previously acquired by kbasep_js_schedule_ctx(). */
+	if (new_ref_count == 1 &&
 		(!kbasep_js_is_submit_allowed(js_devdata, kctx) ||
 							kbdev->pm.suspending)) {
 		int num_slots = kbdev->gpu_props.num_job_slots;
@@ -1518,7 +1417,7 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 
 		/* Last reference, and we've been told to remove this context
 		 * from the Run Pool */
-		dev_dbg(kbdev->dev, "JS: RunPool Remove Context %p because as_busy_refcount=%d, jobs=%d, allowed=%d",
+		dev_dbg(kbdev->dev, "JS: RunPool Remove Context %p because refcount=%d, jobs=%d, allowed=%d",
 				kctx, new_ref_count, js_kctx_info->ctx.nr_jobs,
 				kbasep_js_is_submit_allowed(js_devdata, kctx));
 
@@ -1571,7 +1470,6 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 
 		kbase_backend_release_ctx_noirq(kbdev, kctx);
 
-		mutex_unlock(&kbdev->mmu_hw_mutex);
 		mutex_unlock(&kbdev->pm.lock);
 
 		/* Note: Don't reuse kctx_as_nr now */
@@ -1594,7 +1492,6 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 				katom_retained_state, runpool_ctx_attr_change);
 
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		mutex_unlock(&kbdev->mmu_hw_mutex);
 		mutex_unlock(&kbdev->pm.lock);
 	}
 
@@ -1740,8 +1637,26 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 	js_kctx_info = &kctx->jctx.sched_info;
 
 	/* Pick available address space for this context */
-	as_nr = kbase_backend_find_free_address_space(kbdev, kctx);
+	mutex_lock(&kbdev->mmu_hw_mutex);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	as_nr = kbase_ctx_sched_retain_ctx(kctx);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	mutex_unlock(&kbdev->mmu_hw_mutex);
+	if (as_nr == KBASEP_AS_NR_INVALID) {
+		as_nr = kbase_backend_find_and_release_free_address_space(
+				kbdev, kctx);
+		if (as_nr != KBASEP_AS_NR_INVALID) {
+			/* Attempt to retain the context again, this should
+			 * succeed */
+			mutex_lock(&kbdev->mmu_hw_mutex);
+			spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+			as_nr = kbase_ctx_sched_retain_ctx(kctx);
+			spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+			mutex_unlock(&kbdev->mmu_hw_mutex);
 
+			WARN_ON(as_nr == KBASEP_AS_NR_INVALID);
+		}
+	}
 	if (as_nr == KBASEP_AS_NR_INVALID)
 		return false; /* No address spaces currently available */
 
@@ -1752,12 +1667,16 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 	 */
 	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 	mutex_lock(&js_devdata->runpool_mutex);
+	mutex_lock(&kbdev->mmu_hw_mutex);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	/* Check to see if context is dying due to kbase_job_zap_context() */
 	if (kbase_ctx_flag(kctx, KCTX_DYING)) {
 		/* Roll back the transaction so far and return */
-		kbase_backend_release_free_address_space(kbdev, as_nr);
+		kbase_ctx_sched_release_ctx(kctx);
 
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+		mutex_unlock(&kbdev->mmu_hw_mutex);
 		mutex_unlock(&js_devdata->runpool_mutex);
 		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 
@@ -1770,21 +1689,17 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 
 	kbase_ctx_flag_set(kctx, KCTX_SCHEDULED);
 
-	mutex_lock(&kbdev->mmu_hw_mutex);
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-
 	/* Assign context to previously chosen address space */
 	if (!kbase_backend_use_ctx(kbdev, kctx, as_nr)) {
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		mutex_unlock(&kbdev->mmu_hw_mutex);
 		/* Roll back the transaction so far and return */
+		kbase_ctx_sched_release_ctx(kctx);
 		kbase_ctx_flag_clear(kctx, KCTX_SCHEDULED);
 
-		kbase_backend_release_free_address_space(kbdev, as_nr);
-
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+		mutex_unlock(&kbdev->mmu_hw_mutex);
 		mutex_unlock(&js_devdata->runpool_mutex);
-
 		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+
 		return false;
 	}
 
@@ -1851,7 +1766,8 @@ static bool kbase_js_use_ctx(struct kbase_device *kbdev,
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
-	if (kbase_backend_use_ctx_sched(kbdev, kctx)) {
+	if (kbase_ctx_flag(kctx, KCTX_SCHEDULED) &&
+			kbase_backend_use_ctx_sched(kbdev, kctx)) {
 		/* Context already has ASID - mark as active */
 		kbdev->hwaccess.active_kctx = kctx;
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
@@ -1953,14 +1869,12 @@ void kbasep_js_suspend(struct kbase_device *kbdev)
 	/* Retain each of the contexts, so we can cause it to leave even if it
 	 * had no refcount to begin with */
 	for (i = BASE_MAX_NR_AS - 1; i >= 0; --i) {
-		struct kbasep_js_per_as_data *js_per_as_data =
-			&js_devdata->runpool_irq.per_as_data[i];
-		struct kbase_context *kctx = js_per_as_data->kctx;
+		struct kbase_context *kctx = kbdev->as_to_kctx[i];
 
 		retained = retained << 1;
 
 		if (kctx) {
-			++(js_per_as_data->as_busy_refcount);
+			kbase_ctx_sched_retain_ctx_refcount(kctx);
 			retained |= 1u;
 			/* We can only cope with up to 1 privileged context -
 			 * the instrumented context. It'll be suspended by
@@ -1980,9 +1894,7 @@ void kbasep_js_suspend(struct kbase_device *kbdev)
 	for (i = 0;
 		 i < BASE_MAX_NR_AS;
 		 ++i, retained = retained >> 1) {
-		struct kbasep_js_per_as_data *js_per_as_data =
-			&js_devdata->runpool_irq.per_as_data[i];
-		struct kbase_context *kctx = js_per_as_data->kctx;
+		struct kbase_context *kctx = kbdev->as_to_kctx[i];
 
 		if (retained & 1u)
 			kbasep_js_runpool_release_ctx(kbdev, kctx);
@@ -2189,16 +2101,19 @@ struct kbase_jd_atom *kbase_js_pull(struct kbase_context *kctx, int js)
 {
 	struct kbase_jd_atom *katom;
 	struct kbasep_js_device_data *js_devdata;
+	struct kbase_device *kbdev;
 	int pulled;
 
 	KBASE_DEBUG_ASSERT(kctx);
 
-	js_devdata = &kctx->kbdev->js_data;
-	lockdep_assert_held(&kctx->kbdev->hwaccess_lock);
+	kbdev = kctx->kbdev;
+
+	js_devdata = &kbdev->js_data;
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	if (!kbasep_js_is_submit_allowed(js_devdata, kctx))
 		return NULL;
-	if (kbase_pm_is_suspending(kctx->kbdev))
+	if (kbase_pm_is_suspending(kbdev))
 		return NULL;
 
 	katom = jsctx_rb_peek(kctx, js);
@@ -2214,7 +2129,7 @@ struct kbase_jd_atom *kbase_js_pull(struct kbase_context *kctx, int js)
 	 * present on the same slot */
 	if (katom->pre_dep && atomic_read(&kctx->atoms_pulled_slot[js])) {
 		struct kbase_jd_atom *prev_atom =
-				kbase_backend_inspect_tail(kctx->kbdev, js);
+				kbase_backend_inspect_tail(kbdev, js);
 
 		if (prev_atom && prev_atom->kctx != kctx)
 			return NULL;
@@ -2226,7 +2141,7 @@ struct kbase_jd_atom *kbase_js_pull(struct kbase_context *kctx, int js)
 					katom->x_pre_dep->will_fail_event_code)
 			return NULL;
 		if ((katom->atom_flags & KBASE_KATOM_FLAG_FAIL_BLOCKER) &&
-				kbase_backend_nr_atoms_on_slot(kctx->kbdev, js))
+				kbase_backend_nr_atoms_on_slot(kbdev, js))
 			return NULL;
 	}
 
@@ -2236,13 +2151,14 @@ struct kbase_jd_atom *kbase_js_pull(struct kbase_context *kctx, int js)
 	if (pulled == 1 && !kctx->slots_pullable) {
 		WARN_ON(kbase_ctx_flag(kctx, KCTX_RUNNABLE_REF));
 		kbase_ctx_flag_set(kctx, KCTX_RUNNABLE_REF);
-		atomic_inc(&kctx->kbdev->js_data.nr_contexts_runnable);
+		atomic_inc(&kbdev->js_data.nr_contexts_runnable);
 	}
 	atomic_inc(&kctx->atoms_pulled_slot[katom->slot_nr]);
 	kctx->atoms_pulled_slot_pri[katom->slot_nr][katom->sched_priority]++;
 	jsctx_rb_pull(kctx, katom);
 
-	kbasep_js_runpool_retain_ctx_nolock(kctx->kbdev, kctx);
+	kbasep_js_runpool_retain_ctx_nolock(kbdev, kctx);
+
 	katom->atom_flags |= KBASE_KATOM_FLAG_HOLDING_CTX_REF;
 
 	katom->ticks = 0;
@@ -2868,22 +2784,7 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 static inline int trace_get_refcnt(struct kbase_device *kbdev,
 					struct kbase_context *kctx)
 {
-	struct kbasep_js_device_data *js_devdata;
-	int as_nr;
-	int refcnt = 0;
-
-	js_devdata = &kbdev->js_data;
-
-	as_nr = kctx->as_nr;
-	if (as_nr != KBASEP_AS_NR_INVALID) {
-		struct kbasep_js_per_as_data *js_per_as_data;
-
-		js_per_as_data = &js_devdata->runpool_irq.per_as_data[as_nr];
-
-		refcnt = js_per_as_data->as_busy_refcount;
-	}
-
-	return refcnt;
+	return atomic_read(&kctx->refcount);
 }
 
 /**

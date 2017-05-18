@@ -101,6 +101,12 @@
 #define GPU_ID2_PRODUCT_TMIX              GPU_ID2_MODEL_MAKE(6u, 0)
 #define GPU_ID2_PRODUCT_THEX              GPU_ID2_MODEL_MAKE(6u, 1)
 #define GPU_ID2_PRODUCT_TSIX              GPU_ID2_MODEL_MAKE(7u, 0)
+#ifdef MALI_INCLUDE_TKAX
+#define GPU_ID2_PRODUCT_TKAX              GPU_ID2_MODEL_MAKE(9u, 0)
+#endif /* MALI_INCLUDE_TKAX */
+#ifdef MALI_INCLUDE_TTRX
+#define GPU_ID2_PRODUCT_TTRX              GPU_ID2_MODEL_MAKE(10u, 0)
+#endif /* MALI_INCLUDE_TTRX */
 
 /* Values for GPU_ID_VERSION_STATUS field for PRODUCT_ID GPU_ID_PI_T60X */
 #define GPU_ID_S_15DEV0                   0x1

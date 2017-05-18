@@ -1,5 +1,5 @@
 #
-# (C) COPYRIGHT 2012-2016 ARM Limited. All rights reserved.
+# (C) COPYRIGHT 2012-2016, 2017 ARM Limited. All rights reserved.
 #
 # This program is free software and is provided to you under the terms of the
 # GNU General Public License version 2 as published by the Free Software
@@ -15,7 +15,7 @@
 
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= "r5p0-01rel0"
+MALI_RELEASE_NAME ?= "r6p0-01rel0"
 
 # Paths required for build
 KBASE_PATH = $(src)
@@ -77,6 +77,7 @@ SRC := \
 	mali_kbase_cache_policy.c \
 	mali_kbase_mem.c \
 	mali_kbase_mmu.c \
+	mali_kbase_ctx_sched.c \
 	mali_kbase_jd.c \
 	mali_kbase_jd_debugfs.c \
 	mali_kbase_jm.c \
@@ -97,8 +98,6 @@ SRC := \
 	mali_kbase_gpu_memory_debugfs.c \
 	mali_kbase_mem_linux.c \
 	mali_kbase_core_linux.c \
-	mali_kbase_sync.c \
-	mali_kbase_sync_user.c \
 	mali_kbase_replay.c \
 	mali_kbase_mem_profile_debugfs.c \
 	mali_kbase_mmu_mode_lpae.c \
@@ -143,16 +142,6 @@ ifeq ($(CONFIG_MALI_PLATFORM_FAKE),y)
 		ccflags-y += -I$(src)/platform/rtsm_ve
 	endif
 
-	ifeq ($(CONFIG_MALI_PLATFORM_JUNO),y)
-		SRC += platform/juno/mali_kbase_config_vexpress.c
-		ccflags-y += -I$(src)/platform/juno
-	endif
-
-	ifeq ($(CONFIG_MALI_PLATFORM_JUNO_SOC),y)
-		SRC += platform/juno_soc/mali_kbase_config_juno_soc.c
-		ccflags-y += -I$(src)/platform/juno_soc
-	endif
-
 	ifeq ($(CONFIG_MALI_PLATFORM_VEXPRESS_1XV7_A57),y)
 		SRC += platform/vexpress_1xv7_a57/mali_kbase_config_vexpress.c
 		ccflags-y += -I$(src)/platform/vexpress_1xv7_a57
@@ -179,11 +168,22 @@ ifeq ($(CONFIG_MALI_PLATFORM_THIRDPARTY),y)
   include $(src)/$(MALI_PLATFORM_THIRDPARTY_DIR)/Kbuild
 endif
 
-ifeq ($(CONFIG_DEVFREQ_THERMAL),y)
-  include $(src)/ipa/Kbuild
+ifeq ($(CONFIG_MALI_DEVFREQ),y)
+  ifeq ($(CONFIG_DEVFREQ_THERMAL),y)
+    include $(src)/ipa/Kbuild
+  endif
 endif
 
-mali_kbase-$(CONFIG_MALI_DMA_FENCE) += mali_kbase_dma_fence.o
+mali_kbase-$(CONFIG_MALI_DMA_FENCE) += \
+	mali_kbase_dma_fence.o \
+	mali_kbase_fence.o
+mali_kbase-$(CONFIG_SYNC) += \
+	mali_kbase_sync_android.o \
+	mali_kbase_sync_common.o
+mali_kbase-$(CONFIG_SYNC_FILE) += \
+	mali_kbase_sync_file.o \
+	mali_kbase_sync_common.o \
+	mali_kbase_fence.o
 
 MALI_BACKEND_PATH ?= backend
 CONFIG_MALI_BACKEND ?= gpu
@@ -213,3 +213,6 @@ mali_kbase-$(CONFIG_MALI_PLATFORM_DEVICETREE) += \
 	platform/devicetree/mali_kbase_runtime_pm.o \
 	platform/devicetree/mali_kbase_config_devicetree.o
 ccflags-$(CONFIG_MALI_PLATFORM_DEVICETREE) += -I$(src)/platform/devicetree
+
+# For kutf and mali_kutf_irq_latency_test
+obj-$(CONFIG_MALI_KUTF) += tests/

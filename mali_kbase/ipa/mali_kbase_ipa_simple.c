@@ -85,7 +85,7 @@ static u32 calculate_temp_scaling_factor(s32 ts[4], s64 t)
 	return clamp(res_unclamped, (s64) 0, (s64) 10000000);
 }
 
-static unsigned long model_static_power(struct kbase_ipa_model *model)
+static int model_static_coeff(struct kbase_ipa_model *model, u32 *coeffp)
 {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 3, 0)
 	unsigned long temp;
@@ -113,15 +113,21 @@ static unsigned long model_static_power(struct kbase_ipa_model *model)
 	temp_scaling_factor = calculate_temp_scaling_factor(model_data->ts,
 							    temp);
 
-	return (model_data->static_coefficient * temp_scaling_factor) / 1000000;
+	*coeffp = model_data->static_coefficient * temp_scaling_factor;
+	*coeffp /= 1000000;
+
+	return 0;
 }
 
-static unsigned long model_dynamic_power(struct kbase_ipa_model *model)
+static int model_dynamic_coeff(struct kbase_ipa_model *model, u32 *coeffp,
+			       u32 current_freq)
 {
 	struct kbase_ipa_model_simple_data *model_data =
 		(struct kbase_ipa_model_simple_data *) model->model_data;
 
-	return model_data->dynamic_coefficient;
+	*coeffp = model_data->dynamic_coefficient;
+
+	return 0;
 }
 
 static int add_params(struct kbase_ipa_model *model)
@@ -130,24 +136,26 @@ static int add_params(struct kbase_ipa_model *model)
 	struct kbase_ipa_model_simple_data *model_data =
 			(struct kbase_ipa_model_simple_data *)model->model_data;
 
-	err = kbase_ipa_model_add_param_u32(model, "static-coefficient",
-					    &model_data->static_coefficient);
+	err = kbase_ipa_model_add_param_s32(model, "static-coefficient",
+					    &model_data->static_coefficient,
+					    1, true);
 	if (err)
 		goto end;
 
-	err = kbase_ipa_model_add_param_u32(model, "dynamic-coefficient",
-					    &model_data->dynamic_coefficient);
+	err = kbase_ipa_model_add_param_s32(model, "dynamic-coefficient",
+					    &model_data->dynamic_coefficient,
+					    1, true);
 	if (err)
 		goto end;
 
-	err = kbase_ipa_model_add_param_s32_array(model, "ts",
-						  model_data->ts, 4);
+	err = kbase_ipa_model_add_param_s32(model, "ts",
+					    model_data->ts, 4, true);
 	if (err)
 		goto end;
 
 	err = kbase_ipa_model_add_param_string(model, "thermal-zone",
 					       model_data->tz_name,
-					       sizeof(model_data->tz_name));
+					       sizeof(model_data->tz_name), true);
 
 end:
 	return err;
@@ -175,13 +183,18 @@ static int kbase_simple_power_model_recalculate(struct kbase_ipa_model *model)
 	struct kbase_ipa_model_simple_data *model_data =
 			(struct kbase_ipa_model_simple_data *)model->model_data;
 
-	model_data->gpu_tz = thermal_zone_get_zone_by_name(model_data->tz_name);
-	if (IS_ERR(model_data->gpu_tz)) {
-		pr_warn_ratelimited("Error %ld getting thermal zone \'%s\', not yet ready?\n",
-				    PTR_ERR(model_data->gpu_tz),
-				    model_data->tz_name);
+	if (!strnlen(model_data->tz_name, sizeof(model_data->tz_name))) {
 		model_data->gpu_tz = NULL;
-		return -EPROBE_DEFER;
+	} else {
+		model_data->gpu_tz = thermal_zone_get_zone_by_name(model_data->tz_name);
+
+		if (IS_ERR(model_data->gpu_tz)) {
+			pr_warn_ratelimited("Error %ld getting thermal zone \'%s\', not yet ready?\n",
+					    PTR_ERR(model_data->gpu_tz),
+					    model_data->tz_name);
+			model_data->gpu_tz = NULL;
+			return -EPROBE_DEFER;
+		}
 	}
 
 	return 0;
@@ -200,6 +213,7 @@ struct kbase_ipa_model_ops kbase_simple_ipa_model_ops = {
 		.init = &kbase_simple_power_model_init,
 		.recalculate = &kbase_simple_power_model_recalculate,
 		.term = &kbase_simple_power_model_term,
-		.get_dynamic_power = &model_dynamic_power,
-		.get_static_power = &model_static_power,
+		.get_dynamic_coeff = &model_dynamic_coeff,
+		.get_static_coeff = &model_static_coeff,
+		.do_utilization_scaling_in_framework = true,
 };

@@ -31,7 +31,6 @@ struct kbase_ipa_model_param {
 	char *name;
 	union {
 		void *voidp;
-		u32 *u32p;
 		s32 *s32p;
 		char *str;
 	} addr;
@@ -46,10 +45,7 @@ static int param_int_get(void *data, u64 *val)
 	struct kbase_ipa_model_param *param = data;
 
 	mutex_lock(&param->model->kbdev->ipa.lock);
-	if (param->type == PARAM_TYPE_S32)
-		*(s64 *) val = *param->addr.s32p;
-	else
-		*val = *param->addr.u32p;
+	*(s64 *) val = *param->addr.s32p;
 	mutex_unlock(&param->model->kbdev->ipa.lock);
 
 	return 0;
@@ -62,28 +58,17 @@ static int param_int_set(void *data, u64 val)
 	s64 sval = (s64) val;
 	int err = 0;
 
-	switch (param->type) {
-	case PARAM_TYPE_U32:
-		if (sval < 0 || val > U32_MAX)
-			return -ERANGE;
-		break;
-	case PARAM_TYPE_S32:
-		if (sval < S32_MIN || sval > S32_MAX)
-			return -ERANGE;
-		break;
-	default:
-		return -EINVAL;
-	}
+	if (sval < S32_MIN || sval > S32_MAX)
+		return -ERANGE;
 
 	mutex_lock(&param->model->kbdev->ipa.lock);
-	*param->addr.u32p = val;
+	*param->addr.s32p = val;
 	err = kbase_ipa_model_recalculate(model);
 	mutex_unlock(&param->model->kbdev->ipa.lock);
 
 	return err;
 }
 
-DEFINE_DEBUGFS_ATTRIBUTE(fops_u32, param_int_get, param_int_set, "%llu\n");
 DEFINE_DEBUGFS_ATTRIBUTE(fops_s32, param_int_get, param_int_set, "%lld\n");
 
 static ssize_t param_string_get(struct file *file, char __user *user_buf,
@@ -205,9 +190,6 @@ static void kbase_ipa_model_debugfs_init(struct kbase_ipa_model *model)
 		switch (param->type) {
 		case PARAM_TYPE_S32:
 			fops = &fops_s32;
-			break;
-		case PARAM_TYPE_U32:
-			fops = &fops_u32;
 			break;
 		case PARAM_TYPE_STRING:
 			fops = &fops_string;

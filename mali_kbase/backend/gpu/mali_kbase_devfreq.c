@@ -40,6 +40,7 @@
 #define dev_pm_opp_get_voltage opp_get_voltage
 #define dev_pm_opp_get_opp_count opp_get_opp_count
 #define dev_pm_opp_find_freq_ceil opp_find_freq_ceil
+#define dev_pm_opp_find_freq_floor opp_find_freq_floor
 #endif /* Linux >= 3.13 */
 
 /**
@@ -362,7 +363,7 @@ int kbase_devfreq_init(struct kbase_device *kbdev)
 	kbdev->devfreq_cooling = of_devfreq_cooling_register_power(
 			kbdev->dev->of_node,
 			kbdev->devfreq,
-			&power_model_ops);
+			&kbase_ipa_power_model_ops);
 	if (IS_ERR_OR_NULL(kbdev->devfreq_cooling)) {
 		err = PTR_ERR(kbdev->devfreq_cooling);
 		dev_err(kbdev->dev,

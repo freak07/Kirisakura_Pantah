@@ -32,6 +32,7 @@
 #include <mali_kbase_config_defaults.h>
 #include <mali_kbase_smc.h>
 #include <mali_kbase_hwaccess_jm.h>
+#include <mali_kbase_ctx_sched.h>
 #include <backend/gpu/mali_kbase_cache_policy_backend.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_irq_internal.h>
@@ -1025,7 +1026,6 @@ void kbase_pm_clock_on(struct kbase_device *kbdev, bool is_resume)
 	bool reset_required = is_resume;
 	struct kbasep_js_device_data *js_devdata = &kbdev->js_data;
 	unsigned long flags;
-	int i;
 
 	KBASE_DEBUG_ASSERT(NULL != kbdev);
 	lockdep_assert_held(&js_devdata->runpool_mutex);
@@ -1067,18 +1067,9 @@ void kbase_pm_clock_on(struct kbase_device *kbdev, bool is_resume)
 	}
 
 	mutex_lock(&kbdev->mmu_hw_mutex);
-	/* Reprogram the GPU's MMU */
-	for (i = 0; i < kbdev->nr_hw_address_spaces; i++) {
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-
-		if (js_devdata->runpool_irq.per_as_data[i].kctx)
-			kbase_mmu_update(
-				js_devdata->runpool_irq.per_as_data[i].kctx);
-		else
-			kbase_mmu_disable_as(kbdev, i);
-
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-	}
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbase_ctx_sched_restore_all_as(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 	mutex_unlock(&kbdev->mmu_hw_mutex);
 
 	/* Lastly, enable the interrupts */
@@ -1359,7 +1350,7 @@ void kbase_pm_cache_snoop_disable(struct kbase_device *kbdev)
 	}
 }
 
-static int kbase_pm_reset_do_normal(struct kbase_device *kbdev)
+static int kbase_pm_do_reset(struct kbase_device *kbdev)
 {
 	struct kbasep_reset_timeout_data rtdata;
 
@@ -1439,13 +1430,28 @@ static int kbase_pm_reset_do_normal(struct kbase_device *kbdev)
 	return -EINVAL;
 }
 
-static int kbase_pm_reset_do_protected(struct kbase_device *kbdev)
+static int kbasep_protected_mode_enable(struct protected_mode_device *pdev)
 {
-	KBASE_TRACE_ADD(kbdev, CORE_GPU_SOFT_RESET, NULL, NULL, 0u, 0);
-	KBASE_TLSTREAM_JD_GPU_SOFT_RESET(kbdev);
+	struct kbase_device *kbdev = pdev->data;
 
-	return kbdev->protected_ops->protected_mode_reset(kbdev);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND),
+		GPU_COMMAND_SET_PROTECTED_MODE, NULL);
+	return 0;
 }
+
+static int kbasep_protected_mode_disable(struct protected_mode_device *pdev)
+{
+	struct kbase_device *kbdev = pdev->data;
+
+	lockdep_assert_held(&kbdev->pm.lock);
+
+	return kbase_pm_do_reset(kbdev);
+}
+
+struct protected_mode_ops kbase_native_protected_ops = {
+	.protected_mode_enable = kbasep_protected_mode_enable,
+	.protected_mode_disable = kbasep_protected_mode_disable
+};
 
 int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 {
@@ -1490,19 +1496,17 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, irq_flags);
 
 	/* Soft reset the GPU */
-	if (kbdev->protected_mode_support &&
-			kbdev->protected_ops->protected_mode_reset)
-		err = kbase_pm_reset_do_protected(kbdev);
+	if (kbdev->protected_mode_support)
+		err = kbdev->protected_ops->protected_mode_disable(
+				kbdev->protected_dev);
 	else
-		err = kbase_pm_reset_do_normal(kbdev);
+		err = kbase_pm_do_reset(kbdev);
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, irq_flags);
 	if (kbdev->protected_mode)
 		resume_vinstr = true;
 	kbdev->protected_mode = false;
-#ifdef CONFIG_DEVFREQ_THERMAL
 	kbase_ipa_model_use_configured_locked(kbdev);
-#endif
 
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, irq_flags);
 

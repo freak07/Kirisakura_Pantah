@@ -169,7 +169,7 @@ config MALI_DEBUG
 
 config MALI_FENCE_DEBUG
 	bool "Debug sync fence usage"
-	depends on MALI_MIDGARD && MALI_EXPERT && SYNC
+	depends on MALI_MIDGARD && MALI_EXPERT && (SYNC || SYNC_FILE)
 	default y if MALI_DEBUG
 	help
 	  Select this option to enable additional checking and reporting on the
@@ -244,3 +244,4 @@ config MALI_PWRSOFT_765
 	  parts of the code.
 
 source "drivers/gpu/arm/midgard/platform/Kconfig"
+source "drivers/gpu/arm/midgard/tests/Kconfig"

@@ -20,7 +20,6 @@
 
 enum kbase_ipa_model_param_type {
 	PARAM_TYPE_S32 = 1,
-	PARAM_TYPE_U32,
 	PARAM_TYPE_STRING,
 };
 

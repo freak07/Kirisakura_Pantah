@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -1160,6 +1160,28 @@ static enum hrtimer_restart kbasep_vinstr_wake_up_callback(
 	return HRTIMER_NORESTART;
 }
 
+#ifdef CONFIG_DEBUG_OBJECT_TIMERS
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0))
+/**
+ * kbase_destroy_hrtimer_on_stack - kernel's destroy_hrtimer_on_stack(),
+ *                                  rewritten
+ *
+ * @timer: high resolution timer
+ *
+ * destroy_hrtimer_on_stack() was exported only for 4.7.0 kernel so for
+ * earlier kernel versions it is not possible to call it explicitly.
+ * Since this function must accompany hrtimer_init_on_stack(), which
+ * has to be used for hrtimer initialization if CONFIG_DEBUG_OBJECT_TIMERS
+ * is defined in order to avoid the warning about object on stack not being
+ * annotated, we rewrite it here to be used for earlier kernel versions.
+ */
+static void kbase_destroy_hrtimer_on_stack(struct hrtimer *timer)
+{
+	debug_object_free(timer, &hrtimer_debug_descr);
+}
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0) */
+#endif /* CONFIG_DEBUG_OBJECT_TIMERS */
+
 /**
  * kbasep_vinstr_service_task - HWC dumping service thread
  *
@@ -1174,7 +1196,8 @@ static int kbasep_vinstr_service_task(void *data)
 
 	KBASE_DEBUG_ASSERT(vinstr_ctx);
 
-	hrtimer_init(&timer.hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	hrtimer_init_on_stack(&timer.hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+
 	timer.hrtimer.function = kbasep_vinstr_wake_up_callback;
 	timer.vinstr_ctx       = vinstr_ctx;
 
@@ -1276,6 +1299,14 @@ static int kbasep_vinstr_service_task(void *data)
 
 		mutex_unlock(&vinstr_ctx->lock);
 	}
+
+#ifdef CONFIG_DEBUG_OBJECTS_TIMERS
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0))
+	kbase_destroy_hrtimer_on_stack(&timer.hrtimer);
+#else
+	destroy_hrtimer_on_stack(&timer.hrtimer);
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0)) */
+#endif /* CONFIG_DEBUG_OBJECTS_TIMERS */
 
 	return 0;
 }

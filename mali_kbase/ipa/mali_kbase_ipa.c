@@ -32,6 +32,10 @@
 
 #define KBASE_IPA_FALLBACK_MODEL_NAME "mali-simple-power-model"
 
+static struct kbase_ipa_model_ops *kbase_ipa_all_model_ops[] = {
+	&kbase_simple_ipa_model_ops,
+};
+
 int kbase_ipa_model_recalculate(struct kbase_ipa_model *model)
 {
 	int err = 0;
@@ -50,56 +54,19 @@ int kbase_ipa_model_recalculate(struct kbase_ipa_model *model)
 	return err;
 }
 
-int kbase_ipa_model_ops_register(struct kbase_device *kbdev,
-			     struct kbase_ipa_model_ops *new_model_ops)
+static struct kbase_ipa_model_ops *kbase_ipa_model_ops_find(struct kbase_device *kbdev,
+							    const char *name)
 {
-	struct kbase_ipa_model *new_model;
+	int i;
 
-	lockdep_assert_held(&kbdev->ipa.lock);
+	for (i = 0; i < ARRAY_SIZE(kbase_ipa_all_model_ops); ++i) {
+		struct kbase_ipa_model_ops *ops = kbase_ipa_all_model_ops[i];
 
-	new_model = kzalloc(sizeof(struct kbase_ipa_model), GFP_KERNEL);
-	if (!new_model)
-		return -ENOMEM;
-
-	new_model->kbdev = kbdev;
-	new_model->ops = new_model_ops;
-
-	list_add(&new_model->link, &kbdev->ipa.power_models);
-
-	return 0;
-}
-
-static int kbase_ipa_internal_models_append_list(struct kbase_device *kbdev)
-{
-	int err;
-
-	INIT_LIST_HEAD(&kbdev->ipa.power_models);
-
-	/* Always have the simple IPA model */
-	err = kbase_ipa_model_ops_register(kbdev, &kbase_simple_ipa_model_ops);
-
-	if (err)
-		return err;
-
-	return err;
-}
-
-struct kbase_ipa_model *kbase_ipa_get_model(struct kbase_device *kbdev,
-					    const char *name)
-{
-	/* Search registered power models first */
-	struct list_head *it;
-
-	lockdep_assert_held(&kbdev->ipa.lock);
-
-	list_for_each(it, &kbdev->ipa.power_models) {
-		struct kbase_ipa_model *model =
-				list_entry(it,
-					   struct kbase_ipa_model,
-					   link);
-		if (strcmp(model->ops->name, name) == 0)
-			return model;
+		if (!strcmp(ops->name, name))
+			return ops;
 	}
+
+	dev_err(kbdev->dev, "power model \'%s\' not found\n", name);
 
 	return NULL;
 }
@@ -108,7 +75,6 @@ void kbase_ipa_model_use_fallback_locked(struct kbase_device *kbdev)
 {
 	atomic_set(&kbdev->ipa_use_configured_model, false);
 }
-
 
 void kbase_ipa_model_use_configured_locked(struct kbase_device *kbdev)
 {
@@ -142,72 +108,54 @@ static struct device_node *get_model_dt_node(struct kbase_ipa_model *model)
 
 	model_dt_node = of_find_compatible_node(model->kbdev->dev->of_node,
 						NULL, compat_string);
-	if (!model_dt_node) {
+	if (!model_dt_node && !model->missing_dt_node_warning) {
 		dev_warn(model->kbdev->dev,
 			 "Couldn't find power_model DT node matching \'%s\'\n",
 			 compat_string);
+		model->missing_dt_node_warning = true;
 	}
 
 	return model_dt_node;
 }
 
-int kbase_ipa_model_add_param_u32_def(struct kbase_ipa_model *model,
-				      const char *name, u32 *addr,
-				      bool has_default, u32 default_value)
-{
-	int err;
-	struct device_node *model_dt_node = get_model_dt_node(model);
-
-	err = of_property_read_u32(model_dt_node, name, addr);
-
-	if (err && !has_default) {
-		dev_err(model->kbdev->dev,
-			"No DT entry or default found for %s.%s, err = %d\n",
-			model->ops->name, name, err);
-		goto exit;
-	} else if (err && has_default) {
-		*addr = default_value;
-		dev_dbg(model->kbdev->dev, "%s.%s = %u (default)\n",
-			model->ops->name, name, *addr);
-		err = 0;
-	} else /* !err */ {
-		dev_dbg(model->kbdev->dev, "%s.%s = %u (DT)\n",
-			model->ops->name, name, *addr);
-	}
-
-	err = kbase_ipa_model_param_add(model, name, addr, sizeof(u32),
-					PARAM_TYPE_U32);
-exit:
-	return err;
-}
-
-int kbase_ipa_model_add_param_s32_array(struct kbase_ipa_model *model,
-					const char *name, s32 *addr,
-					size_t num_elems)
+int kbase_ipa_model_add_param_s32(struct kbase_ipa_model *model,
+				  const char *name, s32 *addr,
+				  size_t num_elems, bool dt_required)
 {
 	int err, i;
 	struct device_node *model_dt_node = get_model_dt_node(model);
+	char *origin;
 
 	err = of_property_read_u32_array(model_dt_node, name, addr, num_elems);
 
-	if (err) {
-		dev_err(model->kbdev->dev,
-			"No DT entry found for %s.%s, err = %d\n",
-			model->ops->name, name, err);
-		goto exit;
-	} else {
-		for (i = 0; i < num_elems; ++i)
-			dev_dbg(model->kbdev->dev, "%s.%s[%u] = %d (DT)\n",
-				model->ops->name, name, i, *(addr + i));
+	if (err && dt_required) {
+		memset(addr, 0, sizeof(s32) * num_elems);
+		dev_warn(model->kbdev->dev,
+			 "Error %d, no DT entry: %s.%s = %zu*[0]\n",
+			 err, model->ops->name, name, num_elems);
+		origin = "zero";
+	} else if (err && !dt_required) {
+		origin = "default";
+	} else /* !err */ {
+		origin = "DT";
 	}
 
 	/* Create a unique debugfs entry for each element */
 	for (i = 0; i < num_elems; ++i) {
 		char elem_name[32];
 
-		snprintf(elem_name, sizeof(elem_name), "%s.%d", name, i);
-		err = kbase_ipa_model_param_add(model, elem_name, &addr[i],
-						sizeof(s32), PARAM_TYPE_S32);
+		if (num_elems == 1)
+			snprintf(elem_name, sizeof(elem_name), "%s", name);
+		else
+			snprintf(elem_name, sizeof(elem_name), "%s.%d",
+				name, i);
+
+		dev_dbg(model->kbdev->dev, "%s.%s = %d (%s)\n",
+			model->ops->name, elem_name, addr[i], origin);
+
+		err = kbase_ipa_model_param_add(model, elem_name,
+						&addr[i], sizeof(s32),
+						PARAM_TYPE_S32);
 		if (err)
 			goto exit;
 	}
@@ -217,32 +165,41 @@ exit:
 
 int kbase_ipa_model_add_param_string(struct kbase_ipa_model *model,
 				     const char *name, char *addr,
-				     size_t len)
+				     size_t size, bool dt_required)
 {
 	int err;
 	struct device_node *model_dt_node = get_model_dt_node(model);
 	const char *string_prop_value;
+	char *origin;
 
 	err = of_property_read_string(model_dt_node, name,
 				      &string_prop_value);
-	if (err) {
-		dev_err(model->kbdev->dev,
-			"No DT entry found for %s.%s, err = %d\n",
-			model->ops->name, name, err);
-		goto exit;
-	} else {
-		strncpy(addr, string_prop_value, len);
-		dev_dbg(model->kbdev->dev, "%s.%s = \'%s\' (DT)\n",
-			model->ops->name, name, string_prop_value);
+	if (err && dt_required) {
+		strncpy(addr, "", size - 1);
+		dev_warn(model->kbdev->dev,
+			 "Error %d, no DT entry: %s.%s = \'%s\'\n",
+			 err, model->ops->name, name, addr);
+		err = 0;
+		origin = "zero";
+	} else if (err && !dt_required) {
+		origin = "default";
+	} else /* !err */ {
+		strncpy(addr, string_prop_value, size - 1);
+		origin = "DT";
 	}
 
-	err = kbase_ipa_model_param_add(model, name, addr, len,
+	addr[size - 1] = '\0';
+
+	dev_dbg(model->kbdev->dev, "%s.%s = \'%s\' (%s)\n",
+		model->ops->name, name, string_prop_value, origin);
+
+	err = kbase_ipa_model_param_add(model, name, addr, size,
 					PARAM_TYPE_STRING);
-exit:
+
 	return err;
 }
 
-static void term_model(struct kbase_ipa_model *model)
+void kbase_ipa_term_model(struct kbase_ipa_model *model)
 {
 	if (!model)
 		return;
@@ -253,42 +210,49 @@ static void term_model(struct kbase_ipa_model *model)
 		model->ops->term(model);
 
 	kbase_ipa_model_param_free_all(model);
-}
 
-static struct kbase_ipa_model *init_model(struct kbase_device *kbdev,
-					  const char *model_name)
+	kfree(model);
+}
+KBASE_EXPORT_TEST_API(kbase_ipa_term_model);
+
+struct kbase_ipa_model *kbase_ipa_init_model(struct kbase_device *kbdev,
+					     struct kbase_ipa_model_ops *ops)
 {
 	struct kbase_ipa_model *model;
 	int err;
 
 	lockdep_assert_held(&kbdev->ipa.lock);
 
-	model = kbase_ipa_get_model(kbdev, model_name);
-	if (!model) {
-		dev_err(kbdev->dev, "power model \'%s\' not found\n",
-			model_name);
+	if (!ops || !ops->name)
 		return NULL;
-	}
 
+	model = kzalloc(sizeof(struct kbase_ipa_model), GFP_KERNEL);
+	if (!model)
+		return NULL;
+
+	model->kbdev = kbdev;
+	model->ops = ops;
 	INIT_LIST_HEAD(&model->params);
 
 	err = model->ops->init(model);
 	if (err) {
 		dev_err(kbdev->dev,
 			"init of power model \'%s\' returned error %d\n",
-			model_name, err);
-		term_model(model);
-		return NULL;
+			ops->name, err);
+		goto term_model;
 	}
 
 	err = kbase_ipa_model_recalculate(model);
-	if (err) {
-		term_model(model);
-		return NULL;
-	}
+	if (err)
+		goto term_model;
 
 	return model;
+
+term_model:
+	kbase_ipa_term_model(model);
+	return NULL;
 }
+KBASE_EXPORT_TEST_API(kbase_ipa_init_model);
 
 static void kbase_ipa_term_locked(struct kbase_device *kbdev)
 {
@@ -296,24 +260,18 @@ static void kbase_ipa_term_locked(struct kbase_device *kbdev)
 
 	/* Clean up the models */
 	if (kbdev->ipa.configured_model != kbdev->ipa.fallback_model)
-		term_model(kbdev->ipa.configured_model);
-	term_model(kbdev->ipa.fallback_model);
+		kbase_ipa_term_model(kbdev->ipa.configured_model);
+	kbase_ipa_term_model(kbdev->ipa.fallback_model);
 
-	/* Clean up the list */
-	if (!list_empty(&kbdev->ipa.power_models)) {
-		struct kbase_ipa_model *model_p, *model_n;
-
-		list_for_each_entry_safe(model_p, model_n, &kbdev->ipa.power_models, link) {
-			list_del(&model_p->link);
-			kfree(model_p);
-		}
-	}
+	kbdev->ipa.configured_model = NULL;
+	kbdev->ipa.fallback_model = NULL;
 }
 
 int kbase_ipa_init(struct kbase_device *kbdev)
 {
 
 	const char *model_name;
+	struct kbase_ipa_model_ops *ops;
 	struct kbase_ipa_model *default_model = NULL;
 	int err;
 
@@ -324,11 +282,18 @@ int kbase_ipa_init(struct kbase_device *kbdev)
 	 */
 	mutex_lock(&kbdev->ipa.lock);
 
-	/* Add default ones to the list */
-	err = kbase_ipa_internal_models_append_list(kbdev);
-
 	/* The simple IPA model must *always* be present.*/
-	default_model = init_model(kbdev, KBASE_IPA_FALLBACK_MODEL_NAME);
+	ops = kbase_ipa_model_ops_find(kbdev, KBASE_IPA_FALLBACK_MODEL_NAME);
+
+	if (!ops->do_utilization_scaling_in_framework) {
+		dev_err(kbdev->dev,
+			"Fallback IPA model %s should not account for utilization\n",
+			ops->name);
+		err = -EINVAL;
+		goto end;
+	}
+
+	default_model = kbase_ipa_init_model(kbdev, ops);
 	if (!default_model) {
 		err = -EINVAL;
 		goto end;
@@ -344,10 +309,18 @@ int kbase_ipa_init(struct kbase_device *kbdev)
 
 		gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
 		model_name = kbase_ipa_model_name_from_id(gpu_id);
+		dev_dbg(kbdev->dev,
+			"Inferring model from GPU ID 0x%x: \'%s\'\n",
+			gpu_id, model_name);
+	} else {
+		dev_dbg(kbdev->dev,
+			"Using ipa-model parameter from DT: \'%s\'\n",
+			model_name);
 	}
 
 	if (strcmp(KBASE_IPA_FALLBACK_MODEL_NAME, model_name) != 0) {
-		kbdev->ipa.configured_model = init_model(kbdev, model_name);
+		ops = kbase_ipa_model_ops_find(kbdev, model_name);
+		kbdev->ipa.configured_model = kbase_ipa_init_model(kbdev, ops);
 		if (!kbdev->ipa.configured_model) {
 			err = -EINVAL;
 			goto end;
@@ -365,12 +338,13 @@ end:
 	else
 		dev_info(kbdev->dev,
 			 "Using configured power model %s, and fallback %s\n",
-			 kbdev->ipa.fallback_model->ops->name,
-			 kbdev->ipa.configured_model->ops->name);
+			 kbdev->ipa.configured_model->ops->name,
+			 kbdev->ipa.fallback_model->ops->name);
 
 	mutex_unlock(&kbdev->ipa.lock);
 	return err;
 }
+KBASE_EXPORT_TEST_API(kbase_ipa_init);
 
 void kbase_ipa_term(struct kbase_device *kbdev)
 {
@@ -378,6 +352,7 @@ void kbase_ipa_term(struct kbase_device *kbdev)
 	kbase_ipa_term_locked(kbdev);
 	mutex_unlock(&kbdev->ipa.lock);
 }
+KBASE_EXPORT_TEST_API(kbase_ipa_term);
 
 /**
  * kbase_scale_dynamic_power() - Scale a dynamic power coefficient to an OPP
@@ -393,21 +368,20 @@ void kbase_ipa_term(struct kbase_device *kbdev)
  *
  * Return: Power consumption, in mW. Range: 0 < p < 2^13 (0W to ~8W)
  */
-static inline unsigned long kbase_scale_dynamic_power(const unsigned long c,
-						      const unsigned long freq,
-						      const unsigned long voltage)
+static u32 kbase_scale_dynamic_power(const u32 c, const u32 freq,
+				     const u32 voltage)
 {
 	/* Range: 2^8 < v2 < 2^16 m(V^2) */
-	const unsigned long v2 = (voltage * voltage) / 1000;
+	const u32 v2 = (voltage * voltage) / 1000;
 
 	/* Range: 2^3 < f_MHz < 2^10 MHz */
-	const unsigned long f_MHz = freq / 1000000;
+	const u32 f_MHz = freq / 1000000;
 
 	/* Range: 2^11 < v2f_big < 2^26 kHz V^2 */
-	const unsigned long v2f_big = v2 * f_MHz;
+	const u32 v2f_big = v2 * f_MHz;
 
 	/* Range: 2^1 < v2f < 2^16 MHz V^2 */
-	const unsigned long v2f = v2f_big / 1000;
+	const u32 v2f = v2f_big / 1000;
 
 	/* Range (working backwards from next line): 0 < v2fc < 2^23 uW.
 	 * Must be < 2^42 to avoid overflowing the return value. */
@@ -425,17 +399,16 @@ static inline unsigned long kbase_scale_dynamic_power(const unsigned long c,
  *
  * Return: Power consumption, in mW. Range: 0 < p < 2^13 (0W to ~8W)
  */
-unsigned long kbase_scale_static_power(const unsigned long c,
-				       const unsigned long voltage)
+u32 kbase_scale_static_power(const u32 c, const u32 voltage)
 {
 	/* Range: 2^8 < v2 < 2^16 m(V^2) */
-	const unsigned long v2 = (voltage * voltage) / 1000;
+	const u32 v2 = (voltage * voltage) / 1000;
 
 	/* Range: 2^17 < v3_big < 2^29 m(V^2) mV */
-	const unsigned long v3_big = v2 * voltage;
+	const u32 v3_big = v2 * voltage;
 
 	/* Range: 2^7 < v3 < 2^19 m(V^3) */
-	const unsigned long v3 = v3_big / 1000;
+	const u32 v3 = v3_big / 1000;
 
 	/*
 	 * Range (working backwards from next line): 0 < v3c_big < 2^33 nW.
@@ -457,6 +430,29 @@ static struct kbase_ipa_model *get_current_model(struct kbase_device *kbdev)
 		return kbdev->ipa.fallback_model;
 }
 
+static u32 get_static_power_locked(struct kbase_device *kbdev,
+				   struct kbase_ipa_model *model,
+				   unsigned long voltage)
+{
+	u32 power = 0;
+	int err;
+	u32 power_coeff;
+
+	lockdep_assert_held(&model->kbdev->ipa.lock);
+
+	if (!model->ops->get_static_coeff)
+		model = kbdev->ipa.fallback_model;
+
+	if (model->ops->get_static_coeff) {
+		err = model->ops->get_static_coeff(model, &power_coeff);
+		if (!err)
+			power = kbase_scale_static_power(power_coeff,
+							 (u32) voltage);
+	}
+
+	return power;
+}
+
 #ifdef CONFIG_MALI_PWRSOFT_765
 static unsigned long kbase_get_static_power(struct devfreq *df,
 					    unsigned long voltage)
@@ -465,7 +461,7 @@ static unsigned long kbase_get_static_power(unsigned long voltage)
 #endif
 {
 	struct kbase_ipa_model *model;
-	unsigned long power_coeff = 0, power = 0;
+	u32 power = 0;
 #ifdef CONFIG_MALI_PWRSOFT_765
 	struct kbase_device *kbdev = dev_get_drvdata(&df->dev);
 #else
@@ -475,15 +471,7 @@ static unsigned long kbase_get_static_power(unsigned long voltage)
 	mutex_lock(&kbdev->ipa.lock);
 
 	model = get_current_model(kbdev);
-
-	if (model) {
-		power_coeff = model->ops->get_static_power(model);
-		power = kbase_scale_static_power(power_coeff, voltage);
-	} else {
-		dev_err(kbdev->dev, "%s: No current IPA model set", __func__);
-	}
-
-	kbdev->ipa.last_static_power_coeff = power_coeff;
+	power = get_static_power_locked(kbdev, model, voltage);
 
 	mutex_unlock(&kbdev->ipa.lock);
 
@@ -504,7 +492,8 @@ static unsigned long kbase_get_dynamic_power(unsigned long freq,
 #endif
 {
 	struct kbase_ipa_model *model;
-	unsigned long power_coeff = 0, power = 0;
+	u32 power_coeff = 0, power = 0;
+	int err = 0;
 #ifdef CONFIG_MALI_PWRSOFT_765
 	struct kbase_device *kbdev = dev_get_drvdata(&df->dev);
 #else
@@ -513,16 +502,16 @@ static unsigned long kbase_get_dynamic_power(unsigned long freq,
 
 	mutex_lock(&kbdev->ipa.lock);
 
-	model = get_current_model(kbdev);
+	model = kbdev->ipa.fallback_model;
 
-	if (model) {
-		power_coeff = model->ops->get_dynamic_power(model);
+	err = model->ops->get_dynamic_coeff(model, &power_coeff, freq);
+
+	if (!err)
 		power = kbase_scale_dynamic_power(power_coeff, freq, voltage);
-	} else {
-		dev_err(kbdev->dev, "%s: No current IPA model set", __func__);
-	}
-
-	kbdev->ipa.last_model_dyn_power_coeff = power_coeff;
+	else
+		dev_err_ratelimited(kbdev->dev,
+				    "Model %s returned error code %d\n",
+				    model->ops->name, err);
 
 	mutex_unlock(&kbdev->ipa.lock);
 
@@ -533,90 +522,60 @@ static unsigned long kbase_get_dynamic_power(unsigned long freq,
 	return power;
 }
 
-unsigned long kbase_power_to_state(struct devfreq *df, u32 target_power)
+int kbase_get_real_power(struct devfreq *df, u32 *power,
+				unsigned long freq,
+				unsigned long voltage)
 {
+	struct kbase_ipa_model *model;
+	u32 power_coeff = 0;
+	int err = 0;
 	struct kbase_device *kbdev = dev_get_drvdata(&df->dev);
-	struct device *dev = df->dev.parent;
-	unsigned long i, state = -1;
-	unsigned long dyn_coeff, static_coeff;
 
 	mutex_lock(&kbdev->ipa.lock);
 
-	dyn_coeff = kbdev->ipa.last_model_dyn_power_coeff;
-	static_coeff = kbdev->ipa.last_static_power_coeff;
+	model = get_current_model(kbdev);
 
+	err = model->ops->get_dynamic_coeff(model, &power_coeff, freq);
+
+	/* If we switch to protected model between get_current_model() and
+	 * get_dynamic_coeff(), counter reading could fail. If that happens
+	 * (unlikely, but possible), revert to the fallback model. */
+	if (err && model != kbdev->ipa.fallback_model) {
+		model = kbdev->ipa.fallback_model;
+		err = model->ops->get_dynamic_coeff(model, &power_coeff, freq);
+	}
+
+	if (err)
+		goto exit_unlock;
+
+	*power = kbase_scale_dynamic_power(power_coeff, freq, voltage);
+
+	if (model->ops->do_utilization_scaling_in_framework) {
+		struct devfreq_dev_status *status = &df->last_status;
+		unsigned long total_time = max(status->total_time, 1ul);
+		u64 busy_time = min(status->busy_time, total_time);
+
+		*power = ((u64) *power * (u64) busy_time) / total_time;
+	}
+
+	*power += get_static_power_locked(kbdev, model, voltage);
+
+exit_unlock:
 	mutex_unlock(&kbdev->ipa.lock);
 
-	/* OPPs are sorted from highest frequency to lowest */
-	for (i = 0; i < df->profile->max_state - 1; i++) {
-		struct dev_pm_opp *opp;
-		unsigned int freq;
-		unsigned long dyn_power, static_power, voltage;
-
-		freq = df->profile->freq_table[i]; /* Hz */
-
-		rcu_read_lock();
-		opp = dev_pm_opp_find_freq_exact(dev, freq, true);
-		/* Allow unavailable frequencies too in case we can enable a
-		 * higher one. */
-		if (PTR_ERR(opp) == -ERANGE)
-			opp = dev_pm_opp_find_freq_exact(dev, freq, false);
-
-		if (IS_ERR(opp)) {
-			rcu_read_unlock();
-			return PTR_ERR(opp);
-		}
-
-		voltage = dev_pm_opp_get_voltage(opp) / 1000; /* mV */
-		rcu_read_unlock();
-
-		dyn_power = kbase_scale_dynamic_power(dyn_coeff, freq, voltage);
-		static_power = kbase_scale_static_power(static_coeff, voltage);
-
-		if (target_power >= dyn_power + static_power)
-			break;
-	}
-	state = i;
-
-	return state;
+	return err;
 }
-KBASE_EXPORT_TEST_API(kbase_power_to_state);
+KBASE_EXPORT_TEST_API(kbase_get_real_power);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0)
-struct devfreq_cooling_ops power_model_ops = {
+struct devfreq_cooling_ops kbase_ipa_power_model_ops = {
 #else
-struct devfreq_cooling_power power_model_ops = {
+struct devfreq_cooling_power kbase_ipa_power_model_ops = {
 #endif
 	.get_static_power = &kbase_get_static_power,
 	.get_dynamic_power = &kbase_get_dynamic_power,
 #ifdef CONFIG_MALI_PWRSOFT_765
-	.power2state = &kbase_power_to_state,
+	.get_real_power = &kbase_get_real_power,
 #endif
 };
-
-unsigned long kbase_ipa_dynamic_power(struct kbase_device *kbdev,
-					     unsigned long freq,
-					     unsigned long voltage)
-{
-#ifdef CONFIG_MALI_PWRSOFT_765
-	struct devfreq *df = kbdev->devfreq;
-
-	return kbase_get_dynamic_power(df, freq, voltage);
-#else
-	return kbase_get_dynamic_power(freq, voltage);
-#endif
-}
-KBASE_EXPORT_TEST_API(kbase_ipa_dynamic_power);
-
-unsigned long kbase_ipa_static_power(struct kbase_device *kbdev,
-				     unsigned long voltage)
-{
-#ifdef CONFIG_MALI_PWRSOFT_765
-	struct devfreq *df = kbdev->devfreq;
-
-	return kbase_get_static_power(df, voltage);
-#else
-	return kbase_get_static_power(voltage);
-#endif
-}
-KBASE_EXPORT_TEST_API(kbase_ipa_static_power);
+KBASE_EXPORT_TEST_API(kbase_ipa_power_model_ops);

@@ -35,6 +35,7 @@
 #include <mali_kbase_mmu_mode.h>
 #include <mali_kbase_instr_defs.h>
 #include <mali_kbase_pm.h>
+#include <protected_mode_switcher.h>
 
 #include <linux/atomic.h>
 #include <linux/mempool.h>
@@ -50,19 +51,19 @@
 #include <linux/kds.h>
 #endif				/* CONFIG_KDS */
 
-#ifdef CONFIG_SYNC
-#include "sync.h"
-#endif				/* CONFIG_SYNC */
-
-#include "mali_kbase_dma_fence.h"
+#if defined(CONFIG_SYNC)
+#include <sync.h>
+#else
+#include "mali_kbase_fence_defs.h"
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
 #endif				/* CONFIG_DEBUG_FS */
 
-#ifdef CONFIG_PM_DEVFREQ
+#ifdef CONFIG_MALI_DEVFREQ
 #include <linux/devfreq.h>
-#endif /* CONFIG_DEVFREQ */
+#endif /* CONFIG_MALI_DEVFREQ */
 
 #include <linux/clk.h>
 #include <linux/regulator/consumer.h>
@@ -436,15 +437,26 @@ struct kbase_jd_atom {
 	struct kds_resource_set *kds_rset;
 	bool kds_dep_satisfied;
 #endif				/* CONFIG_KDS */
-#ifdef CONFIG_SYNC
+#if defined(CONFIG_SYNC)
+	/* Stores either an input or output fence, depending on soft-job type */
 	struct sync_fence *fence;
 	struct sync_fence_waiter sync_waiter;
 #endif				/* CONFIG_SYNC */
-#ifdef CONFIG_MALI_DMA_FENCE
+#if defined(CONFIG_MALI_DMA_FENCE) || defined(CONFIG_SYNC_FILE)
 	struct {
-		/* This points to the dma-buf fence for this atom. If this is
-		 * NULL then there is no fence for this atom and the other
-		 * fields related to dma_fence may have invalid data.
+		/* Use the functions/API defined in mali_kbase_fence.h to
+		 * when working with this sub struct */
+#if defined(CONFIG_SYNC_FILE)
+		/* Input fence */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0))
+		struct fence *fence_in;
+#else
+		struct dma_fence *fence_in;
+#endif
+#endif
+		/* This points to the dma-buf output fence for this atom. If
+		 * this is NULL then there is no fence for this atom and the
+		 * following fields related to dma_fence may have invalid data.
 		 *
 		 * The context and seqno fields contain the details for this
 		 * fence.
@@ -453,7 +465,11 @@ struct kbase_jd_atom {
 		 * regardless of the event_code of the katom (signal also on
 		 * failure).
 		 */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0))
 		struct fence *fence;
+#else
+		struct dma_fence *fence;
+#endif
 		/* The dma-buf fence context number for this atom. A unique
 		 * context number is allocated to each katom in the context on
 		 * context creation.
@@ -492,7 +508,7 @@ struct kbase_jd_atom {
 		 */
 		atomic_t dep_count;
 	} dma_fence;
-#endif /* CONFIG_MALI_DMA_FENCE */
+#endif /* CONFIG_MALI_DMA_FENCE || CONFIG_SYNC_FILE*/
 
 	/* Note: refer to kbasep_js_atom_retained_state, which will take a copy of some of the following members */
 	enum base_jd_event_code event_code;
@@ -887,40 +903,6 @@ struct kbase_pm_device_data {
 };
 
 /**
- * struct kbase_protected_ops - Platform specific functions for GPU protected
- * mode operations
- * @protected_mode_enter: Callback to enter protected mode on the GPU
- * @protected_mode_reset: Callback to reset the GPU and exit protected mode.
- * @protected_mode_supported: Callback to check if protected mode is supported.
- */
-struct kbase_protected_ops {
-	/**
-	 * protected_mode_enter() - Enter protected mode on the GPU
-	 * @kbdev:	The kbase device
-	 *
-	 * Return: 0 on success, non-zero on error
-	 */
-	int (*protected_mode_enter)(struct kbase_device *kbdev);
-
-	/**
-	 * protected_mode_reset() - Reset the GPU and exit protected mode
-	 * @kbdev:	The kbase device
-	 *
-	 * Return: 0 on success, non-zero on error
-	 */
-	int (*protected_mode_reset)(struct kbase_device *kbdev);
-
-	/**
-	 * protected_mode_supported() - Check if protected mode is supported
-	 * @kbdev:	The kbase device
-	 *
-	 * Return: 0 on success, non-zero on error
-	 */
-	bool (*protected_mode_supported)(struct kbase_device *kbdev);
-};
-
-
-/**
  * struct kbase_mem_pool - Page based memory pool for kctx/kbdev
  * @kbdev:     Kbase device where memory is used
  * @cur_size:  Number of free pages currently in the pool (may exceed @max_size
@@ -1003,6 +985,14 @@ struct kbase_device {
 	struct kbase_mmu_mode const *mmu_mode;
 
 	struct kbase_as as[BASE_MAX_NR_AS];
+	/* The below variables (as_free and as_to_kctx) are managed by the
+	 * Context Scheduler. The kbasep_js_device_data::runpool_irq::lock must
+	 * be held whilst accessing these.
+	 */
+	u16 as_free; /* Bitpattern of free Address Spaces */
+	/* Mapping from active Address Spaces to kbase_context */
+	struct kbase_context *as_to_kctx[BASE_MAX_NR_AS];
+
 
 	spinlock_t mmu_mask_change;
 
@@ -1097,7 +1087,7 @@ struct kbase_device {
 	struct list_head        kctx_list;
 	struct mutex            kctx_list_lock;
 
-#ifdef CONFIG_PM_DEVFREQ
+#ifdef CONFIG_MALI_DEVFREQ
 	struct devfreq_dev_profile devfreq_profile;
 	struct devfreq *devfreq;
 	unsigned long current_freq;
@@ -1117,14 +1107,11 @@ struct kbase_device {
 	struct {
 		/* Access to this struct must be with ipa.lock held */
 		struct mutex lock;
-		unsigned long last_model_dyn_power_coeff;
-		unsigned long last_static_power_coeff;
-		struct list_head power_models;
 		struct kbase_ipa_model *configured_model;
 		struct kbase_ipa_model *fallback_model;
 	} ipa;
-#endif
-#endif
+#endif /* CONFIG_DEVFREQ_THERMAL */
+#endif /* CONFIG_MALI_DEVFREQ */
 
 
 #ifdef CONFIG_MALI_TRACE_TIMELINE
@@ -1224,8 +1211,11 @@ struct kbase_device {
 	u32 snoop_enable_smc;
 	u32 snoop_disable_smc;
 
-	/* Protected operations */
-	struct kbase_protected_ops *protected_ops;
+	/* Protected mode operations */
+	struct protected_mode_ops *protected_ops;
+
+	/* Protected device attached to this kbase device */
+	struct protected_mode_device *protected_dev;
 
 	/*
 	 * true when GPU is put into protected mode
@@ -1410,6 +1400,14 @@ struct kbase_context {
 	 * to ensure the context doesn't disappear (but this has restrictions on what other locks
 	 * you can take whilst doing this) */
 	int as_nr;
+
+	/* Keeps track of the number of users of this context. A user can be a
+	 * job that is available for execution, instrumentation needing to 'pin'
+	 * a context for counter collection, etc. If the refcount reaches 0 then
+	 * this context is considered inactive and the previously programmed
+	 * AS might be cleared at any point.
+	 */
+	atomic_t refcount;
 
 	/* NOTE:
 	 *

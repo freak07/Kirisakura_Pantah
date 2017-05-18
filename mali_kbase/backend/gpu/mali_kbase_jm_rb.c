@@ -672,10 +672,9 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 				(katom->protected_state.enter ==
 				KBASE_ATOM_ENTER_PROTECTED_IDLE_L2)) {
 			kbase_vinstr_resume(kbdev->vinstr_ctx);
-#ifdef CONFIG_DEVFREQ_THERMAL
+
 			/* Go back to configured model for IPA */
 			kbase_ipa_model_use_configured_locked(kbdev);
-#endif
 		}
 
 
@@ -784,7 +783,8 @@ static int kbase_gpu_protected_mode_enter(struct kbase_device *kbdev)
 
 	if (kbdev->protected_ops) {
 		/* Switch GPU to protected mode */
-		err = kbdev->protected_ops->protected_mode_enter(kbdev);
+		err = kbdev->protected_ops->protected_mode_enable(
+				kbdev->protected_dev);
 
 		if (err)
 			dev_warn(kbdev->dev, "Failed to enable protected mode: %d\n",
@@ -806,6 +806,8 @@ static int kbase_gpu_protected_mode_reset(struct kbase_device *kbdev)
 	if (!kbdev->protected_ops)
 		return -EINVAL;
 
+	/* The protected mode disable callback will be called as part of reset
+	 */
 	kbase_reset_gpu_silent(kbdev);
 
 	return 0;
@@ -841,10 +843,8 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 			return -EAGAIN;
 		}
 
-#ifdef CONFIG_DEVFREQ_THERMAL
 		/* Use generic model for IPA in protected mode */
 		kbase_ipa_model_use_fallback_locked(kbdev);
-#endif
 
 		/* Once reaching this point GPU must be
 		 * switched to protected mode or vinstr
@@ -907,10 +907,9 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 				kbase_gpu_dequeue_atom(kbdev, js, NULL);
 				kbase_jm_return_atom_to_js(kbdev, katom[idx]);
 			}
-#ifdef CONFIG_DEVFREQ_THERMAL
+
 			/* Go back to configured model for IPA */
 			kbase_ipa_model_use_configured_locked(kbdev);
-#endif
 
 			return -EINVAL;
 		}
@@ -990,10 +989,9 @@ static int kbase_jm_exit_protected_mode(struct kbase_device *kbdev,
 			}
 
 			kbase_vinstr_resume(kbdev->vinstr_ctx);
-#ifdef CONFIG_DEVFREQ_THERMAL
+
 			/* Use generic model for IPA in protected mode */
 			kbase_ipa_model_use_fallback_locked(kbdev);
-#endif
 
 			return -EINVAL;
 		}
@@ -1515,6 +1513,8 @@ void kbase_backend_reset(struct kbase_device *kbdev, ktime_t *end_timestamp)
 					KBASE_ATOM_EXIT_PROTECTED_RESET_WAIT)
 			{
 				KBASE_TLSTREAM_AUX_PROTECTED_LEAVE_END(kbdev);
+
+				kbase_vinstr_resume(kbdev->vinstr_ctx);
 
 				/* protected mode sanity checks */
 				KBASE_DEBUG_ASSERT_MSG(

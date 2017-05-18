@@ -227,7 +227,8 @@ bool kbasep_js_remove_cancelled_job(struct kbase_device *kbdev,
  * @note This function can safely be called from IRQ context.
  *
  * The following locking conditions are made on the caller:
- * - it must \em not hold the hwaccess_lock, because it will be used internally.
+ * - it must \em not hold mmu_hw_mutex and hwaccess_lock, because they will be
+ *   used internally.
  *
  * @return value != false if the retain succeeded, and the context will not be scheduled out.
  * @return false if the retain failed (because the context is being/has been scheduled out).
@@ -241,7 +242,7 @@ bool kbasep_js_runpool_retain_ctx(struct kbase_device *kbdev, struct kbase_conte
  * @note This function can safely be called from IRQ context.
  *
  * The following locks must be held by the caller:
- * - hwaccess_lock
+ * - mmu_hw_mutex, hwaccess_lock
  *
  * @return value != false if the retain succeeded, and the context will not be scheduled out.
  * @return false if the retain failed (because the context is being/has been scheduled out).
@@ -267,28 +268,6 @@ bool kbasep_js_runpool_retain_ctx_nolock(struct kbase_device *kbdev, struct kbas
  * @return NULL on failure, indicating that no context was found in \a as_nr
  */
 struct kbase_context *kbasep_js_runpool_lookup_ctx(struct kbase_device *kbdev, int as_nr);
-
-/**
- * kbasep_js_runpool_lookup_ctx_nolock - Lookup a context in the Run Pool based
- *         upon its current address space and ensure that is stays scheduled in.
- * @kbdev: Device pointer
- * @as_nr: Address space to lookup
- *
- * The context is refcounted as being busy to prevent it from scheduling
- * out. It must be released with kbasep_js_runpool_release_ctx() when it is no
- * longer required to stay scheduled in.
- *
- * Note: This function can safely be called from IRQ context.
- *
- * The following locking conditions are made on the caller:
- * - it must the hold the hwaccess_lock
- *
- * Return: a valid struct kbase_context on success, which has been refcounted as
- *         being busy.
- *         NULL on failure, indicating that no context was found in \a as_nr
- */
-struct kbase_context *kbasep_js_runpool_lookup_ctx_nolock(
-		struct kbase_device *kbdev, int as_nr);
 
 /**
  * @brief Handling the requeuing/killing of a context that was evicted from the
@@ -782,41 +761,9 @@ static inline bool kbasep_js_get_atom_retry_submit_slot(const struct kbasep_js_a
 	return (bool) (js >= 0);
 }
 
-#if KBASE_DEBUG_DISABLE_ASSERTS == 0
-/**
- * Debug Check the refcount of a context. Only use within ASSERTs
- *
- * Obtains hwaccess_lock
- *
- * @return negative value if the context is not scheduled in
- * @return current refcount of the context if it is scheduled in. The refcount
- * is not guarenteed to be kept constant.
- */
-static inline int kbasep_js_debug_check_ctx_refcount(struct kbase_device *kbdev, struct kbase_context *kctx)
-{
-	unsigned long flags;
-	struct kbasep_js_device_data *js_devdata;
-	int result = -1;
-	int as_nr;
-
-	KBASE_DEBUG_ASSERT(kbdev != NULL);
-	KBASE_DEBUG_ASSERT(kctx != NULL);
-	js_devdata = &kbdev->js_data;
-
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	as_nr = kctx->as_nr;
-	if (as_nr != KBASEP_AS_NR_INVALID)
-		result = js_devdata->runpool_irq.per_as_data[as_nr].as_busy_refcount;
-
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-
-	return result;
-}
-#endif				/* KBASE_DEBUG_DISABLE_ASSERTS == 0 */
-
 /**
  * @brief Variant of kbasep_js_runpool_lookup_ctx() that can be used when the
- * context is guarenteed to be already previously retained.
+ * context is guaranteed to be already previously retained.
  *
  * It is a programming error to supply the \a as_nr of a context that has not
  * been previously retained/has a busy refcount of zero. The only exception is
@@ -825,28 +772,20 @@ static inline int kbasep_js_debug_check_ctx_refcount(struct kbase_device *kbdev,
  * The following locking conditions are made on the caller:
  * - it must \em not hold the hwaccess_lock, because it will be used internally.
  *
- * @return a valid struct kbase_context on success, with a refcount that is guarenteed
+ * @return a valid struct kbase_context on success, with a refcount that is guaranteed
  * to be non-zero and unmodified by this function.
  * @return NULL on failure, indicating that no context was found in \a as_nr
  */
 static inline struct kbase_context *kbasep_js_runpool_lookup_ctx_noretain(struct kbase_device *kbdev, int as_nr)
 {
-	unsigned long flags;
-	struct kbasep_js_device_data *js_devdata;
 	struct kbase_context *found_kctx;
-	struct kbasep_js_per_as_data *js_per_as_data;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	KBASE_DEBUG_ASSERT(0 <= as_nr && as_nr < BASE_MAX_NR_AS);
-	js_devdata = &kbdev->js_data;
-	js_per_as_data = &js_devdata->runpool_irq.per_as_data[as_nr];
 
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-
-	found_kctx = js_per_as_data->kctx;
-	KBASE_DEBUG_ASSERT(found_kctx == NULL || js_per_as_data->as_busy_refcount > 0);
-
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	found_kctx = kbdev->as_to_kctx[as_nr];
+	KBASE_DEBUG_ASSERT(found_kctx == NULL ||
+			atomic_read(&found_kctx->refcount) > 0);
 
 	return found_kctx;
 }

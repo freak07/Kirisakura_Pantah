@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2013-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2013-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -170,7 +170,7 @@ enum {
  * Default timeout for some software jobs, after which the software event wait
  * jobs will be cancelled.
  */
-#define DEFAULT_JS_SOFT_JOB_TIMEOUT ((u32)3000) /* 3s */
+#define DEFAULT_JS_SOFT_JOB_TIMEOUT (3000) /* 3s */
 
 /*
  * Default minimum number of scheduling ticks before the GPU is reset to clear a

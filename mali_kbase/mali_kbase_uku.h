@@ -66,6 +66,8 @@
 #define BASE_UK_VERSION_MAJOR 10
 #define BASE_UK_VERSION_MINOR 6
 
+#define LINUX_UK_BASE_MAGIC 0x80
+
 struct kbase_uk_mem_alloc {
 	union uk_header header;
 	/* IN */
