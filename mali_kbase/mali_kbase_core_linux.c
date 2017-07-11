@@ -47,7 +47,6 @@
 
 #ifdef CONFIG_KDS
 #include <linux/kds.h>
-#include <linux/anon_inodes.h>
 #include <linux/syscalls.h>
 #endif /* CONFIG_KDS */
 
@@ -69,9 +68,6 @@
 #include <linux/compat.h>	/* is_compat_task */
 #include <linux/mman.h>
 #include <linux/version.h>
-#ifdef CONFIG_MALI_PLATFORM_DEVICETREE
-#include <linux/pm_runtime.h>
-#endif /* CONFIG_MALI_PLATFORM_DEVICETREE */
 #include <mali_kbase_hw.h>
 #include <platform/mali_kbase_platform_common.h>
 #ifdef CONFIG_MALI_PLATFORM_FAKE
@@ -121,38 +117,6 @@ static int kbase_api_handshake(struct kbase_context *kctx,
 		struct kbase_ioctl_version_check *version)
 {
 	switch (version->major) {
-#ifdef BASE_LEGACY_UK6_SUPPORT
-	case 6:
-		/* We are backwards compatible with version 6,
-		 * so pretend to be the old version */
-		version->major = 6;
-		version->minor = 1;
-		break;
-#endif /* BASE_LEGACY_UK6_SUPPORT */
-#ifdef BASE_LEGACY_UK7_SUPPORT
-	case 7:
-		/* We are backwards compatible with version 7,
-		 * so pretend to be the old version */
-		version->major = 7;
-		version->minor = 1;
-		break;
-#endif /* BASE_LEGACY_UK7_SUPPORT */
-#ifdef BASE_LEGACY_UK8_SUPPORT
-	case 8:
-		/* We are backwards compatible with version 8,
-		 * so pretend to be the old version */
-		version->major = 8;
-		version->minor = 4;
-		break;
-#endif /* BASE_LEGACY_UK8_SUPPORT */
-#ifdef BASE_LEGACY_UK9_SUPPORT
-	case 9:
-		/* We are backwards compatible with version 9,
-		 * so pretend to be the old version */
-		version->major = 9;
-		version->minor = 0;
-		break;
-#endif /* BASE_LEGACY_UK8_SUPPORT */
 	case BASE_UK_VERSION_MAJOR:
 		/* set minor to be the lowest common */
 		version->minor = min_t(int, BASE_UK_VERSION_MINOR,
@@ -366,10 +330,10 @@ static int kbase_legacy_dispatch(struct kbase_context *kctx,
 				goto bad_size;
 #ifdef CONFIG_COMPAT
 			if (kbase_ctx_flag(kctx, KCTX_COMPAT))
-				phandle = compat_ptr(mem_import->phandle.compat_value);
+				phandle = compat_ptr(mem_import->phandle);
 			else
 #endif
-				phandle = mem_import->phandle.value;
+				phandle = u64_to_user_ptr(mem_import->phandle);
 
 			if (mem_import->type == BASE_MEM_IMPORT_TYPE_INVALID) {
 				ukh->ret = MALI_ERROR_FUNCTION_FAILED;
@@ -408,10 +372,10 @@ static int kbase_legacy_dispatch(struct kbase_context *kctx,
 
 #ifdef CONFIG_COMPAT
 			if (kbase_ctx_flag(kctx, KCTX_COMPAT))
-				user_ai = compat_ptr(alias->ai.compat_value);
+				user_ai = compat_ptr(alias->ai);
 			else
 #endif
-				user_ai = alias->ai.value;
+				user_ai = u64_to_user_ptr(alias->ai);
 
 			ai = vmalloc(sizeof(*ai) * alias->nents);
 
@@ -514,30 +478,13 @@ copy_failed:
 			if (sizeof(*job) != args_size)
 				goto bad_size;
 
-			if (kbase_jd_submit(kctx, job->addr.value,
+			if (kbase_jd_submit(kctx, u64_to_user_ptr(job->addr),
 						job->nr_atoms,
 						job->stride,
 						false) != 0)
 				ukh->ret = MALI_ERROR_FUNCTION_FAILED;
 			break;
 		}
-
-#ifdef BASE_LEGACY_UK6_SUPPORT
-	case KBASE_FUNC_JOB_SUBMIT_UK6:
-		{
-			struct kbase_uk_job_submit *job = args;
-
-			if (sizeof(*job) != args_size)
-				goto bad_size;
-
-			if (kbase_jd_submit(kctx, job->addr.value,
-						job->nr_atoms,
-						job->stride,
-						true) != 0)
-				ukh->ret = MALI_ERROR_FUNCTION_FAILED;
-			break;
-		}
-#endif
 
 	case KBASE_FUNC_SYNC:
 		{
@@ -546,10 +493,8 @@ copy_failed:
 			if (sizeof(*sn) != args_size)
 				goto bad_size;
 
-#ifndef CONFIG_MALI_COH_USER
 			if (kbase_sync_now(kctx, &sn->sset.basep_sset) != 0)
 				ukh->ret = MALI_ERROR_FUNCTION_FAILED;
-#endif
 			break;
 		}
 
@@ -720,8 +665,8 @@ copy_failed:
 			struct kbase_uk_set_test_data *set_data = args;
 
 			shared_kernel_test_data = set_data->test_data;
-			shared_kernel_test_data.kctx.value = (void __user *)kctx;
-			shared_kernel_test_data.mm.value = (void __user *)current->mm;
+			shared_kernel_test_data.kctx = (uintptr_t)kctx;
+			shared_kernel_test_data.mm = (uintptr_t)current->mm;
 			ukh->ret = MALI_ERROR_NONE;
 #endif /* MALI_UNIT_TEST */
 			break;
@@ -763,15 +708,6 @@ copy_failed:
 #endif /* CONFIG_MALI_NO_MALI */
 			break;
 		}
-
-#ifdef BASE_LEGACY_UK8_SUPPORT
-	case KBASE_FUNC_KEEP_GPU_POWERED:
-		{
-			dev_warn(kbdev->dev, "kbase_legacy_dispatch case KBASE_FUNC_KEEP_GPU_POWERED: function is deprecated and disabled\n");
-			ukh->ret = MALI_ERROR_FUNCTION_FAILED;
-			break;
-		}
-#endif /* BASE_LEGACY_UK8_SUPPORT */
 
 	case KBASE_FUNC_GET_PROFILING_CONTROLS:
 		{
@@ -822,10 +758,10 @@ copy_failed:
 
 #ifdef CONFIG_COMPAT
 			if (kbase_ctx_flag(kctx, KCTX_COMPAT))
-				user_buf = compat_ptr(add_data->buf.compat_value);
+				user_buf = compat_ptr(add_data->buf);
 			else
 #endif
-				user_buf = add_data->buf.value;
+				user_buf = u64_to_user_ptr(add_data->buf);
 
 			buf = kmalloc(add_data->len, GFP_KERNEL);
 			if (ZERO_OR_NULL_PTR(buf))
@@ -1167,14 +1103,8 @@ static int kbase_open(struct inode *inode, struct file *filp)
 		goto out;
 	}
 
-#ifdef CONFIG_MALI_COH_USER
-	 /* if cache is completely coherent at hardware level, then remove the
-	  * infinite cache control support from debugfs.
-	  */
-#else
 	debugfs_create_file("infinite_cache", 0644, kctx->kctx_dentry,
 			    kctx, &kbase_infinite_cache_fops);
-#endif /* CONFIG_MALI_COH_USER */
 
 	mutex_init(&kctx->mem_profile_lock);
 
@@ -1312,7 +1242,8 @@ static int kbase_api_set_flags(struct kbase_context *kctx,
 static int kbase_api_job_submit(struct kbase_context *kctx,
 		struct kbase_ioctl_job_submit *submit)
 {
-	return kbase_jd_submit(kctx, submit->addr.value, submit->nr_atoms,
+	return kbase_jd_submit(kctx, u64_to_user_ptr(submit->addr),
+			submit->nr_atoms,
 			submit->stride, false);
 }
 
@@ -1332,10 +1263,11 @@ static int kbase_api_get_gpuprops(struct kbase_context *kctx,
 	if (get_props->size < kprops->prop_buffer_size)
 		return -EINVAL;
 
-	err = copy_to_user(get_props->buffer.value, kprops->prop_buffer,
+	err = copy_to_user(u64_to_user_ptr(get_props->buffer),
+			kprops->prop_buffer,
 			kprops->prop_buffer_size);
 	if (err)
-		return err;
+		return -EFAULT;
 	return kprops->prop_buffer_size;
 }
 
@@ -1464,18 +1396,18 @@ static int kbase_api_get_ddk_version(struct kbase_context *kctx,
 	int ret;
 	int len = sizeof(KERNEL_SIDE_DDK_VERSION_STRING);
 
-	if (version->version_buffer.value == NULL)
+	if (version->version_buffer == 0)
 		return len;
 
 	if (version->size < len)
 		return -EOVERFLOW;
 
-	ret = copy_to_user(version->version_buffer.value,
+	ret = copy_to_user(u64_to_user_ptr(version->version_buffer),
 			KERNEL_SIDE_DDK_VERSION_STRING,
 			sizeof(KERNEL_SIDE_DDK_VERSION_STRING));
 
 	if (ret)
-		return ret;
+		return -EFAULT;
 
 	return len;
 }
@@ -1489,9 +1421,6 @@ static int kbase_api_mem_jit_init(struct kbase_context *kctx,
 static int kbase_api_mem_sync(struct kbase_context *kctx,
 		struct kbase_ioctl_mem_sync *sync)
 {
-#ifdef CONFIG_MALI_COH_USER
-	return 0;
-#endif
 	struct basep_syncset sset = {
 		.mem_handle.basep.handle = sync->handle,
 		.user_addr = sync->user_addr,
@@ -1553,11 +1482,12 @@ static int kbase_api_mem_alias(struct kbase_context *kctx,
 	if (!ai)
 		return -ENOMEM;
 
-	err = copy_from_user(ai, alias->in.aliasing_info.value,
+	err = copy_from_user(ai,
+			u64_to_user_ptr(alias->in.aliasing_info),
 			sizeof(*ai) * alias->in.nents);
 	if (err) {
 		vfree(ai);
-		return err;
+		return -EFAULT;
 	}
 
 	flags = alias->in.flags;
@@ -1584,7 +1514,7 @@ static int kbase_api_mem_import(struct kbase_context *kctx,
 
 	ret = kbase_mem_import(kctx,
 			import->in.type,
-			import->in.phandle.value,
+			u64_to_user_ptr(import->in.phandle),
 			import->in.padding,
 			&import->out.gpu_va,
 			&import->out.va_pages,
@@ -1637,13 +1567,19 @@ static int kbase_api_fence_validate(struct kbase_context *kctx,
 static int kbase_api_get_profiling_controls(struct kbase_context *kctx,
 		struct kbase_ioctl_get_profiling_controls *controls)
 {
-	if (controls->count > FBDUMP_CONTROL_MAX)
+	int ret;
+
+	if (controls->count > (FBDUMP_CONTROL_MAX - FBDUMP_CONTROL_MIN))
 		return -EINVAL;
 
-	return copy_to_user(controls->buffer.value,
+	ret = copy_to_user(u64_to_user_ptr(controls->buffer),
 			&kctx->kbdev->kbase_profiling_controls[
 				FBDUMP_CONTROL_MIN],
 			controls->count * sizeof(u32));
+
+	if (ret)
+		return -EFAULT;
+	return 0;
 }
 
 static int kbase_api_mem_profile_add(struct kbase_context *kctx,
@@ -1661,10 +1597,11 @@ static int kbase_api_mem_profile_add(struct kbase_context *kctx,
 	if (ZERO_OR_NULL_PTR(buf))
 		return -ENOMEM;
 
-	err = copy_from_user(buf, data->buffer.value, data->len);
+	err = copy_from_user(buf, u64_to_user_ptr(data->buffer),
+			data->len);
 	if (err) {
 		kfree(buf);
-		return err;
+		return -EFAULT;
 	}
 
 	return kbasep_mem_profile_debugfs_insert(kctx, buf, data->len);
@@ -4069,11 +4006,9 @@ static int kbase_device_debugfs_init(struct kbase_device *kbdev)
 			&fops_jm_quirks);
 #endif /* KBASE_GPU_RESET_EN */
 
-#ifndef CONFIG_MALI_COH_USER
 	debugfs_create_bool("infinite_cache", 0644,
 			debugfs_ctx_defaults_directory,
 			&kbdev->infinite_cache_active_default);
-#endif /* CONFIG_MALI_COH_USER */
 
 	debugfs_create_size_t("mem_pool_max_size", 0644,
 			debugfs_ctx_defaults_directory,
@@ -4540,13 +4475,9 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	}
 	kbdev->inited_subsys |= inited_backend_late;
 
-#ifdef CONFIG_MALI_DEVFREQ
-	err = kbase_devfreq_init(kbdev);
-	if (!err)
-		kbdev->inited_subsys |= inited_devfreq;
-	else
-		dev_err(kbdev->dev, "Continuing without devfreq\n");
-#endif /* CONFIG_MALI_DEVFREQ */
+	/* Initialize the kctx list. This is used by vinstr. */
+	mutex_init(&kbdev->kctx_list_lock);
+	INIT_LIST_HEAD(&kbdev->kctx_list);
 
 	kbdev->vinstr_ctx = kbase_vinstr_init(kbdev);
 	if (!kbdev->vinstr_ctx) {
@@ -4556,6 +4487,15 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 	kbdev->inited_subsys |= inited_vinstr;
+
+#ifdef CONFIG_MALI_DEVFREQ
+	/* Devfreq uses vinstr, so must be initialized after it. */
+	err = kbase_devfreq_init(kbdev);
+	if (!err)
+		kbdev->inited_subsys |= inited_devfreq;
+	else
+		dev_err(kbdev->dev, "Continuing without devfreq\n");
+#endif /* CONFIG_MALI_DEVFREQ */
 
 	err = kbase_debug_job_fault_dev_init(kbdev);
 	if (err) {
@@ -4572,10 +4512,6 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 		return err;
 	}
 	kbdev->inited_subsys |= inited_debugfs;
-
-	/* initialize the kctx list */
-	mutex_init(&kbdev->kctx_list_lock);
-	INIT_LIST_HEAD(&kbdev->kctx_list);
 
 	kbdev->mdev.minor = MISC_DYNAMIC_MINOR;
 	kbdev->mdev.name = kbdev->devname;

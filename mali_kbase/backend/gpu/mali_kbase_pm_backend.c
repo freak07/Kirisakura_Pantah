@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -23,15 +23,11 @@
 #include <mali_kbase.h>
 #include <mali_midg_regmap.h>
 #include <mali_kbase_config_defaults.h>
-#ifdef CONFIG_MALI_PLATFORM_DEVICETREE
-#include <linux/pm_runtime.h>
-#endif /* CONFIG_MALI_PLATFORM_DEVICETREE */
 
 #include <mali_kbase_pm.h>
 #include <mali_kbase_hwaccess_jm.h>
 #include <backend/gpu/mali_kbase_js_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
-#include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_jm_internal.h>
 
 static void kbase_pm_gpu_poweroff_wait_wq(struct work_struct *data);

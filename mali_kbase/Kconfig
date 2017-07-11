@@ -235,6 +235,17 @@ config MALI_GPU_MMU_AARCH64
 
 	  If in doubt, say N.
 
+config MALI_2MB_ALLOC
+	bool "Attempt to allocate 2MB pages"
+	depends on MALI_MIDGARD && MALI_EXPERT
+	default n
+	help
+	  Rather than allocating all GPU memory page-by-page, attempt to
+	  allocate 2MB pages from the kernel. This reduces TLB pressure and
+	  helps to prevent memory fragmentation.
+
+	  If in doubt, say N
+
 config MALI_PWRSOFT_765
 	bool "PWRSOFT-765 ticket"
 	default n

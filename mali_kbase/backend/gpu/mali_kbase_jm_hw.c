@@ -84,20 +84,20 @@ void kbase_job_hw_submit(struct kbase_device *kbdev,
 	 * start */
 	cfg = kctx->as_nr;
 
-	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_FLUSH_REDUCTION))
+	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_FLUSH_REDUCTION) &&
+			!(kbdev->serialize_jobs & KBASE_SERIALIZE_RESET))
 		cfg |= JS_CONFIG_ENABLE_FLUSH_REDUCTION;
 
-#ifndef CONFIG_MALI_COH_GPU
 	if (0 != (katom->core_req & BASE_JD_REQ_SKIP_CACHE_START))
 		cfg |= JS_CONFIG_START_FLUSH_NO_ACTION;
 	else
 		cfg |= JS_CONFIG_START_FLUSH_CLEAN_INVALIDATE;
 
-	if (0 != (katom->core_req & BASE_JD_REQ_SKIP_CACHE_END))
+	if (0 != (katom->core_req & BASE_JD_REQ_SKIP_CACHE_END) &&
+			!(kbdev->serialize_jobs & KBASE_SERIALIZE_RESET))
 		cfg |= JS_CONFIG_END_FLUSH_NO_ACTION;
 	else
 		cfg |= JS_CONFIG_END_FLUSH_CLEAN_INVALIDATE;
-#endif /* CONFIG_MALI_COH_GPU */
 
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_10649))
 		cfg |= JS_CONFIG_START_MMU;
@@ -1379,9 +1379,7 @@ static void kbasep_try_reset_gpu_early_locked(struct kbase_device *kbdev)
 static void kbasep_try_reset_gpu_early(struct kbase_device *kbdev)
 {
 	unsigned long flags;
-	struct kbasep_js_device_data *js_devdata;
 
-	js_devdata = &kbdev->js_data;
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	kbasep_try_reset_gpu_early_locked(kbdev);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
@@ -1426,9 +1424,7 @@ bool kbase_prepare_to_reset_gpu(struct kbase_device *kbdev)
 {
 	unsigned long flags;
 	bool ret;
-	struct kbasep_js_device_data *js_devdata;
 
-	js_devdata = &kbdev->js_data;
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	ret = kbase_prepare_to_reset_gpu_locked(kbdev);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);

@@ -26,6 +26,7 @@
 #include <linux/uaccess.h>
 #include <linux/fs.h>
 #include <linux/version.h>
+#include <linux/atomic.h>
 
 #include <generated/autoconf.h>
 
@@ -60,6 +61,8 @@ struct kutf_application {
  * @variant_list:	List head to store all the variants which can run on
  *                      this function
  * @dir:		debugfs directory for this test function
+ * @userdata_ops:	Callbacks to use for sending and receiving data to
+ *                      userspace.
  */
 struct kutf_test_function {
 	struct kutf_suite  *suite;
@@ -70,6 +73,7 @@ struct kutf_test_function {
 	struct list_head   node;
 	struct list_head   variant_list;
 	struct dentry      *dir;
+	struct kutf_userdata_ops userdata_ops;
 };
 
 /**
@@ -79,12 +83,14 @@ struct kutf_test_function {
  * @fixture_index:	Index of this fixture
  * @node:		List node for variant_list
  * @dir:		debugfs directory for this test fixture
+ * @nr_running:		Current count of user-clients running this fixture
  */
 struct kutf_test_fixture {
 	struct kutf_test_function *test_func;
 	unsigned int              fixture_index;
 	struct list_head          node;
 	struct dentry             *dir;
+	atomic_t                  nr_running;
 };
 
 struct dentry *base_dir;
@@ -125,16 +131,40 @@ ADD_UTF_RESULT(KUTF_RESULT_ABORT)
  *                         reported back to the user
  * @test_fix:	Test fixture to be run.
  *
+ * The context's refcount will be initialized to 1.
+ *
  * Return: Returns the created test context on success or NULL on failure
  */
 static struct kutf_context *kutf_create_context(
 		struct kutf_test_fixture *test_fix);
 
 /**
- * kutf_destroy_context() - Destroy a previously created test context
- * @context:	Test context to destroy
+ * kutf_destroy_context() - Destroy a previously created test context, only
+ *                          once its refcount has become zero
+ * @kref:	pointer to kref member within the context
+ *
+ * This should only be used via a kref_put() call on the context's kref member
  */
-static void kutf_destroy_context(struct kutf_context *context);
+static void kutf_destroy_context(struct kref *kref);
+
+/**
+ * kutf_context_get() - increment refcount on a context
+ * @context:	the kutf context
+ *
+ * This must be used when the lifetime of the context might exceed that of the
+ * thread creating @context
+ */
+static void kutf_context_get(struct kutf_context *context);
+
+/**
+ * kutf_context_put() - decrement refcount on a context, destroying it when it
+ *                      reached zero
+ * @context:	the kutf context
+ *
+ * This must be used only after a corresponding kutf_context_get() call on
+ * @context, and the caller no longer needs access to @context.
+ */
+static void kutf_context_put(struct kutf_context *context);
 
 /**
  * kutf_set_result() - Set the test result against the specified test context
@@ -222,6 +252,263 @@ static const struct file_operations kutf_debugfs_const_string_ops = {
 };
 
 /**
+ * kutf_debugfs_data_open() Debugfs open callback for the "data" entry.
+ * @inode:	inode of the opened file
+ * @file:	Opened file to read from
+ *
+ * This function notifies the userdata callbacks that the userdata file has
+ * been opened, for tracking purposes.
+ *
+ * It is called on both the context's userdata_consumer_priv and
+ * userdata_producer_priv.
+ *
+ * This takes a refcount on the kutf_context
+ *
+ * Return: 0 on success
+ */
+static int kutf_debugfs_data_open(struct inode *inode, struct file *file)
+{
+	struct kutf_context *test_context = inode->i_private;
+	struct kutf_test_fixture *test_fix = test_context->test_fix;
+	struct kutf_test_function *test_func = test_fix->test_func;
+	int err;
+
+	simple_open(inode, file);
+
+	/* This is not an error */
+	if (!test_func->userdata_ops.open)
+		goto out_no_ops;
+
+	/* This is safe here - the 'data' file is only openable whilst the
+	 * initial refcount is still present, and the initial refcount is only
+	 * dropped strictly after the 'data' file is removed */
+	kutf_context_get(test_context);
+
+	if (test_context->userdata_consumer_priv) {
+		err = test_func->userdata_ops.open(test_context->userdata_consumer_priv);
+		if (err)
+			goto out_consumer_fail;
+	}
+
+	if (test_context->userdata_producer_priv) {
+		err = test_func->userdata_ops.open(test_context->userdata_producer_priv);
+		if (err)
+			goto out_producer_fail;
+	}
+
+out_no_ops:
+	return 0;
+
+out_producer_fail:
+	if (test_func->userdata_ops.release && test_context->userdata_consumer_priv)
+		test_func->userdata_ops.release(test_context->userdata_consumer_priv);
+out_consumer_fail:
+	kutf_context_put(test_context);
+
+	return err;
+}
+
+
+/**
+ * kutf_debugfs_data_read() Debugfs read callback for the "data" entry.
+ * @file:	Opened file to read from
+ * @buf:	User buffer to write the data into
+ * @len:	Amount of data to read
+ * @ppos:	Offset into file to read from
+ *
+ * This function allows user and kernel to exchange extra data necessary for
+ * the test fixture.
+ *
+ * The data is read from the first struct kutf_context running the fixture
+ *
+ * Return: Number of bytes read
+ */
+static ssize_t kutf_debugfs_data_read(struct file *file, char __user *buf,
+		size_t len, loff_t *ppos)
+{
+	struct kutf_context *test_context = file->private_data;
+	struct kutf_test_fixture *test_fix = test_context->test_fix;
+	struct kutf_test_function *test_func = test_fix->test_func;
+	ssize_t (*producer)(void *private, char  __user *userbuf,
+			size_t userbuf_len, loff_t *ppos);
+	ssize_t count;
+
+	producer = test_func->userdata_ops.producer;
+	/* Can only read if there's a producer callback */
+	if (!producer)
+		return -ENODEV;
+
+	count = producer(test_context->userdata_producer_priv, buf, len, ppos);
+
+	return count;
+}
+
+/**
+ * kutf_debugfs_data_write() Debugfs write callback for the "data" entry.
+ * @file:	Opened file to write to
+ * @buf:	User buffer to read the data from
+ * @len:	Amount of data to write
+ * @ppos:	Offset into file to write to
+ *
+ * This function allows user and kernel to exchange extra data necessary for
+ * the test fixture.
+ *
+ * The data is added to the first struct kutf_context running the fixture
+ *
+ * Return: Number of bytes written
+ */
+static ssize_t kutf_debugfs_data_write(struct file *file,
+		const char __user *buf, size_t len, loff_t *ppos)
+{
+	struct kutf_context *test_context = file->private_data;
+	struct kutf_test_fixture *test_fix = test_context->test_fix;
+	struct kutf_test_function *test_func = test_fix->test_func;
+	ssize_t (*consumer)(void *private, const char  __user *userbuf,
+			size_t userbuf_len, loff_t *ppos);
+	ssize_t count;
+
+	consumer = test_func->userdata_ops.consumer;
+	/* Can only write if there's a consumer callback */
+	if (!consumer)
+		return -ENODEV;
+
+	count = consumer(test_context->userdata_consumer_priv, buf, len, ppos);
+
+	return count;
+}
+
+
+/**
+ * kutf_debugfs_data_release() - Debugfs release callback for the "data" entry.
+ * @inode:	File entry representation
+ * @file:	A specific opening of the file
+ *
+ * This function notifies the userdata callbacks that the userdata file has
+ * been closed, for tracking purposes.
+ *
+ * It is called on both the context's userdata_consumer_priv and
+ * userdata_producer_priv.
+ *
+ * It also drops the refcount on the kutf_context that was taken during
+ * kutf_debugfs_data_open()
+ */
+static int kutf_debugfs_data_release(struct inode *inode, struct file *file)
+{
+	struct kutf_context *test_context = file->private_data;
+	struct kutf_test_fixture *test_fix = test_context->test_fix;
+	struct kutf_test_function *test_func = test_fix->test_func;
+
+	if (!test_func->userdata_ops.release)
+		return 0;
+
+	if (test_context->userdata_consumer_priv)
+		test_func->userdata_ops.release(test_context->userdata_consumer_priv);
+	if (test_context->userdata_producer_priv)
+		test_func->userdata_ops.release(test_context->userdata_producer_priv);
+
+	kutf_context_put(test_context);
+
+	return 0;
+}
+
+
+static const struct file_operations kutf_debugfs_data_ops = {
+	.owner = THIS_MODULE,
+	.open = kutf_debugfs_data_open,
+	.read = kutf_debugfs_data_read,
+	.write = kutf_debugfs_data_write,
+	.release = kutf_debugfs_data_release,
+	.llseek  = default_llseek,
+};
+
+/**
+ * userdata_init() - Initialize userspace data exchange for a test, if
+ *                   specified by that test
+ * @test_context:	Test context
+ *
+ * Note that this allows new refcounts to be made on test_context by userspace
+ * threads opening the 'data' file.
+ *
+ * Return: 0 on success, negative value corresponding to error code in failure
+ *         and kutf result will be set appropriately to indicate the error
+ */
+static int userdata_init(struct kutf_context *test_context)
+{
+	struct kutf_test_fixture *test_fix = test_context->test_fix;
+	struct kutf_test_function *test_func = test_fix->test_func;
+	int err = 0;
+	struct dentry *userdata_dentry;
+
+	/* Valid to have neither a producer or consumer, which is the case for
+	 * tests not requiring usersdata */
+	if ((!test_func->userdata_ops.consumer) && (!test_func->userdata_ops.producer))
+		return err;
+
+	if (test_func->userdata_ops.consumer && !test_context->userdata_consumer_priv) {
+		kutf_test_fatal(test_context,
+				"incorrect test setup - userdata consumer provided without private data");
+		return -EFAULT;
+	}
+
+	if (test_func->userdata_ops.producer && !test_context->userdata_producer_priv) {
+		kutf_test_fatal(test_context,
+				"incorrect test setup - userdata producer provided without private data");
+		return -EFAULT;
+	}
+
+	userdata_dentry = debugfs_create_file("data", S_IROTH, test_fix->dir,
+			test_context, &kutf_debugfs_data_ops);
+
+	if (!userdata_dentry) {
+		pr_err("Failed to create debugfs file \"data\" when running fixture\n");
+		/* Not using Fatal (which stops other tests running),
+		 * nor Abort (which indicates teardown should not be done) */
+		kutf_test_fail(test_context,
+				"failed to create 'data' file for userside data exchange");
+
+		/* Error code is discarded by caller, but consistent with other
+		 * debugfs_create_file failures */
+		err = -EEXIST;
+	} else {
+		test_context->userdata_dentry = userdata_dentry;
+	}
+
+
+	return err;
+}
+
+/**
+ * userdata_term() - Terminate userspace data exchange for a test, if specified
+ *                   by that test
+ * @test_context:	Test context
+ *
+ * Note This also prevents new refcounts being made on @test_context by userspace
+ * threads opening the 'data' file for this test. Any existing open file descriptors
+ * to the 'data' file will still be safe to use by userspace.
+ */
+static void userdata_term(struct kutf_context *test_context)
+{
+	struct kutf_test_fixture *test_fix = test_context->test_fix;
+	struct kutf_test_function *test_func = test_fix->test_func;
+	void (*notify_ended)(void *priv) = test_func->userdata_ops.notify_ended;
+
+	/* debugfs_remove() is safe when parameter is error or NULL */
+	debugfs_remove(test_context->userdata_dentry);
+
+	/* debugfs_remove() doesn't kill any currently open file descriptors on
+	 * this file, and such fds are still safe to use providing test_context
+	 * is properly refcounted */
+
+	if (notify_ended) {
+		if (test_context->userdata_consumer_priv)
+			notify_ended(test_context->userdata_consumer_priv);
+		if (test_context->userdata_producer_priv)
+			notify_ended(test_context->userdata_producer_priv);
+	}
+
+}
+
+/**
  * kutf_add_explicit_result() - Check if an explicit result needs to be added
  * @context:	KUTF test context
  */
@@ -293,10 +580,24 @@ static int kutf_debugfs_run_open(struct inode *inode, struct file *file)
 	struct kutf_test_function *test_func = test_fix->test_func;
 	struct kutf_suite *suite = test_func->suite;
 	struct kutf_context *test_context;
+	int err = 0;
+
+	/* For the moment, only one user-client should be attempting to run
+	 * this at a time. This simplifies how we lookup the kutf_context when
+	 * using the 'data' file.
+	 * Removing this restriction would require a rewrite of the mechanism
+	 * of the 'data' file to pass data in, perhaps 'data' created here and
+	 * based upon userspace thread's pid */
+	if (atomic_inc_return(&test_fix->nr_running) != 1) {
+		err = -EBUSY;
+		goto finish;
+	}
 
 	test_context = kutf_create_context(test_fix);
-	if (!test_context)
-		return -ENODEV;
+	if (!test_context) {
+		err = -ENODEV;
+		goto finish;
+	}
 
 	file->private_data = test_context;
 
@@ -310,15 +611,25 @@ static int kutf_debugfs_run_open(struct inode *inode, struct file *file)
 	/* Only run the test if the fixture was created (if required) */
 	if ((suite->create_fixture && test_context->fixture) ||
 			(!suite->create_fixture)) {
-		/* Run this fixture */
-		test_func->execute(test_context);
+		int late_err;
+		/* Setup any userdata exchange */
+		late_err = userdata_init(test_context);
+
+		if (!late_err)
+			/* Run this fixture */
+			test_func->execute(test_context);
+
+		userdata_term(test_context);
 
 		if (suite->remove_fixture)
 			suite->remove_fixture(test_context);
 
 		kutf_add_explicit_result(test_context);
 	}
-	return 0;
+
+finish:
+	atomic_dec(&test_fix->nr_running);
+	return err;
 }
 
 /**
@@ -405,13 +716,16 @@ exit:
  *
  * Release any resources that where created during the opening of the file
  *
+ * Note that resources may not be released immediately, that might only happen
+ * later when other users of the kutf_context release their refcount.
+ *
  * Return: 0 on success
  */
 static int kutf_debugfs_run_release(struct inode *inode, struct file *file)
 {
 	struct kutf_context *test_context = file->private_data;
 
-	kutf_destroy_context(test_context);
+	kutf_context_put(test_context);
 	return 0;
 }
 
@@ -449,6 +763,7 @@ static int create_fixture_variant(struct kutf_test_function *test_func,
 
 	test_fix->test_func = test_func;
 	test_fix->fixture_index = fixture_index;
+	atomic_set(&test_fix->nr_running, 0);
 
 	snprintf(name, sizeof(name), "%d", fixture_index);
 	test_fix->dir = debugfs_create_dir(name, test_func->dir);
@@ -498,13 +813,14 @@ static void kutf_remove_test_variant(struct kutf_test_fixture *test_fix)
 	kfree(test_fix);
 }
 
-void kutf_add_test_with_filters_and_data(
+void kutf_add_test_with_filters_data_and_userdata(
 		struct kutf_suite *suite,
 		unsigned int id,
 		const char *name,
 		void (*execute)(struct kutf_context *context),
 		unsigned int filters,
-		union kutf_callback_data test_data)
+		union kutf_callback_data test_data,
+		struct kutf_userdata_ops *userdata_ops)
 {
 	struct kutf_test_function *test_func;
 	struct dentry *tmp;
@@ -557,6 +873,7 @@ void kutf_add_test_with_filters_and_data(
 	test_func->suite = suite;
 	test_func->execute = execute;
 	test_func->test_data = test_data;
+	memcpy(&test_func->userdata_ops, userdata_ops, sizeof(*userdata_ops));
 
 	list_add(&test_func->node, &suite->test_list);
 	return;
@@ -568,6 +885,27 @@ fail_dir:
 fail_alloc:
 	return;
 }
+EXPORT_SYMBOL(kutf_add_test_with_filters_data_and_userdata);
+
+void kutf_add_test_with_filters_and_data(
+		struct kutf_suite *suite,
+		unsigned int id,
+		const char *name,
+		void (*execute)(struct kutf_context *context),
+		unsigned int filters,
+		union kutf_callback_data test_data)
+{
+	struct kutf_userdata_ops userdata_ops = {
+		.open = NULL,
+		.release = NULL,
+		.consumer = NULL,
+		.producer = NULL,
+	};
+
+	kutf_add_test_with_filters_data_and_userdata(suite, id, name, execute,
+			filters, test_data, &userdata_ops);
+}
+
 EXPORT_SYMBOL(kutf_add_test_with_filters_and_data);
 
 void kutf_add_test_with_filters(
@@ -827,6 +1165,11 @@ static struct kutf_context *kutf_create_context(
 	new_context->fixture_index = test_fix->fixture_index;
 	new_context->fixture_name = NULL;
 	new_context->test_data = test_fix->test_func->test_data;
+	new_context->userdata_consumer_priv = NULL;
+	new_context->userdata_producer_priv = NULL;
+	new_context->userdata_dentry = NULL;
+
+	kref_init(&new_context->kref);
 
 	return new_context;
 
@@ -836,12 +1179,26 @@ fail_alloc:
 	return NULL;
 }
 
-static void kutf_destroy_context(struct kutf_context *context)
+static void kutf_destroy_context(struct kref *kref)
 {
+	struct kutf_context *context;
+
+	context = container_of(kref, struct kutf_context, kref);
 	kutf_destroy_result_set(context->result_set);
 	kutf_mempool_destroy(&context->fixture_pool);
 	kfree(context);
 }
+
+static void kutf_context_get(struct kutf_context *context)
+{
+	kref_get(&context->kref);
+}
+
+static void kutf_context_put(struct kutf_context *context)
+{
+	kref_put(&context->kref, kutf_destroy_context);
+}
+
 
 static void kutf_set_result(struct kutf_context *context,
 		enum kutf_result_status status)

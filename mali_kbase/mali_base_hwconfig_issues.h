@@ -1051,7 +1051,43 @@ static const enum base_hw_issue base_hw_issues_model_tSIx[] = {
 	BASE_HW_ISSUE_END
 };
 
+static const enum base_hw_issue base_hw_issues_tDVx_r0p0[] = {
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_TSIX_1116,
+	BASE_HW_ISSUE_END
+};
 
+static const enum base_hw_issue base_hw_issues_model_tDVx[] = {
+	BASE_HW_ISSUE_5736,
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_TSIX_1116,
+	BASE_HW_ISSUE_END
+};
+
+
+
+#ifdef MALI_INCLUDE_TGOX
+static const enum base_hw_issue base_hw_issues_tGOx_r0p0[] = {
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_TSIX_1116,
+	BASE_HW_ISSUE_END
+};
+
+#endif /* MALI_INCLUDE_TGOX */
+
+#ifdef MALI_INCLUDE_TGOX
+static const enum base_hw_issue base_hw_issues_model_tGOx[] = {
+	BASE_HW_ISSUE_5736,
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_TSIX_1116,
+	BASE_HW_ISSUE_END
+};
+
+#endif /* MALI_INCLUDE_TGOX */
 
 #ifdef MALI_INCLUDE_TKAX
 static const enum base_hw_issue base_hw_issues_tKAx_r0p0[] = {

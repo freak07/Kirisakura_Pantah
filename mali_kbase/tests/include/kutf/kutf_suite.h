@@ -26,6 +26,8 @@
  * of each test.
  */
 
+#include <linux/kref.h>
+
 #include <kutf/kutf_mem.h>
 #include <kutf/kutf_resultset.h>
 
@@ -147,7 +149,29 @@ union kutf_callback_data {
 };
 
 /**
+ * struct kutf_userdata_ops- Structure defining methods to exchange data
+ *                           with userspace via the 'data' file
+ * @open:		Function used to notify when the 'data' file was opened
+ * @release:		Function used to notify when the 'data' file was closed
+ * @notify_ended:	Function used to notify when the test has ended.
+ * @consumer:		Function used to consume writes from userspace
+ * @producer:		Function used to produce data for userspace to read
+ *
+ * All ops can be NULL.
+ */
+struct kutf_userdata_ops {
+	int (*open)(void *priv);
+	void (*release)(void *priv);
+	void (*notify_ended)(void *priv);
+	ssize_t (*consumer)(void *priv, const char  __user *userbuf,
+			size_t userbuf_len, loff_t *ppos);
+	ssize_t (*producer)(void *priv, char  __user *userbuf,
+			size_t userbuf_len, loff_t *ppos);
+};
+
+/**
  * struct kutf_context - Structure representing a kernel test context
+ * @kref:		Refcount for number of users of this context
  * @suite:		Convenience pointer to the suite this context
  *                      is running
  * @test_fix:		The fixture that is being run in this context
@@ -161,8 +185,16 @@ union kutf_callback_data {
  * @status:		The status of the currently running fixture.
  * @expected_status:	The expected status on exist of the currently
  *                      running fixture.
+ * @userdata_consumer_priv:	Parameter to pass into kutf_userdata_ops
+ *                              consumer function. Must not be NULL if a
+ *                              consumer function was specified
+ * @userdata_producer_priv:	Parameter to pass into kutf_userdata_ops
+ *                              producer function. Must not be NULL if a
+ *                              producer function was specified
+ * @userdata_dentry:	The debugfs file for userdata exchange
  */
 struct kutf_context {
+	struct kref                     kref;
 	struct kutf_suite               *suite;
 	struct kutf_test_fixture        *test_fix;
 	struct kutf_mempool             fixture_pool;
@@ -173,6 +205,9 @@ struct kutf_context {
 	struct kutf_result_set          *result_set;
 	enum kutf_result_status         status;
 	enum kutf_result_status         expected_status;
+	void                            *userdata_consumer_priv;
+	void                            *userdata_producer_priv;
+	struct dentry                   *userdata_dentry;
 };
 
 /**
@@ -345,7 +380,7 @@ void kutf_add_test_with_filters(struct kutf_suite *suite,
  * @name:	The name of the test.
  * @execute:	Callback to the test function to run.
  * @filters:	A set of filtering flags, assigning test categories.
- * @test_data:	Test specific callback data, provoided during the
+ * @test_data:	Test specific callback data, provided during the
  *		running of the test in the kutf_context
  */
 void kutf_add_test_with_filters_and_data(
@@ -355,6 +390,31 @@ void kutf_add_test_with_filters_and_data(
 		void (*execute)(struct kutf_context *context),
 		unsigned int filters,
 		union kutf_callback_data test_data);
+
+/**
+ * kutf_add_test_with_filters_data_and_userdata() - Add a test to a kernel test suite with filters and setup for
+ *                                                  receiving data from userside
+ * @suite:		The suite to add the test to.
+ * @id:			The ID of the test.
+ * @name:		The name of the test.
+ * @execute:		Callback to the test function to run.
+ * @filters:		A set of filtering flags, assigning test categories.
+ * @test_data:		Test specific callback data, provided during the
+ *			running of the test in the kutf_context
+ * @userdata_ops:	Callbacks to use for sending and receiving data to
+ *			userspace. A copy of the struct kutf_userdata_ops is
+ *			taken. Each callback can be NULL.
+ *
+ */
+void kutf_add_test_with_filters_data_and_userdata(
+		struct kutf_suite *suite,
+		unsigned int id,
+		const char *name,
+		void (*execute)(struct kutf_context *context),
+		unsigned int filters,
+		union kutf_callback_data test_data,
+		struct kutf_userdata_ops *userdata_ops);
+
 
 /* ============================================================================
 	Test functions

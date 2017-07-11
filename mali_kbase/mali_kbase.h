@@ -71,12 +71,14 @@
 #ifdef CONFIG_GPU_TRACEPOINTS
 #include <trace/events/gpu.h>
 #endif
-/**
- * @page page_base_kernel_main Kernel-side Base (KBase) APIs
- */
 
-/**
- * @defgroup base_kbase_api Kernel-side Base (KBase) APIs
+#ifndef u64_to_user_ptr
+/* Introduced in Linux v4.6 */
+#define u64_to_user_ptr(x) ((void __user *)(uintptr_t)x)
+#endif
+
+/*
+ * Kernel-side Base (KBase) APIs
  */
 
 struct kbase_device *kbase_device_alloc(void);

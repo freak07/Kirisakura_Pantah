@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2016 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -654,7 +654,7 @@ static void kbasep_replay_create_atom(struct kbase_context *kctx,
 				      base_jd_prio prio)
 {
 	atom->nr_extres = 0;
-	atom->extres_list.value = NULL;
+	atom->extres_list = 0;
 	atom->device_nr = 0;
 	atom->prio = prio;
 	atom->atom_number = atom_nr;

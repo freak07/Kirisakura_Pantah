@@ -593,8 +593,10 @@ static int kbase_debug_copy_prepare(struct kbase_jd_atom *katom)
 
 	ret = copy_from_user(user_buffers, user_structs,
 			sizeof(*user_buffers)*nr);
-	if (ret)
+	if (ret) {
+		ret = -EFAULT;
 		goto out_cleanup;
+	}
 
 	for (i = 0; i < nr; i++) {
 		u64 addr = user_buffers[i].address;

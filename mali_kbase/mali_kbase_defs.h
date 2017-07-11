@@ -41,6 +41,7 @@
 #include <linux/mempool.h>
 #include <linux/slab.h>
 #include <linux/file.h>
+#include <linux/sizes.h>
 
 #ifdef CONFIG_MALI_FPGA_BUS_LOGGER
 #include <linux/bus_logger.h>
@@ -143,13 +144,15 @@
 /* mmu */
 #define MIDGARD_MMU_VA_BITS 48
 
+#define MIDGARD_MMU_LEVEL(x) (x)
+
 #if MIDGARD_MMU_VA_BITS > 39
-#define MIDGARD_MMU_TOPLEVEL    0
+#define MIDGARD_MMU_TOPLEVEL    MIDGARD_MMU_LEVEL(0)
 #else
-#define MIDGARD_MMU_TOPLEVEL    1
+#define MIDGARD_MMU_TOPLEVEL    MIDGARD_MMU_LEVEL(1)
 #endif
 
-#define MIDGARD_MMU_BOTTOMLEVEL 3
+#define MIDGARD_MMU_BOTTOMLEVEL MIDGARD_MMU_LEVEL(3)
 
 #define GROWABLE_FLAGS_REQUIRED (KBASE_REG_PF_GROW | KBASE_REG_GPU_WR)
 
@@ -908,6 +911,8 @@ struct kbase_pm_device_data {
  * @cur_size:  Number of free pages currently in the pool (may exceed @max_size
  *             in some corner cases)
  * @max_size:  Maximum number of free pages in the pool
+ * @order:     order = 0 refers to a pool of 4 KB pages
+ *             order = 9 refers to a pool of 2 MB pages (2^9 * 4KB = 2 MB)
  * @pool_lock: Lock protecting the pool - must be held when modifying @cur_size
  *             and @page_list
  * @page_list: List of free pages in the pool
@@ -920,6 +925,7 @@ struct kbase_mem_pool {
 	struct kbase_device *kbdev;
 	size_t              cur_size;
 	size_t              max_size;
+	size_t		    order;
 	spinlock_t          pool_lock;
 	struct list_head    page_list;
 	struct shrinker     reclaim;
@@ -981,6 +987,7 @@ struct kbase_device {
 	struct kbase_pm_device_data pm;
 	struct kbasep_js_device_data js_data;
 	struct kbase_mem_pool mem_pool;
+	struct kbase_mem_pool lp_mem_pool;
 	struct kbasep_mem_device memdev;
 	struct kbase_mmu_mode const *mmu_mode;
 
@@ -1330,6 +1337,12 @@ enum kbase_context_flags {
 	KCTX_NO_IMPLICIT_SYNC = 1U << 10,
 };
 
+struct kbase_sub_alloc {
+	struct list_head link;
+	struct page *page;
+	DECLARE_BITMAP(sub_pages, SZ_2M / SZ_4K);
+};
+
 struct kbase_context {
 	struct file *filp;
 	struct kbase_device *kbdev;
@@ -1351,7 +1364,10 @@ struct kbase_context {
 
 	u64 *mmu_teardown_pages;
 
-	struct page *aliasing_sink_page;
+	struct tagged_addr aliasing_sink_page;
+
+	struct mutex            mem_partials_lock;
+	struct list_head        mem_partials;
 
 	struct mutex            mmu_lock;
 	struct mutex            reg_lock; /* To be converted to a rwlock? */
@@ -1374,6 +1390,7 @@ struct kbase_context {
 	atomic_t         nonmapped_pages;
 
 	struct kbase_mem_pool mem_pool;
+	struct kbase_mem_pool lp_mem_pool;
 
 	struct shrinker         reclaim;
 	struct list_head        evict_list;

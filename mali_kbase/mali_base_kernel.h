@@ -17,30 +17,12 @@
 
 
 
-/**
- * @file
+/*
  * Base structures shared with the kernel.
  */
 
 #ifndef _BASE_KERNEL_H_
 #define _BASE_KERNEL_H_
-
-#ifndef __user
-#define __user
-#endif
-
-/* Support UK6 IOCTLS */
-#define BASE_LEGACY_UK6_SUPPORT 1
-
-/* Support UK7 IOCTLS */
-/* NB: To support UK6 we also need to support UK7 */
-#define BASE_LEGACY_UK7_SUPPORT 1
-
-/* Support UK8 IOCTLS */
-#define BASE_LEGACY_UK8_SUPPORT 1
-
-/* Support UK9 IOCTLS */
-#define BASE_LEGACY_UK9_SUPPORT 1
 
 /* Support UK10_2 IOCTLS */
 #define BASE_LEGACY_UK10_2_SUPPORT 1
@@ -99,13 +81,6 @@ typedef struct base_mem_handle {
 #error Failed to find page size
 #endif
 #endif
-
-/** 32/64-bit neutral way to represent pointers */
-typedef union kbase_pointer {
-	void __user *value;	  /**< client should store their pointers here */
-	u32 compat_value; /**< 64-bit kernels should fetch value here when handling 32-bit clients */
-	u64 sizer;	  /**< Force 64-bit storage for all clients regardless */
-} kbase_pointer;
 
 /**
  * @addtogroup base_user_api User-side Base APIs
@@ -261,14 +236,14 @@ typedef enum base_mem_import_type {
 /**
  * struct base_mem_import_user_buffer - Handle of an imported user buffer
  *
- * @ptr:	kbase_pointer to imported user buffer
+ * @ptr:	address of imported user buffer
  * @length:	length of imported user buffer in bytes
  *
  * This structure is used to represent a handle of an imported user buffer.
  */
 
 struct base_mem_import_user_buffer {
-	kbase_pointer ptr;
+	u64 ptr;
 	u64 length;
 };
 
@@ -848,7 +823,7 @@ struct base_dependency {
 typedef struct base_jd_atom_v2 {
 	u64 jc;			    /**< job-chain GPU address */
 	struct base_jd_udata udata;		    /**< user data */
-	kbase_pointer extres_list;	    /**< list of external resources */
+	u64 extres_list;	    /**< list of external resources */
 	u16 nr_extres;			    /**< nr of external resources */
 	u16 compat_core_req;	            /**< core requirements which correspond to the legacy support for UK 10.2 */
 	struct base_dependency pre_dep[2];  /**< pre-dependencies, one need to use SETTER function to assign this field,
@@ -859,21 +834,6 @@ typedef struct base_jd_atom_v2 {
 	u8 padding[1];
 	base_jd_core_req core_req;          /**< core requirements */
 } base_jd_atom_v2;
-
-#ifdef BASE_LEGACY_UK6_SUPPORT
-struct base_jd_atom_v2_uk6 {
-	u64 jc;			    /**< job-chain GPU address */
-	struct base_jd_udata udata;		    /**< user data */
-	kbase_pointer extres_list;	    /**< list of external resources */
-	u16 nr_extres;			    /**< nr of external resources */
-	u16 core_req;                       /**< core requirements */
-	base_atom_id pre_dep[2]; /**< pre-dependencies */
-	base_atom_id atom_number;	    /**< unique number to identify the atom */
-	base_jd_prio prio;		    /**< priority - smaller is higher priority */
-	u8 device_nr;			    /**< coregroup when BASE_JD_REQ_SPECIFIC_COHERENT_GROUP specified */
-	u8 padding[7];
-};
-#endif /* BASE_LEGACY_UK6_SUPPORT */
 
 typedef enum base_external_resource_access {
 	BASE_EXT_RES_ACCESS_SHARED,

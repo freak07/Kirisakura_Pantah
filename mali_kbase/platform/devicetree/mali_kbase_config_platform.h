@@ -71,3 +71,10 @@
 #define PLATFORM_FUNCS (NULL)
 
 extern struct kbase_pm_callback_conf pm_callbacks;
+
+/**
+ * Autosuspend delay
+ *
+ * The delay time (in milliseconds) to be used for autosuspend
+ */
+#define AUTO_SUSPEND_DELAY (100)

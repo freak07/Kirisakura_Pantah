@@ -58,13 +58,13 @@
  */
 
 static void __user *
-get_compat_pointer(struct kbase_context *kctx, const union kbase_pointer *p)
+get_compat_pointer(struct kbase_context *kctx, const u64 p)
 {
 #ifdef CONFIG_COMPAT
 	if (kbase_ctx_flag(kctx, KCTX_COMPAT))
-		return compat_ptr(p->compat_value);
+		return compat_ptr(p);
 #endif
-	return p->value;
+	return u64_to_user_ptr(p);
 }
 
 /* Runs an atom, either by handing to the JS or by immediately running it in the case of soft-jobs
@@ -327,7 +327,7 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 			katom->nr_extres);
 
 	if (copy_from_user(input_extres,
-			get_compat_pointer(katom->kctx, &user_atom->extres_list),
+			get_compat_pointer(katom->kctx, user_atom->extres_list),
 			sizeof(*input_extres) * katom->nr_extres) != 0) {
 		err_ret_val = -EINVAL;
 		goto early_err_out;
@@ -1313,62 +1313,14 @@ int kbase_jd_submit(struct kbase_context *kctx,
 		struct base_jd_atom_v2 user_atom;
 		struct kbase_jd_atom *katom;
 
-#ifdef BASE_LEGACY_UK6_SUPPORT
-		BUILD_BUG_ON(sizeof(struct base_jd_atom_v2_uk6) !=
-				sizeof(base_jd_atom_v2));
-
-		if (uk6_atom) {
-			struct base_jd_atom_v2_uk6 user_atom_v6;
-			base_jd_dep_type dep_types[2] = {BASE_JD_DEP_TYPE_DATA, BASE_JD_DEP_TYPE_DATA};
-
-			if (copy_from_user(&user_atom_v6, user_addr,
-					sizeof(user_atom_v6))) {
-				err = -EINVAL;
-				KBASE_TIMELINE_ATOMS_IN_FLIGHT(kctx,
-					atomic_sub_return(
-					nr_atoms - i,
-					&kctx->timeline.jd_atoms_in_flight));
-				break;
-			}
-			/* Convert from UK6 atom format to UK7 format */
-			user_atom.jc = user_atom_v6.jc;
-			user_atom.udata = user_atom_v6.udata;
-			user_atom.extres_list = user_atom_v6.extres_list;
-			user_atom.nr_extres = user_atom_v6.nr_extres;
-			user_atom.core_req = (u32)(user_atom_v6.core_req & 0x7fff);
-
-			/* atom number 0 is used for no dependency atoms */
-			if (!user_atom_v6.pre_dep[0])
-				dep_types[0] = BASE_JD_DEP_TYPE_INVALID;
-
-			base_jd_atom_dep_set(&user_atom.pre_dep[0],
-					user_atom_v6.pre_dep[0],
-					dep_types[0]);
-
-			/* atom number 0 is used for no dependency atoms */
-			if (!user_atom_v6.pre_dep[1])
-				dep_types[1] = BASE_JD_DEP_TYPE_INVALID;
-
-			base_jd_atom_dep_set(&user_atom.pre_dep[1],
-					user_atom_v6.pre_dep[1],
-					dep_types[1]);
-
-			user_atom.atom_number = user_atom_v6.atom_number;
-			user_atom.prio = user_atom_v6.prio;
-			user_atom.device_nr = user_atom_v6.device_nr;
-		} else {
-#endif /* BASE_LEGACY_UK6_SUPPORT */
-			if (copy_from_user(&user_atom, user_addr,
-						sizeof(user_atom)) != 0) {
-				err = -EINVAL;
-				KBASE_TIMELINE_ATOMS_IN_FLIGHT(kctx,
-					atomic_sub_return(nr_atoms - i,
-					&kctx->timeline.jd_atoms_in_flight));
-				break;
-			}
-#ifdef BASE_LEGACY_UK6_SUPPORT
+		if (copy_from_user(&user_atom, user_addr,
+					sizeof(user_atom)) != 0) {
+			err = -EINVAL;
+			KBASE_TIMELINE_ATOMS_IN_FLIGHT(kctx,
+				atomic_sub_return(nr_atoms - i,
+				&kctx->timeline.jd_atoms_in_flight));
+			break;
 		}
-#endif
 
 #ifdef BASE_LEGACY_UK10_2_SUPPORT
 		if (KBASE_API_VERSION(10, 3) > kctx->api_version)

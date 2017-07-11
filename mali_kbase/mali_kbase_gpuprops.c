@@ -217,10 +217,14 @@ static void kbase_gpuprops_get_props(base_gpu_props * const gpu_props, struct kb
 
 void kbase_gpuprops_update_core_props_gpu_id(base_gpu_props * const gpu_props)
 {
-	gpu_props->core_props.version_status = KBASE_UBFX32(gpu_props->raw_props.gpu_id, 0U, 4);
-	gpu_props->core_props.minor_revision = KBASE_UBFX32(gpu_props->raw_props.gpu_id, 4U, 8);
-	gpu_props->core_props.major_revision = KBASE_UBFX32(gpu_props->raw_props.gpu_id, 12U, 4);
-	gpu_props->core_props.product_id = KBASE_UBFX32(gpu_props->raw_props.gpu_id, 16U, 16);
+	gpu_props->core_props.version_status =
+		KBASE_UBFX32(gpu_props->raw_props.gpu_id, 0U, 4);
+	gpu_props->core_props.minor_revision =
+		KBASE_UBFX32(gpu_props->raw_props.gpu_id, 4U, 8);
+	gpu_props->core_props.major_revision =
+		KBASE_UBFX32(gpu_props->raw_props.gpu_id, 12U, 4);
+	gpu_props->core_props.product_id =
+		KBASE_UBFX32(gpu_props->raw_props.gpu_id, 16U, 16);
 }
 
 /**

@@ -1354,7 +1354,6 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 	kbasep_js_release_result release_result = 0u;
 	bool runpool_ctx_attr_change = false;
 	int kctx_as_nr;
-	struct kbase_as *current_as;
 	int new_ref_count;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
@@ -1374,7 +1373,6 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 	 *
 	 * Assert about out calling contract
 	 */
-	current_as = &kbdev->as[kctx_as_nr];
 	mutex_lock(&kbdev->pm.lock);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
@@ -1513,11 +1511,8 @@ void kbasep_js_runpool_release_ctx_nolock(struct kbase_device *kbdev,
 void kbasep_js_runpool_requeue_or_kill_ctx(struct kbase_device *kbdev,
 		struct kbase_context *kctx, bool has_pm_ref)
 {
-	struct kbasep_js_device_data *js_devdata;
-
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	KBASE_DEBUG_ASSERT(kctx != NULL);
-	js_devdata = &kbdev->js_data;
 
 	/* This is called if and only if you've you've detached the context from
 	 * the Runpool Queue, and not added it back to the Runpool
@@ -1628,7 +1623,6 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 {
 	struct kbasep_js_device_data *js_devdata;
 	struct kbasep_js_kctx_info *js_kctx_info;
-	struct kbase_as *new_address_space = NULL;
 	unsigned long flags;
 	bool kctx_suspended = false;
 	int as_nr;
@@ -1659,8 +1653,6 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 	}
 	if (as_nr == KBASEP_AS_NR_INVALID)
 		return false; /* No address spaces currently available */
-
-	new_address_space = &kbdev->as[as_nr];
 
 	/*
 	 * Atomic transaction on the Context and Run Pool begins
@@ -2809,12 +2801,10 @@ static void kbase_js_foreach_ctx_job(struct kbase_context *kctx,
 		kbasep_js_ctx_job_cb callback)
 {
 	struct kbase_device *kbdev;
-	struct kbasep_js_device_data *js_devdata;
 	unsigned long flags;
 	u32 js;
 
 	kbdev = kctx->kbdev;
-	js_devdata = &kbdev->js_data;
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 

@@ -125,7 +125,7 @@ static phys_addr_t pte_to_phy_addr(u64 entry)
 	return entry & ~0xFFF;
 }
 
-static int ate_is_valid(u64 ate)
+static int ate_is_valid(u64 ate, unsigned int level)
 {
 	return ((ate & ENTRY_TYPE_MASK) == ENTRY_IS_ATE);
 }
@@ -163,11 +163,13 @@ static u64 get_mmu_flags(unsigned long flags)
 	return mmu_flags;
 }
 
-static void entry_set_ate(u64 *entry, phys_addr_t phy, unsigned long flags)
+static void entry_set_ate(u64 *entry,
+		struct tagged_addr phy,
+		unsigned long flags,
+		unsigned int level)
 {
-	page_table_entry_set(entry, (phy & ~0xFFF) |
-		get_mmu_flags(flags) |
-		ENTRY_IS_ATE);
+	page_table_entry_set(entry, as_phys_addr_t(phy) | get_mmu_flags(flags) |
+			     ENTRY_IS_ATE);
 }
 
 static void entry_set_pte(u64 *entry, phys_addr_t phy)

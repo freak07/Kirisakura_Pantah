@@ -101,6 +101,12 @@
 #define GPU_ID2_PRODUCT_TMIX              GPU_ID2_MODEL_MAKE(6u, 0)
 #define GPU_ID2_PRODUCT_THEX              GPU_ID2_MODEL_MAKE(6u, 1)
 #define GPU_ID2_PRODUCT_TSIX              GPU_ID2_MODEL_MAKE(7u, 0)
+#ifdef MALI_INCLUDE_TDVX
+#define GPU_ID2_PRODUCT_TDVX              GPU_ID2_MODEL_MAKE(7u, 3)
+#endif /* MALI_INCLUDE_TDVX */
+#ifdef MALI_INCLUDE_TGOX
+#define GPU_ID2_PRODUCT_TGOX              GPU_ID2_MODEL_MAKE(7u, 2)
+#endif /* MALI_INCLUDE_TGOX */
 #ifdef MALI_INCLUDE_TKAX
 #define GPU_ID2_PRODUCT_TKAX              GPU_ID2_MODEL_MAKE(9u, 0)
 #endif /* MALI_INCLUDE_TKAX */

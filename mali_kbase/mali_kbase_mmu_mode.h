@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2015, 2017 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2015,2017 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -21,6 +21,7 @@
 #define _MALI_KBASE_MMU_MODE_
 
 #include <linux/types.h>
+#include <mali_kbase.h>
 
 /* Forward declarations */
 struct kbase_context;
@@ -34,9 +35,10 @@ struct kbase_mmu_mode {
 			struct kbase_mmu_setup * const setup);
 	void (*disable_as)(struct kbase_device *kbdev, int as_nr);
 	phys_addr_t (*pte_to_phy_addr)(u64 entry);
-	int (*ate_is_valid)(u64 ate);
+	int (*ate_is_valid)(u64 ate, unsigned int level);
 	int (*pte_is_valid)(u64 pte);
-	void (*entry_set_ate)(u64 *entry, phys_addr_t phy, unsigned long flags);
+	void (*entry_set_ate)(u64 *entry, struct tagged_addr phy,
+			unsigned long flags, unsigned int level);
 	void (*entry_set_pte)(u64 *entry, phys_addr_t phy);
 	void (*entry_invalidate)(u64 *entry);
 };

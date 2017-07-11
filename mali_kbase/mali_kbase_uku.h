@@ -96,7 +96,7 @@ struct kbase_uk_mem_alias {
 	/* IN */
 	u64 stride;
 	u64 nents;
-	union kbase_pointer ai;
+	u64 ai;
 	/* OUT */
 	u64         gpu_va;
 	u64         va_pages;
@@ -105,7 +105,7 @@ struct kbase_uk_mem_alias {
 struct kbase_uk_mem_import {
 	union uk_header header;
 	/* IN */
-	union kbase_pointer phandle;
+	u64 phandle;
 	u32 type;
 	u32 padding;
 	/* IN/OUT */
@@ -126,7 +126,7 @@ struct kbase_uk_mem_flags_change {
 struct kbase_uk_job_submit {
 	union uk_header header;
 	/* IN */
-	union kbase_pointer addr;
+	u64 addr;
 	u32 nr_atoms;
 	u32 stride;		/* bytes between atoms, i.e. sizeof(base_jd_atom_v2) */
 	/* OUT */
@@ -280,8 +280,8 @@ struct kbase_uk_set_flags {
 struct kbase_exported_test_data {
 	u64 test_addr[TEST_ADDR_COUNT];		/**< memory address */
 	u32 test_addr_pages[TEST_ADDR_COUNT];		/**<  memory size in pages */
-	union kbase_pointer kctx;				/**<  base context created by process */
-	union kbase_pointer mm;				/**< pointer to process address space */
+	u64 kctx;				/**<  base context created by process */
+	u64 mm;				/**< pointer to process address space */
 	u8 buffer1[KBASE_TEST_BUFFER_SIZE];   /**<  unit test defined parameter */
 	u8 buffer2[KBASE_TEST_BUFFER_SIZE];   /**<  unit test defined parameter */
 };
@@ -310,14 +310,6 @@ struct kbase_uk_model_control_params {
 };
 #endif				/* SUPPORT_MALI_NO_MALI */
 
-#ifdef BASE_LEGACY_UK8_SUPPORT
-struct kbase_uk_keep_gpu_powered {
-	union uk_header header;
-	u32       enabled;
-	u32       padding;
-};
-#endif /* BASE_LEGACY_UK8_SUPPORT */
-
 struct kbase_uk_profiling_controls {
 	union uk_header header;
 	u32 profiling_controls[FBDUMP_CONTROL_MAX];
@@ -327,7 +319,7 @@ struct kbase_uk_debugfs_mem_profile_add {
 	union uk_header header;
 	u32 len;
 	u32 padding;
-	union kbase_pointer buf;
+	u64 buf;
 };
 
 struct kbase_uk_context_id {
@@ -477,9 +469,7 @@ enum kbase_uk_function_id {
 	KBASE_FUNC_MEM_FLAGS_CHANGE = (UK_FUNC_ID + 5),
 	KBASE_FUNC_MEM_ALIAS = (UK_FUNC_ID + 6),
 
-#ifdef BASE_LEGACY_UK6_SUPPORT
-	KBASE_FUNC_JOB_SUBMIT_UK6 = (UK_FUNC_ID + 7),
-#endif /* BASE_LEGACY_UK6_SUPPORT */
+	/* UK_FUNC_ID + 7 not in use since BASE_LEGACY_UK6_SUPPORT dropped */
 
 	KBASE_FUNC_SYNC  = (UK_FUNC_ID + 8),
 
@@ -500,9 +490,7 @@ enum kbase_uk_function_id {
 	KBASE_FUNC_INJECT_ERROR = (UK_FUNC_ID + 20),
 	KBASE_FUNC_MODEL_CONTROL = (UK_FUNC_ID + 21),
 
-#ifdef BASE_LEGACY_UK8_SUPPORT
-	KBASE_FUNC_KEEP_GPU_POWERED = (UK_FUNC_ID + 22),
-#endif /* BASE_LEGACY_UK8_SUPPORT */
+	/* UK_FUNC_ID + 22 not in use since BASE_LEGACY_UK8_SUPPORT dropped */
 
 	KBASE_FUNC_FENCE_VALIDATE = (UK_FUNC_ID + 23),
 	KBASE_FUNC_STREAM_CREATE = (UK_FUNC_ID + 24),
