@@ -242,18 +242,17 @@ struct kbase_ipa_model *kbase_ipa_init_model(struct kbase_device *kbdev,
 		dev_err(kbdev->dev,
 			"init of power model \'%s\' returned error %d\n",
 			ops->name, err);
-		goto term_model;
+		kfree(model);
+		return NULL;
 	}
 
 	err = kbase_ipa_model_recalculate(model);
-	if (err)
-		goto term_model;
+	if (err) {
+		kbase_ipa_term_model(model);
+		return NULL;
+	}
 
 	return model;
-
-term_model:
-	kbase_ipa_term_model(model);
-	return NULL;
 }
 KBASE_EXPORT_TEST_API(kbase_ipa_init_model);
 

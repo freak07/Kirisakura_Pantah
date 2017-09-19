@@ -32,7 +32,6 @@
 #include <mali_base_hwconfig_issues.h>
 #include <mali_kbase_mem_lowlevel.h>
 #include <mali_kbase_mmu_hw.h>
-#include <mali_kbase_mmu_mode.h>
 #include <mali_kbase_instr_defs.h>
 #include <mali_kbase_pm.h>
 #include <protected_mode_switcher.h>
@@ -222,6 +221,12 @@
 #define KBASE_SERIALIZE_INTER_SLOT (1 << 1)
 /* Reset the GPU after each atom completion */
 #define KBASE_SERIALIZE_RESET (1 << 2)
+
+/* Forward declarations */
+struct kbase_context;
+struct kbase_device;
+struct kbase_as;
+struct kbase_mmu_setup;
 
 #ifdef CONFIG_DEBUG_FS
 struct base_job_fault_event {
@@ -946,6 +951,24 @@ struct kbase_devfreq_opp {
 	u64 core_mask;
 };
 
+struct kbase_mmu_mode {
+	void (*update)(struct kbase_context *kctx);
+	void (*get_as_setup)(struct kbase_context *kctx,
+			struct kbase_mmu_setup * const setup);
+	void (*disable_as)(struct kbase_device *kbdev, int as_nr);
+	phys_addr_t (*pte_to_phy_addr)(u64 entry);
+	int (*ate_is_valid)(u64 ate, unsigned int level);
+	int (*pte_is_valid)(u64 pte, unsigned int level);
+	void (*entry_set_ate)(u64 *entry, struct tagged_addr phy,
+			unsigned long flags, unsigned int level);
+	void (*entry_set_pte)(u64 *entry, phys_addr_t phy);
+	void (*entry_invalidate)(u64 *entry);
+};
+
+struct kbase_mmu_mode const *kbase_mmu_mode_get_lpae(void);
+struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
+
+
 #define DEVNAME_SIZE	16
 
 struct kbase_device {
@@ -1346,7 +1369,7 @@ struct kbase_sub_alloc {
 struct kbase_context {
 	struct file *filp;
 	struct kbase_device *kbdev;
-	int id; /* System wide unique id */
+	u32 id; /* System wide unique id */
 	unsigned long api_version;
 	phys_addr_t pgd;
 	struct list_head event_list;

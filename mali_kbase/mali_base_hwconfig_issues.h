@@ -981,6 +981,23 @@ static const enum base_hw_issue base_hw_issues_tMIx_r0p0[] = {
 	BASE_HW_ISSUE_END
 };
 
+static const enum base_hw_issue base_hw_issues_tMIx_r0p1[] = {
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_10682,
+	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_TMIX_7891,
+	BASE_HW_ISSUE_TMIX_7940,
+	BASE_HW_ISSUE_TMIX_8042,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_TMIX_8138,
+	BASE_HW_ISSUE_TMIX_8206,
+	BASE_HW_ISSUE_TMIX_8343,
+	BASE_HW_ISSUE_TMIX_8463,
+	BASE_HW_ISSUE_TMIX_8456,
+	BASE_HW_ISSUE_TMIX_8438,
+	BASE_HW_ISSUE_END
+};
+
 static const enum base_hw_issue base_hw_issues_model_tMIx[] = {
 	BASE_HW_ISSUE_5736,
 	BASE_HW_ISSUE_9435,
@@ -998,6 +1015,7 @@ static const enum base_hw_issue base_hw_issues_model_tMIx[] = {
 static const enum base_hw_issue base_hw_issues_tHEx_r0p0[] = {
 	BASE_HW_ISSUE_9435,
 	BASE_HW_ISSUE_10682,
+	BASE_HW_ISSUE_11054,
 	BASE_HW_ISSUE_TMIX_7891,
 	BASE_HW_ISSUE_TMIX_8042,
 	BASE_HW_ISSUE_TMIX_8133,
@@ -1005,6 +1023,26 @@ static const enum base_hw_issue base_hw_issues_tHEx_r0p0[] = {
 };
 
 static const enum base_hw_issue base_hw_issues_tHEx_r0p1[] = {
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_10682,
+	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_TMIX_7891,
+	BASE_HW_ISSUE_TMIX_8042,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_END
+};
+
+static const enum base_hw_issue base_hw_issues_tHEx_r0p2[] = {
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_10682,
+	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_TMIX_7891,
+	BASE_HW_ISSUE_TMIX_8042,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_END
+};
+
+static const enum base_hw_issue base_hw_issues_tHEx_r0p3[] = {
 	BASE_HW_ISSUE_9435,
 	BASE_HW_ISSUE_10682,
 	BASE_HW_ISSUE_TMIX_7891,
@@ -1024,6 +1062,7 @@ static const enum base_hw_issue base_hw_issues_model_tHEx[] = {
 
 static const enum base_hw_issue base_hw_issues_tSIx_r0p0[] = {
 	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_11054,
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_TSIX_1116,
 	BASE_HW_ISSUE_END
@@ -1031,12 +1070,21 @@ static const enum base_hw_issue base_hw_issues_tSIx_r0p0[] = {
 
 static const enum base_hw_issue base_hw_issues_tSIx_r0p1[] = {
 	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_11054,
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_TSIX_1116,
 	BASE_HW_ISSUE_END
 };
 
 static const enum base_hw_issue base_hw_issues_tSIx_r1p0[] = {
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_11054,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_TSIX_1116,
+	BASE_HW_ISSUE_END
+};
+
+static const enum base_hw_issue base_hw_issues_tSIx_r1p1[] = {
 	BASE_HW_ISSUE_9435,
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_TSIX_1116,
@@ -1053,6 +1101,7 @@ static const enum base_hw_issue base_hw_issues_model_tSIx[] = {
 
 static const enum base_hw_issue base_hw_issues_tDVx_r0p0[] = {
 	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_11054,
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_TSIX_1116,
 	BASE_HW_ISSUE_END
@@ -1068,67 +1117,10 @@ static const enum base_hw_issue base_hw_issues_model_tDVx[] = {
 
 
 
-#ifdef MALI_INCLUDE_TGOX
-static const enum base_hw_issue base_hw_issues_tGOx_r0p0[] = {
-	BASE_HW_ISSUE_9435,
-	BASE_HW_ISSUE_TMIX_8133,
-	BASE_HW_ISSUE_TSIX_1116,
-	BASE_HW_ISSUE_END
-};
 
-#endif /* MALI_INCLUDE_TGOX */
 
-#ifdef MALI_INCLUDE_TGOX
-static const enum base_hw_issue base_hw_issues_model_tGOx[] = {
-	BASE_HW_ISSUE_5736,
-	BASE_HW_ISSUE_9435,
-	BASE_HW_ISSUE_TMIX_8133,
-	BASE_HW_ISSUE_TSIX_1116,
-	BASE_HW_ISSUE_END
-};
 
-#endif /* MALI_INCLUDE_TGOX */
 
-#ifdef MALI_INCLUDE_TKAX
-static const enum base_hw_issue base_hw_issues_tKAx_r0p0[] = {
-	BASE_HW_ISSUE_9435,
-	BASE_HW_ISSUE_TMIX_8133,
-	BASE_HW_ISSUE_TSIX_1116,
-	BASE_HW_ISSUE_END
-};
 
-#endif /* MALI_INCLUDE_TKAX */
-
-#ifdef MALI_INCLUDE_TKAX
-static const enum base_hw_issue base_hw_issues_model_tKAx[] = {
-	BASE_HW_ISSUE_5736,
-	BASE_HW_ISSUE_9435,
-	BASE_HW_ISSUE_TMIX_8133,
-	BASE_HW_ISSUE_TSIX_1116,
-	BASE_HW_ISSUE_END
-};
-
-#endif /* MALI_INCLUDE_TKAX */
-
-#ifdef MALI_INCLUDE_TTRX
-static const enum base_hw_issue base_hw_issues_tTRx_r0p0[] = {
-	BASE_HW_ISSUE_9435,
-	BASE_HW_ISSUE_TMIX_8133,
-	BASE_HW_ISSUE_TSIX_1116,
-	BASE_HW_ISSUE_END
-};
-
-#endif /* MALI_INCLUDE_TTRX */
-
-#ifdef MALI_INCLUDE_TTRX
-static const enum base_hw_issue base_hw_issues_model_tTRx[] = {
-	BASE_HW_ISSUE_5736,
-	BASE_HW_ISSUE_9435,
-	BASE_HW_ISSUE_TMIX_8133,
-	BASE_HW_ISSUE_TSIX_1116,
-	BASE_HW_ISSUE_END
-};
-
-#endif /* MALI_INCLUDE_TTRX */
 
 #endif /* _BASE_HWCONFIG_ISSUES_H_ */

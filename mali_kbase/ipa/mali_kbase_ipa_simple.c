@@ -26,6 +26,7 @@
 #include "mali_kbase.h"
 #include "mali_kbase_defs.h"
 #include "mali_kbase_ipa_simple.h"
+#include "mali_kbase_ipa_debugfs.h"
 
 #if MALI_UNIT_TEST
 
@@ -252,10 +253,8 @@ static int kbase_simple_power_model_init(struct kbase_ipa_model *model)
 
 	model_data = kzalloc(sizeof(struct kbase_ipa_model_simple_data),
 			     GFP_KERNEL);
-	if (!model_data) {
-		err = -ENOMEM;
-		goto exit;
-	}
+	if (!model_data)
+		return -ENOMEM;
 
 	model->model_data = (void *) model_data;
 
@@ -263,17 +262,15 @@ static int kbase_simple_power_model_init(struct kbase_ipa_model *model)
 	model_data->poll_temperature_thread = kthread_run(poll_temperature,
 							  (void *) model_data,
 							  "mali-simple-power-model-temp-poll");
-	if (!model_data->poll_temperature_thread) {
-		err = -ENOMEM;
-		goto exit;
+	if (IS_ERR(model_data->poll_temperature_thread)) {
+		kfree(model_data);
+		return PTR_ERR(model_data->poll_temperature_thread);
 	}
 
 	err = add_params(model);
-
-exit:
 	if (err) {
-		if (model_data->poll_temperature_thread)
-			kthread_stop(model_data->poll_temperature_thread);
+		kbase_ipa_model_param_free_all(model);
+		kthread_stop(model_data->poll_temperature_thread);
 		kfree(model_data);
 	}
 

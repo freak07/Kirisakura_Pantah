@@ -322,7 +322,6 @@ int kutf_helper_textbuf_receive_named_val(struct kutf_helper_named_val *named_va
 			err = KUTF_HELPER_ERR_NO_END_DELIMITER;
 		}
 	} else {
-		int err;
 		/* possibly a number value - strtoull will parse it */
 		err = kstrtoull(recv_str, 0, &u64val);
 		/* unlike userspace can't get an end ptr, but if kstrtoull()
@@ -336,7 +335,6 @@ int kutf_helper_textbuf_receive_named_val(struct kutf_helper_named_val *named_va
 		} else {
 			/* special case: not a number, report as such */
 			pr_err("Rest of received string was not a numeric value or quoted string value: '%s'\n", recv_str);
-			err = KUTF_HELPER_ERR_INVALID_VALUE;
 		}
 	}
 

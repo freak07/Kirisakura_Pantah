@@ -18,6 +18,7 @@
 
 #include "mali_kbase_ipa_vinstr_common.h"
 #include "mali_kbase.h"
+#include "mali_kbase_ipa_debugfs.h"
 
 
 #define JM_BASE    (0 * KBASE_IPA_NR_BYTES_PER_BLOCK)
@@ -78,7 +79,7 @@ static int kbase_g71_power_model_init(struct kbase_ipa_model *model)
 
 	model_data = kzalloc(sizeof(*model_data), GFP_KERNEL);
 	if (!model_data)
-		return -EINVAL;
+		return -ENOMEM;
 
 	model_data->kbdev = model->kbdev;
 	model_data->groups_def = ipa_groups_def;
@@ -95,16 +96,23 @@ static int kbase_g71_power_model_init(struct kbase_ipa_model *model)
 					&model_data->group_values[i],
 					1, false);
 		if (err)
-			break;
+			goto exit;
 	}
 
 	model_data->scaling_factor = 15000;
 	err = kbase_ipa_model_add_param_s32(model, "scale",
 					    &model_data->scaling_factor,
 					    1, false);
+	if (err)
+		goto exit;
 
 	err = kbase_ipa_attach_vinstr(model_data);
 
+exit:
+	if (err) {
+		kbase_ipa_model_param_free_all(model);
+		kfree(model_data);
+	}
 	return err;
 }
 

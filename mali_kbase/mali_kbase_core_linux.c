@@ -45,11 +45,6 @@
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include "mali_kbase_ioctl.h"
 
-#ifdef CONFIG_KDS
-#include <linux/kds.h>
-#include <linux/syscalls.h>
-#endif /* CONFIG_KDS */
-
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/poll.h>
@@ -70,9 +65,6 @@
 #include <linux/version.h>
 #include <mali_kbase_hw.h>
 #include <platform/mali_kbase_platform_common.h>
-#ifdef CONFIG_MALI_PLATFORM_FAKE
-#include <platform/mali_kbase_platform_fake.h>
-#endif /*CONFIG_MALI_PLATFORM_FAKE */
 #if defined(CONFIG_SYNC) || defined(CONFIG_SYNC_FILE)
 #include <mali_kbase_sync.h>
 #endif /* CONFIG_SYNC || CONFIG_SYNC_FILE */
@@ -474,11 +466,19 @@ copy_failed:
 	case KBASE_FUNC_JOB_SUBMIT:
 		{
 			struct kbase_uk_job_submit *job = args;
+			char __user *user_buf;
 
 			if (sizeof(*job) != args_size)
 				goto bad_size;
 
-			if (kbase_jd_submit(kctx, u64_to_user_ptr(job->addr),
+#ifdef CONFIG_COMPAT
+			if (kbase_ctx_flag(kctx, KCTX_COMPAT))
+				user_buf = compat_ptr(job->addr);
+			else
+#endif
+				user_buf = u64_to_user_ptr(job->addr);
+
+			if (kbase_jd_submit(kctx, user_buf,
 						job->nr_atoms,
 						job->stride,
 						false) != 0)
@@ -1113,7 +1113,7 @@ static int kbase_open(struct inode *inode, struct file *filp)
 
 	kbase_debug_job_fault_context_init(kctx);
 
-	kbase_mem_pool_debugfs_init(kctx->kctx_dentry, &kctx->mem_pool);
+	kbase_mem_pool_debugfs_init(kctx->kctx_dentry, &kctx->mem_pool, &kctx->lp_mem_pool);
 
 	kbase_jit_debugfs_init(kctx);
 #endif /* CONFIG_DEBUG_FS */
@@ -1130,7 +1130,7 @@ static int kbase_open(struct inode *inode, struct file *filp)
 			list_add(&element->link, &kbdev->kctx_list);
 			KBASE_TLSTREAM_TL_NEW_CTX(
 					element->kctx,
-					(u32)(element->kctx->id),
+					element->kctx->id,
 					(u32)(element->kctx->tgid));
 			mutex_unlock(&kbdev->kctx_list_lock);
 		} else {
@@ -3167,7 +3167,7 @@ static ssize_t kbase_show_gpuinfo(struct device *dev,
 		{ .id = GPU_ID2_PRODUCT_TMIX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
 		  .name = "Mali-G71" },
 		{ .id = GPU_ID2_PRODUCT_THEX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
-		  .name = "Mali-THEx" },
+		  .name = "Mali-G72" },
 		{ .id = GPU_ID2_PRODUCT_TSIX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
 		  .name = "Mali-G51" },
 	};
@@ -3496,6 +3496,119 @@ static ssize_t set_mem_pool_max_size(struct device *dev,
 static DEVICE_ATTR(mem_pool_max_size, S_IRUGO | S_IWUSR, show_mem_pool_max_size,
 		set_mem_pool_max_size);
 
+/**
+ * show_lp_mem_pool_size - Show size of the large memory pages pool.
+ * @dev:  The device this sysfs file is for.
+ * @attr: The attributes of the sysfs file.
+ * @buf:  The output buffer to receive the pool size.
+ *
+ * This function is called to get the number of large memory pages which currently populate the kbdev pool.
+ *
+ * Return: The number of bytes output to @buf.
+ */
+static ssize_t show_lp_mem_pool_size(struct device *dev,
+		struct device_attribute *attr, char * const buf)
+{
+	struct kbase_device *kbdev;
+
+	kbdev = to_kbase_device(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	return scnprintf(buf, PAGE_SIZE, "%zu\n", kbase_mem_pool_size(&kbdev->lp_mem_pool));
+}
+
+/**
+ * set_lp_mem_pool_size - Set size of the large memory pages pool.
+ * @dev:   The device this sysfs file is for.
+ * @attr:  The attributes of the sysfs file.
+ * @buf:   The value written to the sysfs file.
+ * @count: The number of bytes written to the sysfs file.
+ *
+ * This function is called to set the number of large memory pages which should populate the kbdev pool.
+ * This may cause existing pages to be removed from the pool, or new pages to be created and then added to the pool.
+ *
+ * Return: @count if the function succeeded. An error code on failure.
+ */
+static ssize_t set_lp_mem_pool_size(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct kbase_device *kbdev;
+	unsigned long new_size;
+	int err;
+
+	kbdev = to_kbase_device(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	err = kstrtoul(buf, 0, &new_size);
+	if (err)
+		return err;
+
+	kbase_mem_pool_trim(&kbdev->lp_mem_pool, new_size);
+
+	return count;
+}
+
+static DEVICE_ATTR(lp_mem_pool_size, S_IRUGO | S_IWUSR, show_lp_mem_pool_size,
+		set_lp_mem_pool_size);
+
+/**
+ * show_lp_mem_pool_max_size - Show maximum size of the large memory pages pool.
+ * @dev:  The device this sysfs file is for.
+ * @attr: The attributes of the sysfs file.
+ * @buf:  The output buffer to receive the pool size.
+ *
+ * This function is called to get the maximum number of large memory pages that the kbdev pool can possibly contain.
+ *
+ * Return: The number of bytes output to @buf.
+ */
+static ssize_t show_lp_mem_pool_max_size(struct device *dev,
+		struct device_attribute *attr, char * const buf)
+{
+	struct kbase_device *kbdev;
+
+	kbdev = to_kbase_device(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	return scnprintf(buf, PAGE_SIZE, "%zu\n", kbase_mem_pool_max_size(&kbdev->lp_mem_pool));
+}
+
+/**
+ * set_lp_mem_pool_max_size - Set maximum size of the large memory pages pool.
+ * @dev:   The device this sysfs file is for.
+ * @attr:  The attributes of the sysfs file.
+ * @buf:   The value written to the sysfs file.
+ * @count: The number of bytes written to the sysfs file.
+ *
+ * This function is called to set the maximum number of large memory pages that the kbdev pool can possibly contain.
+ *
+ * Return: @count if the function succeeded. An error code on failure.
+ */
+static ssize_t set_lp_mem_pool_max_size(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct kbase_device *kbdev;
+	unsigned long new_max_size;
+	int err;
+
+	kbdev = to_kbase_device(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	err = kstrtoul(buf, 0, &new_max_size);
+	if (err)
+		return -EINVAL;
+
+	kbase_mem_pool_set_max_size(&kbdev->lp_mem_pool, new_max_size);
+
+	return count;
+}
+
+static DEVICE_ATTR(lp_mem_pool_max_size, S_IRUGO | S_IWUSR, show_lp_mem_pool_max_size,
+		set_lp_mem_pool_max_size);
+
 #ifdef CONFIG_DEBUG_FS
 
 /* Number of entries in serialize_jobs_settings[] */
@@ -3702,7 +3815,7 @@ static void kbase_common_reg_unmap(struct kbase_device * const kbdev)
 #else /* CONFIG_MALI_NO_MALI */
 static int kbase_common_reg_map(struct kbase_device *kbdev)
 {
-	int err = -ENOMEM;
+	int err = 0;
 
 	if (!request_mem_region(kbdev->reg_start, kbdev->reg_size, dev_name(kbdev->dev))) {
 		dev_err(kbdev->dev, "Register window unavailable\n");
@@ -3717,7 +3830,7 @@ static int kbase_common_reg_map(struct kbase_device *kbdev)
 		goto out_ioremap;
 	}
 
-	return 0;
+	return err;
 
  out_ioremap:
 	release_mem_region(kbdev->reg_start, kbdev->reg_size);
@@ -4153,6 +4266,8 @@ static struct attribute *kbase_attrs[] = {
 	&dev_attr_core_mask.attr,
 	&dev_attr_mem_pool_size.attr,
 	&dev_attr_mem_pool_max_size.attr,
+	&dev_attr_lp_mem_pool_size.attr,
+	&dev_attr_lp_mem_pool_max_size.attr,
 	NULL
 };
 
@@ -4774,25 +4889,22 @@ static int __init kbase_driver_init(void)
 	if (ret)
 		return ret;
 
-#ifdef CONFIG_MALI_PLATFORM_FAKE
-	ret = kbase_platform_fake_register();
+	ret = kbase_platform_register();
 	if (ret)
 		return ret;
-#endif
+
 	ret = platform_driver_register(&kbase_platform_driver);
-#ifdef CONFIG_MALI_PLATFORM_FAKE
+
 	if (ret)
-		kbase_platform_fake_unregister();
-#endif
+		kbase_platform_unregister();
+
 	return ret;
 }
 
 static void __exit kbase_driver_exit(void)
 {
 	platform_driver_unregister(&kbase_platform_driver);
-#ifdef CONFIG_MALI_PLATFORM_FAKE
-	kbase_platform_fake_unregister();
-#endif
+	kbase_platform_unregister();
 }
 
 module_init(kbase_driver_init);

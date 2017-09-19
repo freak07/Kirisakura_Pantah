@@ -1297,6 +1297,7 @@ static void kbase_pm_hw_issues_detect(struct kbase_device *kbdev)
 		}
 	}
 
+
 	if (!kbdev->hw_quirks_jm)
 		kbdev->hw_quirks_jm = kbase_reg_read(kbdev,
 				GPU_CONTROL_REG(JM_CONFIG), NULL);

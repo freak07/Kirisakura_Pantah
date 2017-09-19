@@ -256,8 +256,7 @@ struct kbase_va_region {
 /* Can grow on pf? */
 #define KBASE_REG_PF_GROW           (1ul << 7)
 
-/* VA managed by us */
-#define KBASE_REG_CUSTOM_VA         (1ul << 8)
+/* Bit 8 is unused */
 
 /* inner shareable coherency */
 #define KBASE_REG_SHARE_IN          (1ul << 9)
@@ -284,6 +283,11 @@ struct kbase_va_region {
 
 /* Imported buffer is padded? */
 #define KBASE_REG_IMPORT_PAD        (1ul << 21)
+
+/* Bit 22 is reserved.
+ *
+ * Do not remove, use the next unreserved bit for new flags */
+#define KBASE_REG_RESERVED_BIT_22   (1ul << 22)
 
 #define KBASE_REG_ZONE_SAME_VA      KBASE_REG_ZONE(0)
 

@@ -1510,12 +1510,15 @@ int kbase_alloc_phy_pages_helper(
 			struct page *np = NULL;
 
 			do {
-				int err = kbase_mem_pool_grow(&kctx->lp_mem_pool, 1);
+				int err;
 
+				np = kbase_mem_pool_alloc(&kctx->lp_mem_pool);
+				if (np)
+					break;
+				err = kbase_mem_pool_grow(&kctx->lp_mem_pool, 1);
 				if (err)
 					break;
-				np = kbase_mem_pool_alloc(&kctx->lp_mem_pool);
-			} while (!np);
+			} while (1);
 
 			if (np) {
 				int i;
@@ -1571,7 +1574,7 @@ no_new_partial:
 		kbase_zone_cache_clear(alloc);
 
 	KBASE_TLSTREAM_AUX_PAGESALLOC(
-			(u32)kctx->id,
+			kctx->id,
 			(u64)new_page_count);
 
 	alloc->nents += nr_pages_requested;
@@ -1708,7 +1711,7 @@ int kbase_free_phy_pages_helper(
 				       &kctx->kbdev->memdev.used_pages);
 
 		KBASE_TLSTREAM_AUX_PAGESALLOC(
-				(u32)kctx->id,
+				kctx->id,
 				(u64)new_page_count);
 	}
 
@@ -2517,8 +2520,7 @@ static int kbase_jd_umm_map(struct kbase_context *kctx,
 	KBASE_DEBUG_ASSERT(pa);
 
 	for_each_sg(sgt->sgl, s, sgt->nents, i) {
-		int j;
-		size_t pages = PFN_UP(sg_dma_len(s));
+		size_t j, pages = PFN_UP(sg_dma_len(s));
 
 		WARN_ONCE(sg_dma_len(s) & (PAGE_SIZE-1),
 		"sg_dma_len(s)=%u is not a multiple of PAGE_SIZE\n",

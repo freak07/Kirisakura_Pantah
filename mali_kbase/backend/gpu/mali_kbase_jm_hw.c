@@ -696,13 +696,11 @@ void kbase_backend_jm_kill_jobs_from_kctx(struct kbase_context *kctx)
 {
 	unsigned long flags;
 	struct kbase_device *kbdev;
-	struct kbasep_js_device_data *js_devdata;
 	int i;
 
 	KBASE_DEBUG_ASSERT(kctx != NULL);
 	kbdev = kctx->kbdev;
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
-	js_devdata = &kbdev->js_data;
 
 	/* Cancel any remaining running jobs for this kctx  */
 	mutex_lock(&kctx->jctx.lock);

@@ -26,7 +26,7 @@ ifeq ($(MALI_UNIT_TEST), 1)
 	EXTRA_SYMBOLS += $(KBASE_PATH_RELATIVE)/tests/internal/src/kernel_assert_module/linux/Module.symvers
 endif
 
-ifeq ($(MALI_BUS_LOG), 1)
+ifeq ($(CONFIG_MALI_FPGA_BUS_LOGGER),y)
 #Add bus logger symbols
 EXTRA_SYMBOLS += $(BUSLOG_PATH_RELATIVE)/drivers/base/bus_logger/Module.symvers
 endif

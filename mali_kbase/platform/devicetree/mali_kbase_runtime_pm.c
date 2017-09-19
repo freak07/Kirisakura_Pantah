@@ -18,7 +18,6 @@
 #include <mali_kbase.h>
 #include <mali_kbase_defs.h>
 #include <linux/pm_runtime.h>
-#include <linux/suspend.h>
 #include "mali_kbase_config_platform.h"
 
 static int pm_callback_power_on(struct kbase_device *kbdev)

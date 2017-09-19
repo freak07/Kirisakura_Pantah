@@ -325,7 +325,7 @@ union kbase_ioctl_mem_find_cpu_offset {
  * @id: The kernel context ID
  */
 struct kbase_ioctl_get_context_id {
-	int id; /* This should really be __u32, but see GPUCORE-10048 */
+	__u32 id;
 };
 
 #define KBASE_IOCTL_GET_CONTEXT_ID \

@@ -1246,12 +1246,10 @@ struct kbase_context *kbasep_js_runpool_lookup_ctx(struct kbase_device *kbdev,
 		int as_nr)
 {
 	unsigned long flags;
-	struct kbasep_js_device_data *js_devdata;
 	struct kbase_context *found_kctx = NULL;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	KBASE_DEBUG_ASSERT(0 <= as_nr && as_nr < BASE_MAX_NR_AS);
-	js_devdata = &kbdev->js_data;
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
@@ -2391,7 +2389,6 @@ bool kbase_js_complete_atom_wq(struct kbase_context *kctx,
 struct kbase_jd_atom *kbase_js_complete_atom(struct kbase_jd_atom *katom,
 		ktime_t *end_timestamp)
 {
-	u64 microseconds_spent = 0;
 	struct kbase_device *kbdev;
 	struct kbase_context *kctx = katom->kctx;
 	struct kbase_jd_atom *x_dep = katom->x_post_dep;
@@ -2415,24 +2412,6 @@ struct kbase_jd_atom *kbase_js_complete_atom(struct kbase_jd_atom *katom,
 	kbase_trace_mali_job_slots_event(GATOR_MAKE_EVENT(GATOR_JOB_SLOT_STOP,
 				katom->slot_nr), NULL, 0);
 #endif
-
-	/* Calculate the job's time used */
-	if (end_timestamp != NULL) {
-		/* Only calculating it for jobs that really run on the HW (e.g.
-		 * removed from next jobs never actually ran, so really did take
-		 * zero time) */
-		ktime_t tick_diff = ktime_sub(*end_timestamp,
-							katom->start_timestamp);
-
-		microseconds_spent = ktime_to_ns(tick_diff);
-
-		do_div(microseconds_spent, 1000);
-
-		/* Round up time spent to the minimum timer resolution */
-		if (microseconds_spent < KBASEP_JS_TICK_RESOLUTION_US)
-			microseconds_spent = KBASEP_JS_TICK_RESOLUTION_US;
-	}
-
 
 	kbase_jd_done(katom, katom->slot_nr, end_timestamp, 0);
 
