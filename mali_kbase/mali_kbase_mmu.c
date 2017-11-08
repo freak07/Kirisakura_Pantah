@@ -99,14 +99,31 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 		struct kbase_as *as, const char *reason_str);
 
 
-static size_t make_multiple(size_t minimum, size_t multiple)
+/**
+ * make_multiple() - Calculate the nearest integral multiple of a given number.
+ *
+ * @minimum: The number to round up.
+ * @multiple: The number of which the function shall calculate an integral multiple.
+ * @result: The number rounded up to the nearest integral multiple in case of success,
+ *          or just the number itself in case of failure.
+ *
+ * Return: 0 in case of success, or -1 in case of failure.
+ */
+static int make_multiple(size_t minimum, size_t multiple, size_t *result)
 {
-	size_t remainder = minimum % multiple;
+	int err = -1;
 
-	if (remainder == 0)
-		return minimum;
+	*result = minimum;
 
-	return minimum + multiple - remainder;
+	if (multiple > 0) {
+		size_t remainder = minimum % multiple;
+
+		if (remainder != 0)
+			*result = minimum + multiple - remainder;
+		err = 0;
+	}
+
+	return err;
 }
 
 void page_fault_worker(struct work_struct *data)
@@ -266,15 +283,13 @@ void page_fault_worker(struct work_struct *data)
 		goto fault_done;
 	}
 
-	new_pages = make_multiple(fault_rel_pfn -
-			kbase_reg_current_backed_size(region) + 1,
-			region->extent);
+	err = make_multiple(fault_rel_pfn - kbase_reg_current_backed_size(region) + 1,
+			region->extent,
+			&new_pages);
+	WARN_ON(err);
 
 	/* cap to max vsize */
-	if (new_pages + kbase_reg_current_backed_size(region) >
-			region->nr_pages)
-		new_pages = region->nr_pages -
-				kbase_reg_current_backed_size(region);
+	new_pages = min(new_pages, region->nr_pages - kbase_reg_current_backed_size(region));
 
 	if (0 == new_pages) {
 		mutex_lock(&kbdev->mmu_hw_mutex);
@@ -2114,14 +2129,10 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev, struct kbase_contex
 		 * We need to switch to UNMAPPED mode - but we do this in a
 		 * worker so that we can sleep
 		 */
-		KBASE_DEBUG_ASSERT(0 == object_is_on_stack(&as->work_busfault));
-		WARN_ON(work_pending(&as->work_busfault));
-		queue_work(as->pf_wq, &as->work_busfault);
+		WARN_ON(!queue_work(as->pf_wq, &as->work_busfault));
 		atomic_inc(&kbdev->faults_pending);
 	} else {
-		KBASE_DEBUG_ASSERT(0 == object_is_on_stack(&as->work_pagefault));
-		WARN_ON(work_pending(&as->work_pagefault));
-		queue_work(as->pf_wq, &as->work_pagefault);
+		WARN_ON(!queue_work(as->pf_wq, &as->work_pagefault));
 		atomic_inc(&kbdev->faults_pending);
 	}
 }

@@ -1240,13 +1240,13 @@ static void kbase_ext_res_process(struct kbase_jd_atom *katom, bool map)
 	return;
 
 failed_loop:
-	while (--i > 0) {
-		u64 gpu_addr;
-
-		gpu_addr = ext_res->ext_res[i].ext_resource &
+	while (i > 0) {
+		u64 const gpu_addr = ext_res->ext_res[i - 1].ext_resource &
 				~BASE_EXT_RES_ACCESS_EXCLUSIVE;
 
 		kbase_sticky_resource_release(katom->kctx, NULL, gpu_addr);
+
+		--i;
 	}
 
 	katom->event_code = BASE_JD_EVENT_JOB_INVALID;

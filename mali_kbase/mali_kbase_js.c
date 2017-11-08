@@ -1146,9 +1146,8 @@ bool kbasep_js_add_job(struct kbase_context *kctx,
 	if (!kbase_ctx_flag(kctx, KCTX_SCHEDULED)) {
 		if (kbase_ctx_flag(kctx, KCTX_DYING)) {
 			/* A job got added while/after kbase_job_zap_context()
-			 * was called on a non-scheduled context (e.g. KDS
-			 * dependency resolved). Kill that job by killing the
-			 * context. */
+			 * was called on a non-scheduled context. Kill that job
+			 * by killing the context. */
 			kbasep_js_runpool_requeue_or_kill_ctx(kbdev, kctx,
 					false);
 		} else if (js_kctx_info->ctx.nr_jobs == 1) {
@@ -1174,13 +1173,11 @@ void kbasep_js_remove_job(struct kbase_device *kbdev,
 		struct kbase_context *kctx, struct kbase_jd_atom *atom)
 {
 	struct kbasep_js_kctx_info *js_kctx_info;
-	struct kbasep_js_device_data *js_devdata;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	KBASE_DEBUG_ASSERT(kctx != NULL);
 	KBASE_DEBUG_ASSERT(atom != NULL);
 
-	js_devdata = &kbdev->js_data;
 	js_kctx_info = &kctx->jctx.sched_info;
 
 	KBASE_TRACE_ADD_REFCOUNT(kbdev, JS_REMOVE_JOB, kctx, atom, atom->jc,
@@ -1196,14 +1193,11 @@ bool kbasep_js_remove_cancelled_job(struct kbase_device *kbdev,
 {
 	unsigned long flags;
 	struct kbasep_js_atom_retained_state katom_retained_state;
-	struct kbasep_js_device_data *js_devdata;
 	bool attr_state_changed;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	KBASE_DEBUG_ASSERT(kctx != NULL);
 	KBASE_DEBUG_ASSERT(katom != NULL);
-
-	js_devdata = &kbdev->js_data;
 
 	kbasep_js_atom_retained_state_copy(&katom_retained_state, katom);
 	kbasep_js_remove_job(kbdev, kctx, katom);
@@ -1227,11 +1221,9 @@ bool kbasep_js_runpool_retain_ctx(struct kbase_device *kbdev,
 		struct kbase_context *kctx)
 {
 	unsigned long flags;
-	struct kbasep_js_device_data *js_devdata;
 	bool result;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
-	js_devdata = &kbdev->js_data;
 
 	mutex_lock(&kbdev->mmu_hw_mutex);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
@@ -2280,7 +2272,6 @@ void kbase_js_unpull(struct kbase_context *kctx, struct kbase_jd_atom *katom)
 
 	kbase_job_check_leave_disjoint(kctx->kbdev, katom);
 
-	KBASE_DEBUG_ASSERT(0 == object_is_on_stack(&katom->work));
 	INIT_WORK(&katom->work, js_return_worker);
 	queue_work(kctx->jctx.job_done_wq, &katom->work);
 }

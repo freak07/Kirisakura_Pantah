@@ -28,7 +28,7 @@
  * The initial implementation of the Context Scheduler does not schedule
  * contexts. Instead it relies on the Job Scheduler to make decisions of
  * when to schedule/evict contexts if address spaces are starved. In the
- * future, once an interface between the CS and JS have been devised to
+ * future, once an interface between the CS and JS has been devised to
  * provide enough information about how each context is consuming GPU resources,
  * those decisions can be made in the CS itself, thereby reducing duplicated
  * code.

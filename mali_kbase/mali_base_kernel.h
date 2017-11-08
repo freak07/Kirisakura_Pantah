@@ -24,12 +24,6 @@
 #ifndef _BASE_KERNEL_H_
 #define _BASE_KERNEL_H_
 
-/* Support UK10_2 IOCTLS */
-#define BASE_LEGACY_UK10_2_SUPPORT 1
-
-/* Support UK10_4 IOCTLS */
-#define BASE_LEGACY_UK10_4_SUPPORT 1
-
 typedef struct base_mem_handle {
 	struct {
 		u64 handle;
@@ -52,7 +46,7 @@ typedef struct base_mem_handle {
 #define BASE_JD_SOFT_EVENT_SET             ((unsigned char)1)
 #define BASE_JD_SOFT_EVENT_RESET           ((unsigned char)0)
 
-#define BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS 3
+#define BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS 4
 
 #define BASE_MAX_COHERENT_GROUPS 16
 
@@ -1403,7 +1397,7 @@ typedef struct base_dump_cpu_gpu_counters {
  * @{
  */
 
-#define BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS 3
+#define BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS 4
 
 #define BASE_MAX_COHERENT_GROUPS 16
 
@@ -1599,7 +1593,7 @@ struct gpu_raw_gpu_props {
 	u32 js_present;
 	u32 js_features[GPU_MAX_JOB_SLOTS];
 	u32 tiler_features;
-	u32 texture_features[3];
+	u32 texture_features[BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS];
 
 	u32 gpu_id;
 
@@ -1765,20 +1759,6 @@ typedef struct base_jd_replay_payload {
 	 */
 	base_jd_core_req fragment_core_req;
 } base_jd_replay_payload;
-
-#ifdef BASE_LEGACY_UK10_2_SUPPORT
-typedef struct base_jd_replay_payload_uk10_2 {
-	u64 tiler_jc_list;
-	u64 fragment_jc;
-	u64 tiler_heap_free;
-	u16 fragment_hierarchy_mask;
-	u16 tiler_hierarchy_mask;
-	u32 hierarchy_default_weight;
-	u16 tiler_core_req;
-	u16 fragment_core_req;
-	u8 padding[4];
-} base_jd_replay_payload_uk10_2;
-#endif /* BASE_LEGACY_UK10_2_SUPPORT */
 
 /**
  * @brief An entry in the linked list of job chains to be replayed. This must

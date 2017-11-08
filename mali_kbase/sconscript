@@ -46,19 +46,11 @@ make_args = env.kernel_get_config_defines(ret_list = True) + [
 	'MALI_RELEASE_NAME=%s' % env['mali_release_name'],
 	'MALI_MOCK_TEST=%s' % mock_test,
 	'MALI_CUSTOMER_RELEASE=%s' % env['release'],
-	'MALI_INSTRUMENTATION_LEVEL=%s' % env['instr'],
 	'MALI_COVERAGE=%s' % env['coverage'],
 ]
 
 kbase = env.BuildKernelModule('$STATIC_LIB_PATH/mali_kbase.ko', kbase_src,
                               make_args = make_args)
-
-# Add a dependency on kds.ko.
-# Only necessary when KDS is not built into the kernel.
-#
-if env['os'] != 'android':
-	if not env.KernelConfigEnabled("CONFIG_KDS"):
-		env.Depends(kbase, '$STATIC_LIB_PATH/kds.ko')
 
 # need Module.symvers from ump.ko build
 if int(env['ump']) == 1:

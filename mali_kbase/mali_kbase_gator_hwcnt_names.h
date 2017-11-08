@@ -2162,6 +2162,8 @@ static const char * const hardware_counters_mali_t88x[] = {
 
 #include "mali_kbase_gator_hwcnt_names_tsix.h"
 
+#include "mali_kbase_gator_hwcnt_names_tnox.h"
 
+#include "mali_kbase_gator_hwcnt_names_tkax.h"
 
 #endif

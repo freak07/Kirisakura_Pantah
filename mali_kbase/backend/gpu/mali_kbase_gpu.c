@@ -34,6 +34,10 @@ int kbase_backend_early_init(struct kbase_device *kbdev)
 	if (err)
 		return err;
 
+	err = kbase_pm_runtime_init(kbdev);
+	if (err)
+		goto fail_runtime_pm;
+
 	/* Ensure we can access the GPU registers */
 	kbase_pm_register_access_enable(kbdev);
 
@@ -56,6 +60,8 @@ int kbase_backend_early_init(struct kbase_device *kbdev)
 fail_pm:
 	kbase_release_interrupts(kbdev);
 fail_interrupts:
+	kbase_pm_runtime_term(kbdev);
+fail_runtime_pm:
 	kbasep_platform_device_term(kbdev);
 
 	return err;
@@ -65,6 +71,7 @@ void kbase_backend_early_term(struct kbase_device *kbdev)
 {
 	kbase_hwaccess_pm_term(kbdev);
 	kbase_release_interrupts(kbdev);
+	kbase_pm_runtime_term(kbdev);
 	kbasep_platform_device_term(kbdev);
 }
 

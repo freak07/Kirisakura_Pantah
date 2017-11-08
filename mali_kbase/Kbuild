@@ -15,7 +15,7 @@
 
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= "r8p0-01rel0"
+MALI_RELEASE_NAME ?= "r9p0-01rel0"
 
 # Paths required for build
 KBASE_PATH = $(src)
@@ -33,7 +33,6 @@ MALI_KERNEL_TEST_API ?= 0
 MALI_ERROR_INJECT_ON ?= 0
 MALI_MOCK_TEST ?= 0
 MALI_COVERAGE ?= 0
-MALI_INSTRUMENTATION_LEVEL ?= 0
 CONFIG_MALI_PLATFORM_NAME ?= "devicetree"
 # This workaround is for what seems to be a compiler bug we observed in
 # GCC 4.7 on AOSP 4.3.  The bug caused an intermittent failure compiling
@@ -55,7 +54,6 @@ DEFINES = \
 	-DMALI_ERROR_INJECT_ON=$(MALI_ERROR_INJECT_ON) \
 	-DMALI_MOCK_TEST=$(MALI_MOCK_TEST) \
 	-DMALI_COVERAGE=$(MALI_COVERAGE) \
-	-DMALI_INSTRUMENTATION_LEVEL=$(MALI_INSTRUMENTATION_LEVEL) \
 	-DMALI_RELEASE_NAME=\"$(MALI_RELEASE_NAME)\" \
 	-DMALI_GCC_WORKAROUND_MIDCOM_4598=$(MALI_GCC_WORKAROUND_MIDCOM_4598)
 

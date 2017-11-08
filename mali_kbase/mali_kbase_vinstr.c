@@ -33,6 +33,9 @@
 #include <mali_kbase_hwcnt_reader.h>
 #include <mali_kbase_mem_linux.h>
 #include <mali_kbase_tlstream.h>
+#ifdef CONFIG_MALI_NO_MALI
+#include <backend/gpu/mali_kbase_model_dummy.h>
+#endif
 
 /*****************************************************************************/
 

@@ -30,9 +30,6 @@
 #endif
 
 #include <linux/kref.h>
-#ifdef CONFIG_KDS
-#include <linux/kds.h>
-#endif				/* CONFIG_KDS */
 #ifdef CONFIG_UMP
 #include <linux/ump.h>
 #endif				/* CONFIG_UMP */
@@ -319,9 +316,6 @@ struct kbase_va_region {
 
 	struct kbase_mem_phy_alloc *cpu_alloc; /* the one alloc object we mmap to the CPU when mapping this region */
 	struct kbase_mem_phy_alloc *gpu_alloc; /* the one alloc object we mmap to the GPU when mapping this region */
-
-	/* non-NULL if this memory object is a kds_resource */
-	struct kds_resource *kds_res;
 
 	/* List head used to store the region in the JIT allocation pool */
 	struct list_head jit_node;
@@ -1040,22 +1034,13 @@ void kbase_jit_term(struct kbase_context *kctx);
  * @kctx:              kbase context.
  * @reg:               The region to map.
  * @locked_mm:         The mm_struct which has been locked for this operation.
- * @kds_res_count:     The number of KDS resources.
- * @kds_resources:     Array of KDS resources.
- * @kds_access_bitmap: Access bitmap for KDS.
- * @exclusive:         If the KDS resource requires exclusive access.
  *
  * Return: The physical allocation which backs the region on success or NULL
  * on failure.
  */
 struct kbase_mem_phy_alloc *kbase_map_external_resource(
 		struct kbase_context *kctx, struct kbase_va_region *reg,
-		struct mm_struct *locked_mm
-#ifdef CONFIG_KDS
-		, u32 *kds_res_count, struct kds_resource **kds_resources,
-		unsigned long *kds_access_bitmap, bool exclusive
-#endif
-		);
+		struct mm_struct *locked_mm);
 
 /**
  * kbase_unmap_external_resource - Unmap an external resource from the GPU.
