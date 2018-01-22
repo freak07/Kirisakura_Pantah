@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 
 
@@ -59,6 +64,11 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 	atomic_set(&kctx->refcount, 0);
 	if (is_compat)
 		kbase_ctx_flag_set(kctx, KCTX_COMPAT);
+#if defined(CONFIG_64BIT)
+	else
+		kbase_ctx_flag_set(kctx, KCTX_FORCE_SAME_VA);
+#endif /* !defined(CONFIG_64BIT) */
+
 #ifdef CONFIG_MALI_TRACE_TIMELINE
 	kctx->timeline.owner_tgid = task_tgid_nr(current);
 #endif

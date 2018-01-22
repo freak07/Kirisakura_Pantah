@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 #include <mali_kbase.h>
 #include <mali_kbase_config_defaults.h>
@@ -44,6 +49,10 @@
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include "mali_kbase_ioctl.h"
 
+#ifdef CONFIG_MALI_JOB_DUMP
+#include "mali_kbase_gwt.h"
+#endif
+
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/poll.h>
@@ -63,12 +72,12 @@
 #include <linux/mman.h>
 #include <linux/version.h>
 #include <mali_kbase_hw.h>
-#include <platform/mali_kbase_platform_common.h>
 #if defined(CONFIG_SYNC) || defined(CONFIG_SYNC_FILE)
 #include <mali_kbase_sync.h>
 #endif /* CONFIG_SYNC || CONFIG_SYNC_FILE */
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/log2.h>
 
 #include <mali_kbase_config.h>
 
@@ -168,22 +177,6 @@ enum {
 	inited_protected = (1u << 21),
 	inited_ctx_sched = (1u << 22)
 };
-
-
-#ifdef CONFIG_MALI_DEBUG
-#define INACTIVE_WAIT_MS (5000)
-
-void kbase_set_driver_inactive(struct kbase_device *kbdev, bool inactive)
-{
-	kbdev->driver_inactive = inactive;
-	wake_up(&kbdev->driver_inactive_wait);
-
-	/* Wait for any running IOCTLs to complete */
-	if (inactive)
-		msleep(INACTIVE_WAIT_MS);
-}
-KBASE_EXPORT_TEST_API(kbase_set_driver_inactive);
-#endif /* CONFIG_MALI_DEBUG */
 
 static struct kbase_device *to_kbase_device(struct device *dev)
 {
@@ -337,6 +330,55 @@ static const struct file_operations kbase_infinite_cache_fops = {
 	.read = read_ctx_infinite_cache,
 };
 
+static ssize_t write_ctx_force_same_va(struct file *f, const char __user *ubuf,
+		size_t size, loff_t *off)
+{
+	struct kbase_context *kctx = f->private_data;
+	int err;
+	bool value;
+
+	err = kstrtobool_from_user(ubuf, size, &value);
+	if (err)
+		return err;
+
+	if (value) {
+#if defined(CONFIG_64BIT)
+		/* 32-bit clients cannot force SAME_VA */
+		if (kbase_ctx_flag(kctx, KCTX_COMPAT))
+			return -EINVAL;
+		kbase_ctx_flag_set(kctx, KCTX_FORCE_SAME_VA);
+#else /* defined(CONFIG_64BIT) */
+		/* 32-bit clients cannot force SAME_VA */
+		return -EINVAL;
+#endif /* defined(CONFIG_64BIT) */
+	} else {
+		kbase_ctx_flag_clear(kctx, KCTX_FORCE_SAME_VA);
+	}
+
+	return size;
+}
+
+static ssize_t read_ctx_force_same_va(struct file *f, char __user *ubuf,
+		size_t size, loff_t *off)
+{
+	struct kbase_context *kctx = f->private_data;
+	char buf[32];
+	int count;
+	bool value;
+
+	value = kbase_ctx_flag(kctx, KCTX_FORCE_SAME_VA);
+
+	count = scnprintf(buf, sizeof(buf), "%s\n", value ? "Y" : "N");
+
+	return simple_read_from_buffer(ubuf, size, off, buf, count);
+}
+
+static const struct file_operations kbase_force_same_va_fops = {
+	.open = simple_open,
+	.write = write_ctx_force_same_va,
+	.read = read_ctx_force_same_va,
+};
+
 static int kbase_open(struct inode *inode, struct file *filp)
 {
 	struct kbase_device *kbdev = NULL;
@@ -376,7 +418,9 @@ static int kbase_open(struct inode *inode, struct file *filp)
 	}
 
 	debugfs_create_file("infinite_cache", 0644, kctx->kctx_dentry,
-			    kctx, &kbase_infinite_cache_fops);
+			kctx, &kbase_infinite_cache_fops);
+	debugfs_create_file("force_same_va", S_IRUSR | S_IWUSR,
+			kctx->kctx_dentry, kctx, &kbase_force_same_va_fops);
 
 	mutex_init(&kctx->mem_profile_lock);
 
@@ -529,12 +573,11 @@ static int kbase_api_mem_alloc(struct kbase_context *kctx,
 	u64 flags = alloc->in.flags;
 	u64 gpu_va;
 
-#if defined(CONFIG_64BIT)
-	if (!kbase_ctx_flag(kctx, KCTX_COMPAT)) {
+	if ((!kbase_ctx_flag(kctx, KCTX_COMPAT)) &&
+			kbase_ctx_flag(kctx, KCTX_FORCE_SAME_VA)) {
 		/* force SAME_VA if a 64-bit client */
 		flags |= BASE_MEM_SAME_VA;
 	}
-#endif
 
 	reg = kbase_mem_alloc(kctx, alloc->in.va_pages,
 			alloc->in.commit_pages,
@@ -686,6 +729,17 @@ static int kbase_api_mem_find_cpu_offset(struct kbase_context *kctx,
 			&find->out.offset);
 }
 
+static int kbase_api_mem_find_gpu_start_and_offset(struct kbase_context *kctx,
+		union kbase_ioctl_mem_find_gpu_start_and_offset *find)
+{
+	return kbasep_find_enclosing_gpu_mapping_start_and_offset(
+			kctx,
+			find->in.gpu_addr,
+			find->in.size,
+			&find->out.start,
+			&find->out.offset);
+}
+
 static int kbase_api_get_context_id(struct kbase_context *kctx,
 		struct kbase_ioctl_get_context_id *info)
 {
@@ -721,6 +775,9 @@ static int kbase_api_mem_alias(struct kbase_context *kctx,
 	int err;
 
 	if (alias->in.nents == 0 || alias->in.nents > 2048)
+		return -EINVAL;
+
+	if (alias->in.stride > (U64_MAX / 2048))
 		return -EINVAL;
 
 	ai = vmalloc(sizeof(*ai) * alias->in.nents);
@@ -859,6 +916,74 @@ static int kbase_api_soft_event_update(struct kbase_context *kctx,
 		return -EINVAL;
 
 	return kbase_soft_event_update(kctx, update->event, update->new_status);
+}
+
+static int kbase_api_sticky_resource_map(struct kbase_context *kctx,
+		struct kbase_ioctl_sticky_resource_map *map)
+{
+	int ret;
+	u64 i;
+	u64 gpu_addr[BASE_EXT_RES_COUNT_MAX];
+
+	if (!map->count || map->count > BASE_EXT_RES_COUNT_MAX)
+		return -EOVERFLOW;
+
+	ret = copy_from_user(gpu_addr, u64_to_user_ptr(map->address),
+			sizeof(u64) * map->count);
+
+	if (ret != 0)
+		return -EFAULT;
+
+	kbase_gpu_vm_lock(kctx);
+
+	for (i = 0; i < map->count; i++) {
+		if (!kbase_sticky_resource_acquire(kctx, gpu_addr[i])) {
+			/* Invalid resource */
+			ret = -EINVAL;
+			break;
+		}
+	}
+
+	if (ret != 0) {
+		while (i > 0) {
+			i--;
+			kbase_sticky_resource_release(kctx, NULL, gpu_addr[i]);
+		}
+	}
+
+	kbase_gpu_vm_unlock(kctx);
+
+	return ret;
+}
+
+static int kbase_api_sticky_resource_unmap(struct kbase_context *kctx,
+		struct kbase_ioctl_sticky_resource_unmap *unmap)
+{
+	int ret;
+	u64 i;
+	u64 gpu_addr[BASE_EXT_RES_COUNT_MAX];
+
+	if (!unmap->count || unmap->count > BASE_EXT_RES_COUNT_MAX)
+		return -EOVERFLOW;
+
+	ret = copy_from_user(gpu_addr, u64_to_user_ptr(unmap->address),
+			sizeof(u64) * unmap->count);
+
+	if (ret != 0)
+		return -EFAULT;
+
+	kbase_gpu_vm_lock(kctx);
+
+	for (i = 0; i < unmap->count; i++) {
+		if (!kbase_sticky_resource_release(kctx, NULL, gpu_addr[i])) {
+			/* Invalid resource, but we keep going anyway */
+			ret = -EINVAL;
+		}
+	}
+
+	kbase_gpu_vm_unlock(kctx);
+
+	return ret;
 }
 
 #if MALI_UNIT_TEST
@@ -1000,6 +1125,9 @@ static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		KBASE_HANDLE_IOCTL_INOUT(KBASE_IOCTL_MEM_FIND_CPU_OFFSET,
 				kbase_api_mem_find_cpu_offset,
 				union kbase_ioctl_mem_find_cpu_offset);
+		KBASE_HANDLE_IOCTL_INOUT(KBASE_IOCTL_MEM_FIND_GPU_START_AND_OFFSET,
+				kbase_api_mem_find_gpu_start_and_offset,
+				union kbase_ioctl_mem_find_gpu_start_and_offset);
 		KBASE_HANDLE_IOCTL_OUT(KBASE_IOCTL_GET_CONTEXT_ID,
 				kbase_api_get_context_id,
 				struct kbase_ioctl_get_context_id);
@@ -1035,6 +1163,21 @@ static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_SOFT_EVENT_UPDATE,
 				kbase_api_soft_event_update,
 				struct kbase_ioctl_soft_event_update);
+#ifdef CONFIG_MALI_JOB_DUMP
+		KBASE_HANDLE_IOCTL(KBASE_IOCTL_CINSTR_GWT_START,
+				kbase_gpu_gwt_start);
+		KBASE_HANDLE_IOCTL(KBASE_IOCTL_CINSTR_GWT_STOP,
+				kbase_gpu_gwt_stop);
+		KBASE_HANDLE_IOCTL_INOUT(KBASE_IOCTL_CINSTR_GWT_DUMP,
+				kbase_gpu_gwt_dump,
+				union kbase_ioctl_cinstr_gwt_dump);
+#endif
+		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_STICKY_RESOURCE_MAP,
+				kbase_api_sticky_resource_map,
+				struct kbase_ioctl_sticky_resource_map);
+		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_STICKY_RESOURCE_UNMAP,
+				kbase_api_sticky_resource_unmap,
+				struct kbase_ioctl_sticky_resource_unmap);
 
 #if MALI_UNIT_TEST
 		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_TLSTREAM_TEST,
@@ -1119,242 +1262,6 @@ static int kbase_check_flags(int flags)
 		return -EINVAL;
 
 	return 0;
-}
-
-
-/**
- * align_and_check - Align the specified pointer to the provided alignment and
- *                   check that it is still in range.
- * @gap_end:        Highest possible start address for allocation (end of gap in
- *                  address space)
- * @gap_start:      Start address of current memory area / gap in address space
- * @info:           vm_unmapped_area_info structure passed to caller, containing
- *                  alignment, length and limits for the allocation
- * @is_shader_code: True if the allocation is for shader code (which has
- *                  additional alignment requirements)
- *
- * Return: true if gap_end is now aligned correctly and is still in range,
- *         false otherwise
- */
-static bool align_and_check(unsigned long *gap_end, unsigned long gap_start,
-		struct vm_unmapped_area_info *info, bool is_shader_code)
-{
-	/* Compute highest gap address at the desired alignment */
-	(*gap_end) -= info->length;
-	(*gap_end) -= (*gap_end - info->align_offset) & info->align_mask;
-
-	if (is_shader_code) {
-		/* Check for 4GB boundary */
-		if (0 == (*gap_end & BASE_MEM_MASK_4GB))
-			(*gap_end) -= (info->align_offset ? info->align_offset :
-					info->length);
-		if (0 == ((*gap_end + info->length) & BASE_MEM_MASK_4GB))
-			(*gap_end) -= (info->align_offset ? info->align_offset :
-					info->length);
-
-		if (!(*gap_end & BASE_MEM_MASK_4GB) || !((*gap_end +
-				info->length) & BASE_MEM_MASK_4GB))
-			return false;
-	}
-
-
-	if ((*gap_end < info->low_limit) || (*gap_end < gap_start))
-		return false;
-
-
-	return true;
-}
-
-/* The following function is taken from the kernel and just
- * renamed. As it's not exported to modules we must copy-paste it here.
- */
-
-static unsigned long kbase_unmapped_area_topdown(struct vm_unmapped_area_info
-		*info, bool is_shader_code)
-{
-	struct mm_struct *mm = current->mm;
-	struct vm_area_struct *vma;
-	unsigned long length, low_limit, high_limit, gap_start, gap_end;
-
-	/* Adjust search length to account for worst case alignment overhead */
-	length = info->length + info->align_mask;
-	if (length < info->length)
-		return -ENOMEM;
-
-	/*
-	 * Adjust search limits by the desired length.
-	 * See implementation comment at top of unmapped_area().
-	 */
-	gap_end = info->high_limit;
-	if (gap_end < length)
-		return -ENOMEM;
-	high_limit = gap_end - length;
-
-	if (info->low_limit > high_limit)
-		return -ENOMEM;
-	low_limit = info->low_limit + length;
-
-	/* Check highest gap, which does not precede any rbtree node */
-	gap_start = mm->highest_vm_end;
-	if (gap_start <= high_limit) {
-		if (align_and_check(&gap_end, gap_start, info, is_shader_code))
-			return gap_end;
-	}
-
-	/* Check if rbtree root looks promising */
-	if (RB_EMPTY_ROOT(&mm->mm_rb))
-		return -ENOMEM;
-	vma = rb_entry(mm->mm_rb.rb_node, struct vm_area_struct, vm_rb);
-	if (vma->rb_subtree_gap < length)
-		return -ENOMEM;
-
-	while (true) {
-		/* Visit right subtree if it looks promising */
-		gap_start = vma->vm_prev ? vma->vm_prev->vm_end : 0;
-		if (gap_start <= high_limit && vma->vm_rb.rb_right) {
-			struct vm_area_struct *right =
-				rb_entry(vma->vm_rb.rb_right,
-					 struct vm_area_struct, vm_rb);
-			if (right->rb_subtree_gap >= length) {
-				vma = right;
-				continue;
-			}
-		}
-
-check_current:
-		/* Check if current node has a suitable gap */
-		gap_end = vma->vm_start;
-		if (gap_end < low_limit)
-			return -ENOMEM;
-		if (gap_start <= high_limit && gap_end - gap_start >= length) {
-			/* We found a suitable gap. Clip it with the original
-			 * high_limit. */
-			if (gap_end > info->high_limit)
-				gap_end = info->high_limit;
-
-			if (align_and_check(&gap_end, gap_start, info,
-					is_shader_code))
-				return gap_end;
-		}
-
-		/* Visit left subtree if it looks promising */
-		if (vma->vm_rb.rb_left) {
-			struct vm_area_struct *left =
-				rb_entry(vma->vm_rb.rb_left,
-					 struct vm_area_struct, vm_rb);
-			if (left->rb_subtree_gap >= length) {
-				vma = left;
-				continue;
-			}
-		}
-
-		/* Go back up the rbtree to find next candidate node */
-		while (true) {
-			struct rb_node *prev = &vma->vm_rb;
-			if (!rb_parent(prev))
-				return -ENOMEM;
-			vma = rb_entry(rb_parent(prev),
-				       struct vm_area_struct, vm_rb);
-			if (prev == vma->vm_rb.rb_right) {
-				gap_start = vma->vm_prev ?
-					vma->vm_prev->vm_end : 0;
-				goto check_current;
-			}
-		}
-	}
-
-	return -ENOMEM;
-}
-
-static unsigned long kbase_get_unmapped_area(struct file *filp,
-		const unsigned long addr, const unsigned long len,
-		const unsigned long pgoff, const unsigned long flags)
-{
-	/* based on get_unmapped_area, but simplified slightly due to that some
-	 * values are known in advance */
-	struct kbase_context *kctx = filp->private_data;
-	struct mm_struct *mm = current->mm;
-	struct vm_unmapped_area_info info;
-	unsigned long align_offset = 0;
-	unsigned long align_mask = 0;
-	unsigned long high_limit = mm->mmap_base;
-	unsigned long low_limit = PAGE_SIZE;
-	int cpu_va_bits = BITS_PER_LONG;
-	int gpu_pc_bits =
-	      kctx->kbdev->gpu_props.props.core_props.log2_program_counter_size;
-	bool is_shader_code = false;
-	unsigned long ret;
-
-	/* err on fixed address */
-	if ((flags & MAP_FIXED) || addr)
-		return -EINVAL;
-
-#ifdef CONFIG_64BIT
-	/* too big? */
-	if (len > TASK_SIZE - SZ_2M)
-		return -ENOMEM;
-
-	if (!kbase_ctx_flag(kctx, KCTX_COMPAT)) {
-
-		if (kbase_hw_has_feature(kctx->kbdev,
-						BASE_HW_FEATURE_33BIT_VA)) {
-			high_limit = kctx->same_va_end << PAGE_SHIFT;
-		} else {
-			high_limit = min_t(unsigned long, mm->mmap_base,
-					(kctx->same_va_end << PAGE_SHIFT));
-			if (len >= SZ_2M) {
-				align_offset = SZ_2M;
-				align_mask = SZ_2M - 1;
-			}
-		}
-
-		low_limit = SZ_2M;
-	} else {
-		cpu_va_bits = 32;
-	}
-#endif /* CONFIG_64BIT */
-	if ((PFN_DOWN(BASE_MEM_COOKIE_BASE) <= pgoff) &&
-		(PFN_DOWN(BASE_MEM_FIRST_FREE_ADDRESS) > pgoff)) {
-			int cookie = pgoff - PFN_DOWN(BASE_MEM_COOKIE_BASE);
-
-			if (!kctx->pending_regions[cookie])
-				return -EINVAL;
-
-			if (!(kctx->pending_regions[cookie]->flags &
-							KBASE_REG_GPU_NX)) {
-				if (cpu_va_bits > gpu_pc_bits) {
-					align_offset = 1ULL << gpu_pc_bits;
-					align_mask = align_offset - 1;
-					is_shader_code = true;
-				}
-			}
-#ifndef CONFIG_64BIT
-	} else {
-		return current->mm->get_unmapped_area(filp, addr, len, pgoff,
-						      flags);
-#endif
-	}
-
-	info.flags = 0;
-	info.length = len;
-	info.low_limit = low_limit;
-	info.high_limit = high_limit;
-	info.align_offset = align_offset;
-	info.align_mask = align_mask;
-
-	ret = kbase_unmapped_area_topdown(&info, is_shader_code);
-
-	if (IS_ERR_VALUE(ret) && high_limit == mm->mmap_base &&
-			high_limit < (kctx->same_va_end << PAGE_SHIFT)) {
-		/* Retry above mmap_base */
-		info.low_limit = mm->mmap_base;
-		info.high_limit = min_t(u64, TASK_SIZE,
-					(kctx->same_va_end << PAGE_SHIFT));
-
-		ret = kbase_unmapped_area_topdown(&info, is_shader_code);
-	}
-
-	return ret;
 }
 
 static const struct file_operations kbase_fops = {
@@ -3127,7 +3034,7 @@ static int power_control_init(struct platform_device *pdev)
 	}
 #endif /* LINUX_VERSION_CODE >= 3, 12, 0 */
 
-	kbdev->clock = clk_get(kbdev->dev, "clk_mali");
+	kbdev->clock = of_clk_get(kbdev->dev->of_node, 0);
 	if (IS_ERR_OR_NULL(kbdev->clock)) {
 		err = PTR_ERR(kbdev->clock);
 		kbdev->clock = NULL;
@@ -3545,10 +3452,6 @@ static int kbase_platform_device_remove(struct platform_device *pdev)
 		kbase_debug_job_fault_dev_term(kbdev);
 		kbdev->inited_subsys &= ~inited_job_fault;
 	}
-	if (kbdev->inited_subsys & inited_vinstr) {
-		kbase_vinstr_term(kbdev->vinstr_ctx);
-		kbdev->inited_subsys &= ~inited_vinstr;
-	}
 
 #ifdef CONFIG_MALI_DEVFREQ
 	if (kbdev->inited_subsys & inited_devfreq) {
@@ -3556,6 +3459,11 @@ static int kbase_platform_device_remove(struct platform_device *pdev)
 		kbdev->inited_subsys &= ~inited_devfreq;
 	}
 #endif
+
+	if (kbdev->inited_subsys & inited_vinstr) {
+		kbase_vinstr_term(kbdev->vinstr_ctx);
+		kbdev->inited_subsys &= ~inited_vinstr;
+	}
 
 	if (kbdev->inited_subsys & inited_backend_late) {
 		kbase_backend_late_term(kbdev);
@@ -3649,14 +3557,6 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	const struct list_head *dev_list;
 	int err = 0;
 
-#ifdef CONFIG_OF
-	err = kbase_platform_early_init();
-	if (err) {
-		dev_err(&pdev->dev, "Early platform initialization failed\n");
-		kbase_platform_device_remove(pdev);
-		return err;
-	}
-#endif
 	kbdev = kbase_device_alloc();
 	if (!kbdev) {
 		dev_err(&pdev->dev, "Allocate device failed\n");
@@ -3722,10 +3622,15 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 
 	kbase_disjoint_init(kbdev);
 
-	/* obtain min/max configured gpu frequencies */
+	/* obtain max configured gpu frequency, if devfreq is enabled then
+	 * this will be overridden by the highest operating point found
+	 */
 	core_props = &(kbdev->gpu_props.props.core_props);
-	core_props->gpu_freq_khz_min = GPU_FREQ_KHZ_MIN;
+#ifdef GPU_FREQ_KHZ_MAX
 	core_props->gpu_freq_khz_max = GPU_FREQ_KHZ_MAX;
+#else
+	core_props->gpu_freq_khz_max = DEFAULT_GPU_FREQ_KHZ_MAX;
+#endif
 
 	err = kbase_device_init(kbdev);
 	if (err) {
@@ -4089,10 +3994,6 @@ module_platform_driver(kbase_platform_driver);
 static int __init kbase_driver_init(void)
 {
 	int ret;
-
-	ret = kbase_platform_early_init();
-	if (ret)
-		return ret;
 
 	ret = kbase_platform_register();
 	if (ret)

@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 /**
  * @file mali_kbase_config_defaults.h
@@ -266,6 +271,14 @@ enum {
  * the available power policies to coarse_demand and always_on.
  */
 #define PLATFORM_POWER_DOWN_ONLY (0)
+
+/*
+ * Maximum frequency (in kHz) that the GPU can be clocked. For some platforms
+ * this isn't available, so we simply define a dummy value here. If devfreq
+ * is enabled the value will be read from there, otherwise this should be
+ * overridden by defining GPU_FREQ_KHZ_MAX in the platform file.
+ */
+#define DEFAULT_GPU_FREQ_KHZ_MAX (5000)
 
 #endif /* _KBASE_CONFIG_DEFAULTS_H_ */
 

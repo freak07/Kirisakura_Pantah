@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 
 
@@ -24,7 +29,6 @@
 #include <mali_kbase.h>
 #include <mali_midg_regmap.h>
 #include <mali_kbase_gpuprops.h>
-#include <mali_kbase_config_defaults.h>
 #include <mali_kbase_hwaccess_gpuprops.h>
 #include "mali_kbase_ioctl.h"
 #include <linux/clk.h>
@@ -295,15 +299,13 @@ static struct {
 	int size;
 } gpu_property_mapping[] = {
 #define PROP(name, member) \
-	{KBASE_GPUPROP_ ## name, offsetof(struct mali_base_gpu_props, member), \
-		sizeof(((struct mali_base_gpu_props *)0)->member)}
+	{KBASE_GPUPROP_ ## name, offsetof(struct base_gpu_props, member), \
+		sizeof(((struct base_gpu_props *)0)->member)}
 	PROP(PRODUCT_ID,                  core_props.product_id),
 	PROP(VERSION_STATUS,              core_props.version_status),
 	PROP(MINOR_REVISION,              core_props.minor_revision),
 	PROP(MAJOR_REVISION,              core_props.major_revision),
-	PROP(GPU_SPEED_MHZ,               core_props.gpu_speed_mhz),
 	PROP(GPU_FREQ_KHZ_MAX,            core_props.gpu_freq_khz_max),
-	PROP(GPU_FREQ_KHZ_MIN,            core_props.gpu_freq_khz_min),
 	PROP(LOG2_PROGRAM_COUNTER_SIZE,   core_props.log2_program_counter_size),
 	PROP(TEXTURE_FEATURES_0,          core_props.texture_features[0]),
 	PROP(TEXTURE_FEATURES_1,          core_props.texture_features[1]),
@@ -391,7 +393,7 @@ static struct {
 int kbase_gpuprops_populate_user_buffer(struct kbase_device *kbdev)
 {
 	struct kbase_gpu_props *kprops = &kbdev->gpu_props;
-	struct mali_base_gpu_props *props = &kprops->props;
+	struct base_gpu_props *props = &kprops->props;
 	u32 count = ARRAY_SIZE(gpu_property_mapping);
 	u32 i;
 	u32 size = 0;

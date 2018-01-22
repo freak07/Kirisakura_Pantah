@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 #include <linux/thermal.h>
 #include <linux/devfreq_cooling.h>
 #include <linux/of.h>
@@ -109,6 +114,10 @@ static struct device_node *get_model_dt_node(struct kbase_ipa_model *model)
 	snprintf(compat_string, sizeof(compat_string), "arm,%s",
 		 model->ops->name);
 
+	/* of_find_compatible_node() will call of_node_put() on the root node,
+	 * so take a reference on it first.
+	 */
+	of_node_get(model->kbdev->dev->of_node);
 	model_dt_node = of_find_compatible_node(model->kbdev->dev->of_node,
 						NULL, compat_string);
 	if (!model_dt_node && !model->missing_dt_node_warning) {
@@ -130,6 +139,10 @@ int kbase_ipa_model_add_param_s32(struct kbase_ipa_model *model,
 	char *origin;
 
 	err = of_property_read_u32_array(model_dt_node, name, addr, num_elems);
+	/* We're done with model_dt_node now, so drop the reference taken in
+	 * get_model_dt_node()/of_find_compatible_node().
+	 */
+	of_node_put(model_dt_node);
 
 	if (err && dt_required) {
 		memset(addr, 0, sizeof(s32) * num_elems);
@@ -177,6 +190,12 @@ int kbase_ipa_model_add_param_string(struct kbase_ipa_model *model,
 
 	err = of_property_read_string(model_dt_node, name,
 				      &string_prop_value);
+
+	/* We're done with model_dt_node now, so drop the reference taken in
+	 * get_model_dt_node()/of_find_compatible_node().
+	 */
+	of_node_put(model_dt_node);
+
 	if (err && dt_required) {
 		strncpy(addr, "", size - 1);
 		dev_warn(model->kbdev->dev,
@@ -198,7 +217,6 @@ int kbase_ipa_model_add_param_string(struct kbase_ipa_model *model,
 
 	err = kbase_ipa_model_param_add(model, name, addr, size,
 					PARAM_TYPE_STRING);
-
 	return err;
 }
 
@@ -325,8 +343,11 @@ int kbase_ipa_init(struct kbase_device *kbdev)
 		ops = kbase_ipa_model_ops_find(kbdev, model_name);
 		kbdev->ipa.configured_model = kbase_ipa_init_model(kbdev, ops);
 		if (!kbdev->ipa.configured_model) {
-			err = -EINVAL;
-			goto end;
+			dev_warn(kbdev->dev,
+				"Failed to initialize ipa-model: \'%s\'\n"
+				"Falling back on default model\n",
+				model_name);
+			kbdev->ipa.configured_model = default_model;
 		}
 	} else {
 		kbdev->ipa.configured_model = default_model;

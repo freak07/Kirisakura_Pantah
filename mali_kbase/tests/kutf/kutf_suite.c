@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 /* Kernel UTF suite, test and fixture management including user to kernel
  * interaction */
@@ -180,26 +185,6 @@ static void kutf_set_result(struct kutf_context *context,
  */
 static void kutf_set_expected_result(struct kutf_context *context,
 		enum kutf_result_status expected_status);
-
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 4, 0))
-/* Pre 3.4.0 kernels don't have the simple_open helper */
-
-/**
- * simple_open() - Helper for file opening which stores the inode private data
- *                 into the file private data
- * @inode:	File entry representation
- * @file:	A specific opening of the file
- *
- * Return: always 0; if inode private data do not exist, the file will not
- *         be assigned private data
- */
-static int simple_open(struct inode *inode, struct file *file)
-{
-	if (inode->i_private)
-		file->private_data = inode->i_private;
-	return 0;
-}
-#endif
 
 /**
  * kutf_result_to_string() - Converts a KUTF result into a string

@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 
 
@@ -140,13 +145,11 @@ static void kbase_js_sync_timers(struct kbase_device *kbdev)
 bool kbasep_js_runpool_retain_ctx_nolock(struct kbase_device *kbdev,
 		struct kbase_context *kctx)
 {
-	struct kbasep_js_device_data *js_devdata;
 	bool result = false;
 	int as_nr;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	KBASE_DEBUG_ASSERT(kctx != NULL);
-	js_devdata = &kbdev->js_data;
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
@@ -1093,9 +1096,6 @@ bool kbasep_js_add_job(struct kbase_context *kctx,
 	KBASE_DEBUG_ASSERT(js_kctx_info->ctx.nr_jobs < U32_MAX);
 	++(js_kctx_info->ctx.nr_jobs);
 
-	/* Setup any scheduling information */
-	kbasep_js_clear_job_retry_submit(atom);
-
 	/* Lock for state available during IRQ */
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
@@ -1293,22 +1293,13 @@ static kbasep_js_release_result kbasep_js_run_jobs_after_ctx_and_atom_release(
 	lockdep_assert_held(&js_devdata->runpool_mutex);
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-	if (js_devdata->nr_user_contexts_running != 0) {
-		bool retry_submit = false;
-		int retry_jobslot = 0;
+	if (js_devdata->nr_user_contexts_running != 0 && runpool_ctx_attr_change) {
+		/* A change in runpool ctx attributes might mean we can
+		 * run more jobs than before  */
+		result = KBASEP_JS_RELEASE_RESULT_SCHED_ALL;
 
-		if (katom_retained_state)
-			retry_submit = kbasep_js_get_atom_retry_submit_slot(
-					katom_retained_state, &retry_jobslot);
-
-		if (runpool_ctx_attr_change || retry_submit) {
-			/* A change in runpool ctx attributes might mean we can
-			 * run more jobs than before  */
-			result = KBASEP_JS_RELEASE_RESULT_SCHED_ALL;
-
-			KBASE_TRACE_ADD_SLOT(kbdev, JD_DONE_TRY_RUN_NEXT_JOB,
-						kctx, NULL, 0u, retry_jobslot);
-		}
+		KBASE_TRACE_ADD_SLOT(kbdev, JD_DONE_TRY_RUN_NEXT_JOB,
+					kctx, NULL, 0u, 0);
 	}
 	return result;
 }

@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 
 
@@ -402,7 +407,7 @@ static inline void jd_resolve_dep(struct list_head *out_list,
 			KBASE_DEBUG_ASSERT(dep_atom->status !=
 						KBASE_JD_ATOM_STATE_UNUSED);
 
-			if ((dep_atom->core_req & BASE_JD_REQ_SOFT_REPLAY)
+			if ((dep_atom->core_req & BASE_JD_REQ_SOFT_JOB_TYPE)
 					!= BASE_JD_REQ_SOFT_REPLAY) {
 				dep_atom->will_fail_event_code =
 					dep_atom->event_code;
@@ -815,6 +820,7 @@ bool jd_submit_atom(struct kbase_context *kctx, const struct base_jd_atom_v2 *us
 	katom->x_pre_dep = NULL;
 	katom->x_post_dep = NULL;
 	katom->will_fail_event_code = BASE_JD_EVENT_NOT_STARTED;
+	katom->softjob_data = NULL;
 
 	/* Implicitly sets katom->protected_state.enter as well. */
 	katom->protected_state.exit = KBASE_ATOM_EXIT_PROTECTED_CHECK;
@@ -993,6 +999,16 @@ bool jd_submit_atom(struct kbase_context *kctx, const struct base_jd_atom_v2 *us
 				"Rejecting atom with invalid core requirements");
 		katom->event_code = BASE_JD_EVENT_JOB_INVALID;
 		katom->core_req &= ~BASE_JD_REQ_EVENT_COALESCE;
+		ret = jd_done_nolock(katom, NULL);
+		goto out;
+	}
+
+	/* Reject fence wait soft-job atoms accessing external resources */
+	if ((katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES) &&
+			 ((katom->core_req & BASE_JD_REQ_SOFT_JOB_TYPE) == BASE_JD_REQ_SOFT_FENCE_WAIT)) {
+		dev_warn(kctx->kbdev->dev,
+				"Rejecting fence wait soft-job atom accessing external resources");
+		katom->event_code = BASE_JD_EVENT_JOB_INVALID;
 		ret = jd_done_nolock(katom, NULL);
 		goto out;
 	}

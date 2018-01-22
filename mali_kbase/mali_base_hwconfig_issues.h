@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 /* AUTOMATICALLY GENERATED FILE. If you want to amend the issues/features,
  * please update base/tools/hwconfig_generator/hwc_{issues,features}.py
@@ -1101,7 +1106,6 @@ static const enum base_hw_issue base_hw_issues_model_tSIx[] = {
 
 static const enum base_hw_issue base_hw_issues_tDVx_r0p0[] = {
 	BASE_HW_ISSUE_9435,
-	BASE_HW_ISSUE_11054,
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_TSIX_1116,
 	BASE_HW_ISSUE_END
@@ -1183,6 +1187,21 @@ static const enum base_hw_issue base_hw_issues_tBOx_r0p0[] = {
 };
 
 static const enum base_hw_issue base_hw_issues_model_tBOx[] = {
+	BASE_HW_ISSUE_5736,
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_TSIX_1116,
+	BASE_HW_ISSUE_END
+};
+
+static const enum base_hw_issue base_hw_issues_tEGx_r0p0[] = {
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_TSIX_1116,
+	BASE_HW_ISSUE_END
+};
+
+static const enum base_hw_issue base_hw_issues_model_tEGx[] = {
 	BASE_HW_ISSUE_5736,
 	BASE_HW_ISSUE_9435,
 	BASE_HW_ISSUE_TMIX_8133,

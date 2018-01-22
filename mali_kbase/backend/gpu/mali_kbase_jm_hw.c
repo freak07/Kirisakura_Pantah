@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 /*
  * Base kernel job manager APIs
@@ -745,7 +750,7 @@ void kbase_job_slot_ctx_priority_check_locked(struct kbase_context *kctx,
 
 		if (katom->sched_priority > priority) {
 			if (!stop_sent)
-				KBASE_TLSTREAM_TL_ATTRIB_ATOM_PRIORITY_CHANGE(
+				KBASE_TLSTREAM_TL_ATTRIB_ATOM_PRIORITIZED(
 						target_katom);
 
 			kbase_job_slot_softstop(kbdev, js, katom);

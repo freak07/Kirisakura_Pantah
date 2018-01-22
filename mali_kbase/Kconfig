@@ -6,12 +6,18 @@
 # Foundation, and any use by you of this program is subject to the terms
 # of such GNU licence.
 #
-# A copy of the licence is included with the program, and can also be obtained
-# from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
-# Boston, MA  02110-1301, USA.
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, you can access it online at
+# http://www.gnu.org/licenses/gpl-2.0.html.
+#
+# SPDX-License-Identifier: GPL-2.0
 #
 #
-
 
 
 menuconfig MALI_MIDGARD
@@ -171,6 +177,16 @@ config MALI_SYSTEM_TRACE
 	help
 	  Choose this option to enable system trace events for each
 	  kbase event.	This is typically used for debugging but has
+	  minimal overhead when not in use. Enable only if you know what
+	  you are doing.
+
+config MALI_JOB_DUMPING
+	bool "Enable system level support needed for job dumping"
+	depends on MALI_MIDGARD && MALI_EXPERT
+	default n
+	help
+	  Choose this option to enable system level support needed for
+	  job dumping.	This is typically used for instrumentation but has
 	  minimal overhead when not in use. Enable only if you know what
 	  you are doing.
 

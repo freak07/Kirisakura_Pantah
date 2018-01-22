@@ -7,14 +7,20 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
 
-
-
+#include <uapi/linux/thermal.h>
 #include <linux/thermal.h>
 #ifdef CONFIG_DEVFREQ_THERMAL
 #include <linux/devfreq_cooling.h>
@@ -91,7 +97,7 @@ struct kbase_ipa_model_simple_data {
 	u32 dynamic_coefficient;
 	u32 static_coefficient;
 	s32 ts[4];
-	char tz_name[16];
+	char tz_name[THERMAL_NAME_LENGTH];
 	struct thermal_zone_device *gpu_tz;
 	struct task_struct *poll_temperature_thread;
 	int current_temperature;
@@ -283,20 +289,43 @@ static int kbase_simple_power_model_recalculate(struct kbase_ipa_model *model)
 			(struct kbase_ipa_model_simple_data *)model->model_data;
 	struct thermal_zone_device *tz;
 
+	lockdep_assert_held(&model->kbdev->ipa.lock);
+
 	if (!strnlen(model_data->tz_name, sizeof(model_data->tz_name))) {
-		tz = NULL;
+		model_data->gpu_tz = NULL;
 	} else {
-		tz = thermal_zone_get_zone_by_name(model_data->tz_name);
+		char tz_name[THERMAL_NAME_LENGTH];
+
+		strlcpy(tz_name, model_data->tz_name, sizeof(tz_name));
+
+		/* Release ipa.lock so that thermal_list_lock is not acquired
+		 * with ipa.lock held, thereby avoid lock ordering violation
+		 * lockdep warning. The warning comes as a chain of locks
+		 * ipa.lock --> thermal_list_lock --> tz->lock gets formed
+		 * on registering devfreq cooling device when probe method
+		 * of mali platform driver is invoked.
+		 */
+		mutex_unlock(&model->kbdev->ipa.lock);
+		tz = thermal_zone_get_zone_by_name(tz_name);
+		mutex_lock(&model->kbdev->ipa.lock);
 
 		if (IS_ERR_OR_NULL(tz)) {
 			pr_warn_ratelimited("Error %ld getting thermal zone \'%s\', not yet ready?\n",
-					    PTR_ERR(tz), model_data->tz_name);
-			tz = NULL;
+					    PTR_ERR(tz), tz_name);
 			return -EPROBE_DEFER;
 		}
-	}
 
-	ACCESS_ONCE(model_data->gpu_tz) = tz;
+		/* Check if another thread raced against us & updated the
+		 * thermal zone name string. Update the gpu_tz pointer only if
+		 * the name string did not change whilst we retrieved the new
+		 * thermal_zone_device pointer, otherwise model_data->tz_name &
+		 * model_data->gpu_tz would become inconsistent with each other.
+		 * The below check will succeed only for the thread which last
+		 * updated the name string.
+		 */
+		if (strncmp(tz_name, model_data->tz_name, sizeof(tz_name)) == 0)
+			model_data->gpu_tz = tz;
+	}
 
 	return 0;
 }

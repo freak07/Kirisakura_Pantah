@@ -7,13 +7,18 @@
  * Foundation, and any use by you of this program is subject to the terms
  * of such GNU licence.
  *
- * A copy of the licence is included with the program, and can also be obtained
- * from Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA  02110-1301, USA.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 #include <linux/debugfs.h>
 #include <linux/list.h>
@@ -56,14 +61,18 @@ static int param_int_set(void *data, u64 val)
 	struct kbase_ipa_model_param *param = data;
 	struct kbase_ipa_model *model = param->model;
 	s64 sval = (s64) val;
+	s32 old_val;
 	int err = 0;
 
 	if (sval < S32_MIN || sval > S32_MAX)
 		return -ERANGE;
 
 	mutex_lock(&param->model->kbdev->ipa.lock);
+	old_val = *param->addr.s32p;
 	*param->addr.s32p = val;
 	err = kbase_ipa_model_recalculate(model);
+	if (err < 0)
+		*param->addr.s32p = old_val;
 	mutex_unlock(&param->model->kbdev->ipa.lock);
 
 	return err;
@@ -92,6 +101,7 @@ static ssize_t param_string_set(struct file *file, const char __user *user_buf,
 {
 	struct kbase_ipa_model_param *param = file->private_data;
 	struct kbase_ipa_model *model = param->model;
+	char *old_str = NULL;
 	ssize_t ret = count;
 	size_t buf_size;
 	int err;
@@ -100,6 +110,12 @@ static ssize_t param_string_set(struct file *file, const char __user *user_buf,
 
 	if (count > param->size) {
 		ret = -EINVAL;
+		goto end;
+	}
+
+	old_str = kstrndup(param->addr.str, param->size, GFP_KERNEL);
+	if (!old_str) {
+		ret = -ENOMEM;
 		goto end;
 	}
 
@@ -112,10 +128,13 @@ static ssize_t param_string_set(struct file *file, const char __user *user_buf,
 	param->addr.str[buf_size] = '\0';
 
 	err = kbase_ipa_model_recalculate(model);
-	if (err < 0)
+	if (err < 0) {
 		ret = err;
+		strlcpy(param->addr.str, old_str, param->size);
+	}
 
 end:
+	kfree(old_str);
 	mutex_unlock(&model->kbdev->ipa.lock);
 
 	return ret;
