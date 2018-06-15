@@ -925,11 +925,9 @@ void kbase_pm_request_cores_sync(struct kbase_device *kbdev,
 
 KBASE_EXPORT_TEST_API(kbase_pm_request_cores_sync);
 
-void kbase_pm_request_l2_caches(struct kbase_device *kbdev)
+static void kbase_pm_l2_caches_ref(struct kbase_device *kbdev)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	kbdev->l2_users_count++;
 
@@ -946,8 +944,20 @@ void kbase_pm_request_l2_caches(struct kbase_device *kbdev)
 	 * off but the count will be non-zero.
 	 */
 	kbase_pm_check_transitions_nolock(kbdev);
+}
+
+void kbase_pm_request_l2_caches(struct kbase_device *kbdev)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+
+	/* Take the reference on l2_users_count and check core transitions.
+	 */
+	kbase_pm_l2_caches_ref(kbdev);
 
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
 	wait_event(kbdev->pm.backend.l2_powered_wait,
 					kbdev->pm.backend.l2_powered == 1);
 
@@ -956,6 +966,17 @@ void kbase_pm_request_l2_caches(struct kbase_device *kbdev)
 }
 
 KBASE_EXPORT_TEST_API(kbase_pm_request_l2_caches);
+
+void kbase_pm_request_l2_caches_nolock(struct kbase_device *kbdev)
+{
+	/* Take the reference on l2_users_count and check core transitions.
+	 */
+	kbase_pm_l2_caches_ref(kbdev);
+
+	/* Trace that any state change completed immediately
+	 */
+	kbase_pm_trace_check_and_finish_state_change(kbdev);
+}
 
 void kbase_pm_request_l2_caches_l2_is_on(struct kbase_device *kbdev)
 {

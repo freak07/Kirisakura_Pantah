@@ -256,12 +256,27 @@ int kbase_ipa_vinstr_dynamic_coeff(struct kbase_ipa_model *model, u32 *coeffp)
 	 */
 	coeff = div_u64(coeff, active_cycles);
 
-	/* Scale by user-specified factor (where unity is 1000).
-	 * Range: 0 <= coeff_mul < 2^61
+	/* Not all models were derived at the same reference voltage. Voltage
+	 * scaling is done by multiplying by V^2, so we need to *divide* by
+	 * Vref^2 here.
+	 * Range: 0 <= coeff <= 2^49
+	 */
+	coeff = div_u64(coeff * 1000, max(model_data->reference_voltage, 1));
+	/* Range: 0 <= coeff <= 2^52 */
+	coeff = div_u64(coeff * 1000, max(model_data->reference_voltage, 1));
+
+	/* Scale by user-specified integer factor.
+	 * Range: 0 <= coeff_mul < 2^57
 	 */
 	coeff_mul = coeff * model_data->scaling_factor;
 
-	/* Range: 0 <= coeff_mul < 2^51 */
+	/* The power models have results with units
+	 * mW/(MHz V^2), i.e. nW/(Hz V^2). With precision of 1/1000000, this
+	 * becomes fW/(Hz V^2), which are the units of coeff_mul. However,
+	 * kbase_scale_dynamic_power() expects units of pW/(Hz V^2), so divide
+	 * by 1000.
+	 * Range: 0 <= coeff_mul < 2^47
+	 */
 	coeff_mul = div_u64(coeff_mul, 1000u);
 
 err0:
@@ -273,7 +288,8 @@ err0:
 int kbase_ipa_vinstr_common_model_init(struct kbase_ipa_model *model,
 				       const struct kbase_ipa_group *ipa_groups_def,
 				       size_t ipa_group_size,
-				       kbase_ipa_get_active_cycles_callback get_active_cycles)
+				       kbase_ipa_get_active_cycles_callback get_active_cycles,
+				       s32 reference_voltage)
 {
 	int err = 0;
 	size_t i;
@@ -314,6 +330,13 @@ int kbase_ipa_vinstr_common_model_init(struct kbase_ipa_model *model,
 	model_data->min_sample_cycles = DEFAULT_MIN_SAMPLE_CYCLES;
 	err = kbase_ipa_model_add_param_s32(model, "min_sample_cycles",
 					    &model_data->min_sample_cycles,
+					    1, false);
+	if (err)
+		goto exit;
+
+	model_data->reference_voltage = reference_voltage;
+	err = kbase_ipa_model_add_param_s32(model, "reference_voltage",
+					    &model_data->reference_voltage,
 					    1, false);
 	if (err)
 		goto exit;

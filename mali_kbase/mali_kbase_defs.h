@@ -195,6 +195,8 @@
 #define KBASE_KATOM_FLAG_PROTECTED (1<<11)
 /* Atom has been stored in runnable_tree */
 #define KBASE_KATOM_FLAG_JSCTX_IN_TREE (1<<12)
+/* Atom is waiting for L2 caches to power up in order to enter protected mode */
+#define KBASE_KATOM_FLAG_HOLDING_L2_REF_PROT (1<<13)
 
 /* SW related flags about types of JS_COMMAND action
  * NOTE: These must be masked off by JS_COMMAND_MASK */
@@ -422,8 +424,12 @@ enum kbase_atom_gpu_rb_state {
  * @KBASE_ATOM_ENTER_PROTECTED_IDLE_L2: Wait for the L2 to become idle in preparation
  *                      for the coherency change. L2 shall be powered down and GPU shall
  *                      come out of fully coherent mode before entering protected mode.
- * @KBASE_ATOM_ENTER_PROTECTED_FINISHED: End state; Prepare coherency change and switch
- *                      GPU to protected mode.
+ * @KBASE_ATOM_ENTER_PROTECTED_SET_COHERENCY: Prepare coherency change;
+ *                      for BASE_HW_ISSUE_TGOX_R1_1234 also request L2 power on so that
+ *                      coherency register contains correct value when GPU enters
+ *                      protected mode.
+ * @KBASE_ATOM_ENTER_PROTECTED_FINISHED: End state; for BASE_HW_ISSUE_TGOX_R1_1234 check
+ *                      that L2 is powered up and switch GPU to protected mode.
  */
 enum kbase_atom_enter_protected_state {
 	/**
@@ -432,6 +438,7 @@ enum kbase_atom_enter_protected_state {
 	KBASE_ATOM_ENTER_PROTECTED_CHECK = 0,
 	KBASE_ATOM_ENTER_PROTECTED_VINSTR,
 	KBASE_ATOM_ENTER_PROTECTED_IDLE_L2,
+	KBASE_ATOM_ENTER_PROTECTED_SET_COHERENCY,
 	KBASE_ATOM_ENTER_PROTECTED_FINISHED,
 };
 

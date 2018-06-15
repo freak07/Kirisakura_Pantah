@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2015 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2015, 2018 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -200,6 +200,26 @@ void kbase_pm_release_cores(struct kbase_device *kbdev,
 void kbase_pm_request_l2_caches(struct kbase_device *kbdev);
 
 /**
+ * kbase_pm_request_l2_caches_nolock - Request l2 caches, nolock version
+ *
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ *
+ * Request the use of l2 caches for all core groups and power up without
+ * waiting for power manager to actually power up the cores. This is done
+ * because the call to this function is done from within the atomic context
+ * and the actual l2 caches being powered up is checked at a later stage.
+ * The reference taken on l2 caches is removed when the protected mode atom
+ * is released so there is no need to make a call to a matching
+ * release_l2_caches().
+ *
+ * This function is used specifically for the case when l2 caches are
+ * to be powered up as part of the sequence for entering protected mode.
+ *
+ * This should only be used when power management is active.
+ */
+void kbase_pm_request_l2_caches_nolock(struct kbase_device *kbdev);
+
+/**
  * kbase_pm_request_l2_caches_l2_is_on - Request l2 caches but don't power on
  *
  * @kbdev: The kbase device structure for the device (must be a valid pointer)
@@ -212,7 +232,7 @@ void kbase_pm_request_l2_caches(struct kbase_device *kbdev);
 void kbase_pm_request_l2_caches_l2_is_on(struct kbase_device *kbdev);
 
 /**
- * kbase_pm_request_l2_caches - Release l2 caches
+ * kbase_pm_release_l2_caches - Release l2 caches
  *
  * @kbdev: The kbase device structure for the device (must be a valid pointer)
  *

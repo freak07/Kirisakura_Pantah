@@ -183,6 +183,7 @@ void kbase_ipa_model_use_configured_locked(struct kbase_device *kbdev);
 extern struct kbase_ipa_model_ops kbase_g71_ipa_model_ops;
 extern struct kbase_ipa_model_ops kbase_g72_ipa_model_ops;
 extern struct kbase_ipa_model_ops kbase_tnox_ipa_model_ops;
+extern struct kbase_ipa_model_ops kbase_tgox_r1_ipa_model_ops;
 
 #if MALI_UNIT_TEST
 /**

@@ -41,6 +41,7 @@
 #define KBASE_IPA_G71_MODEL_NAME      "mali-g71-power-model"
 #define KBASE_IPA_G72_MODEL_NAME      "mali-g72-power-model"
 #define KBASE_IPA_TNOX_MODEL_NAME     "mali-tnox-power-model"
+#define KBASE_IPA_TGOX_R1_MODEL_NAME  "mali-tgox_r1-power-model"
 
 static struct kbase_ipa_model_ops *kbase_ipa_all_model_ops[] = {
 	&kbase_simple_ipa_model_ops,
@@ -112,6 +113,8 @@ const char *kbase_ipa_model_name_from_id(u32 gpu_id)
 					(0 << GPU_ID2_VERSION_MAJOR_SHIFT))
 				/* TGOX r0 shares a power model with TNOX */
 				return KBASE_IPA_TNOX_MODEL_NAME;
+			else
+				return KBASE_IPA_TGOX_R1_MODEL_NAME;
 		default:
 			return KBASE_IPA_FALLBACK_MODEL_NAME;
 		}

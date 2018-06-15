@@ -674,14 +674,26 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 			kbdev->protected_mode_transition = false;
 
 		if (kbase_jd_katom_is_protected(katom) &&
-				(katom->protected_state.enter ==
-				KBASE_ATOM_ENTER_PROTECTED_IDLE_L2)) {
+				((katom->protected_state.enter ==
+				KBASE_ATOM_ENTER_PROTECTED_IDLE_L2) ||
+				 (katom->protected_state.enter ==
+				KBASE_ATOM_ENTER_PROTECTED_SET_COHERENCY) ||
+				 (katom->protected_state.enter ==
+				KBASE_ATOM_ENTER_PROTECTED_FINISHED))) {
 			kbase_vinstr_resume(kbdev->vinstr_ctx);
 
 			/* Go back to configured model for IPA */
 			kbase_ipa_model_use_configured_locked(kbdev);
 		}
 
+		if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TGOX_R1_1234)) {
+			if (katom->atom_flags &
+					KBASE_KATOM_FLAG_HOLDING_L2_REF_PROT) {
+				kbdev->l2_users_count--;
+				katom->atom_flags &=
+					~KBASE_KATOM_FLAG_HOLDING_L2_REF_PROT;
+			}
+		}
 
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
 
@@ -769,14 +781,9 @@ static inline bool kbase_gpu_in_protected_mode(struct kbase_device *kbdev)
 	return kbdev->protected_mode;
 }
 
-static int kbase_gpu_protected_mode_enter(struct kbase_device *kbdev)
+static void kbase_gpu_disable_coherent(struct kbase_device *kbdev)
 {
-	int err = -EINVAL;
-
 	lockdep_assert_held(&kbdev->hwaccess_lock);
-
-	WARN_ONCE(!kbdev->protected_ops,
-			"Cannot enter protected mode: protected callbacks not specified.\n");
 
 	/*
 	 * When entering into protected mode, we must ensure that the
@@ -785,6 +792,16 @@ static int kbase_gpu_protected_mode_enter(struct kbase_device *kbdev)
 	 */
 	if (kbdev->system_coherency == COHERENCY_ACE)
 		kbase_cache_set_coherency_mode(kbdev, COHERENCY_ACE_LITE);
+}
+
+static int kbase_gpu_protected_mode_enter(struct kbase_device *kbdev)
+{
+	int err = -EINVAL;
+
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	WARN_ONCE(!kbdev->protected_ops,
+			"Cannot enter protected mode: protected callbacks not specified.\n");
 
 	if (kbdev->protected_ops) {
 		/* Switch GPU to protected mode */
@@ -816,6 +833,63 @@ static int kbase_gpu_protected_mode_reset(struct kbase_device *kbdev)
 	kbase_reset_gpu_silent(kbdev);
 
 	return 0;
+}
+
+static int kbase_jm_protected_entry(struct kbase_device *kbdev,
+				struct kbase_jd_atom **katom, int idx, int js)
+{
+	int err = 0;
+
+	err = kbase_gpu_protected_mode_enter(kbdev);
+
+	/*
+	 * Regardless of result before this call, we are no longer
+	 * transitioning the GPU.
+	 */
+
+	kbdev->protected_mode_transition = false;
+
+	KBASE_TLSTREAM_AUX_PROTECTED_ENTER_END(kbdev);
+	if (err) {
+		/*
+		 * Failed to switch into protected mode, resume
+		 * vinstr core and fail atom.
+		 */
+		kbase_vinstr_resume(kbdev->vinstr_ctx);
+		katom[idx]->event_code = BASE_JD_EVENT_JOB_INVALID;
+		kbase_gpu_mark_atom_for_return(kbdev, katom[idx]);
+		/*
+		 * Only return if head atom or previous atom
+		 * already removed - as atoms must be returned
+		 * in order.
+		 */
+		if (idx == 0 || katom[0]->gpu_rb_state ==
+					KBASE_ATOM_GPU_RB_NOT_IN_SLOT_RB) {
+			kbase_gpu_dequeue_atom(kbdev, js, NULL);
+			kbase_jm_return_atom_to_js(kbdev, katom[idx]);
+		}
+
+		/*
+		 * Go back to configured model for IPA
+		 */
+		kbase_ipa_model_use_configured_locked(kbdev);
+
+		return -EINVAL;
+	}
+
+	/*
+	 * Protected mode sanity checks.
+	 */
+	KBASE_DEBUG_ASSERT_MSG(
+			kbase_jd_katom_is_protected(katom[idx]) ==
+			kbase_gpu_in_protected_mode(kbdev),
+			"Protected mode of atom (%d) doesn't match protected mode of GPU (%d)",
+			kbase_jd_katom_is_protected(katom[idx]),
+			kbase_gpu_in_protected_mode(kbdev));
+	katom[idx]->gpu_rb_state =
+			KBASE_ATOM_GPU_RB_READY;
+
+	return err;
 }
 
 static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
@@ -873,61 +947,82 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 			if (kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_L2) ||
 				kbase_pm_get_trans_cores(kbdev, KBASE_PM_CORE_L2)) {
 				/*
-				* The L2 is still powered, wait for all the users to
-				* finish with it before doing the actual reset.
-				*/
+				 * The L2 is still powered, wait for all the users to
+				 * finish with it before doing the actual reset.
+				 */
 				return -EAGAIN;
 			}
 		}
 
 		katom[idx]->protected_state.enter =
+			KBASE_ATOM_ENTER_PROTECTED_SET_COHERENCY;
+
+		/* ***FALLTHROUGH: TRANSITION TO HIGHER STATE*** */
+
+	case KBASE_ATOM_ENTER_PROTECTED_SET_COHERENCY:
+		/*
+		 * When entering into protected mode, we must ensure that the
+		 * GPU is not operating in coherent mode as well. This is to
+		 * ensure that no protected memory can be leaked.
+		 */
+		kbase_gpu_disable_coherent(kbdev);
+
+		if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TGOX_R1_1234)) {
+			/*
+			 * Power on L2 caches; this will also result in the
+			 * correct value written to coherency enable register.
+			 */
+			kbase_pm_request_l2_caches_nolock(kbdev);
+			/*
+			 * Set the flag on the atom that additional
+			 * L2 references are taken.
+			 */
+			katom[idx]->atom_flags |=
+					KBASE_KATOM_FLAG_HOLDING_L2_REF_PROT;
+		}
+
+		katom[idx]->protected_state.enter =
 			KBASE_ATOM_ENTER_PROTECTED_FINISHED;
+
+		if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TGOX_R1_1234))
+			return -EAGAIN;
 
 		/* ***FALLTHROUGH: TRANSITION TO HIGHER STATE*** */
 
 	case KBASE_ATOM_ENTER_PROTECTED_FINISHED:
-
-		/* No jobs running, so we can switch GPU mode right now. */
-		err = kbase_gpu_protected_mode_enter(kbdev);
-
-		/*
-		 * Regardless of result, we are no longer transitioning
-		 * the GPU.
-		 */
-		kbdev->protected_mode_transition = false;
-		KBASE_TLSTREAM_AUX_PROTECTED_ENTER_END(kbdev);
-		if (err) {
+		if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TGOX_R1_1234)) {
 			/*
-			 * Failed to switch into protected mode, resume
-			 * vinstr core and fail atom.
+			 * Check that L2 caches are powered and, if so,
+			 * enter protected mode.
 			 */
-			kbase_vinstr_resume(kbdev->vinstr_ctx);
-			katom[idx]->event_code = BASE_JD_EVENT_JOB_INVALID;
-			kbase_gpu_mark_atom_for_return(kbdev, katom[idx]);
-			/* Only return if head atom or previous atom
-			 * already removed - as atoms must be returned
-			 * in order. */
-			if (idx == 0 || katom[0]->gpu_rb_state ==
-					KBASE_ATOM_GPU_RB_NOT_IN_SLOT_RB) {
-				kbase_gpu_dequeue_atom(kbdev, js, NULL);
-				kbase_jm_return_atom_to_js(kbdev, katom[idx]);
+			if (kbdev->pm.backend.l2_powered != 0) {
+				/*
+				 * Remove additional L2 reference and reset
+				 * the atom flag which denotes it.
+				 */
+				if (katom[idx]->atom_flags &
+					KBASE_KATOM_FLAG_HOLDING_L2_REF_PROT) {
+					kbdev->l2_users_count--;
+					katom[idx]->atom_flags &=
+						~KBASE_KATOM_FLAG_HOLDING_L2_REF_PROT;
+				}
+
+				err = kbase_jm_protected_entry(kbdev, katom, idx, js);
+
+				if (err)
+					return err;
+			} else {
+				/*
+				 * still waiting for L2 caches to power up
+				 */
+				return -EAGAIN;
 			}
+		} else {
+			err = kbase_jm_protected_entry(kbdev, katom, idx, js);
 
-			/* Go back to configured model for IPA */
-			kbase_ipa_model_use_configured_locked(kbdev);
-
-			return -EINVAL;
+			if (err)
+				return err;
 		}
-
-		/* Protected mode sanity checks. */
-		KBASE_DEBUG_ASSERT_MSG(
-			kbase_jd_katom_is_protected(katom[idx]) ==
-			kbase_gpu_in_protected_mode(kbdev),
-			"Protected mode of atom (%d) doesn't match protected mode of GPU (%d)",
-			kbase_jd_katom_is_protected(katom[idx]),
-			kbase_gpu_in_protected_mode(kbdev));
-		katom[idx]->gpu_rb_state =
-			KBASE_ATOM_GPU_RB_READY;
 	}
 
 	return 0;

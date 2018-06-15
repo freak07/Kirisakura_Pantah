@@ -287,7 +287,40 @@ static const struct kbase_ipa_group ipa_groups_def_tnox[] = {
 	},
 };
 
-#define STANDARD_POWER_MODEL(gpu) \
+static const struct kbase_ipa_group ipa_groups_def_tgox_r1[] = {
+	{
+		.name = "gpu_active",
+		.default_value = 224200,
+		.op = kbase_g7x_jm_single_counter,
+		.counter_block_offset = JM_GPU_ACTIVE,
+	},
+	{
+		.name = "exec_instr_count",
+		.default_value = 384700,
+		.op = kbase_g7x_sum_all_shader_cores,
+		.counter_block_offset = SC_EXEC_INSTR_COUNT,
+	},
+	{
+		.name = "vary_instr",
+		.default_value = 271900,
+		.op = kbase_g7x_sum_all_shader_cores,
+		.counter_block_offset = SC_VARY_INSTR,
+	},
+	{
+		.name = "tex_tfch_num_operations",
+		.default_value = 477700,
+		.op = kbase_g7x_sum_all_shader_cores,
+		.counter_block_offset = SC_TEX_TFCH_NUM_OPERATIONS,
+	},
+	{
+		.name = "l2_access",
+		.default_value = 551400,
+		.op = kbase_g7x_memsys_single_counter,
+		.counter_block_offset = MEMSYS_L2_ANY_LOOKUP,
+	},
+};
+
+#define STANDARD_POWER_MODEL(gpu, reference_voltage) \
 	static int kbase_ ## gpu ## _power_model_init(\
 			struct kbase_ipa_model *model) \
 	{ \
@@ -296,7 +329,8 @@ static const struct kbase_ipa_group ipa_groups_def_tnox[] = {
 		return kbase_ipa_vinstr_common_model_init(model, \
 				ipa_groups_def_ ## gpu, \
 				ARRAY_SIZE(ipa_groups_def_ ## gpu), \
-				kbase_g7x_get_active_cycles); \
+				kbase_g7x_get_active_cycles, \
+				(reference_voltage)); \
 	} \
 	struct kbase_ipa_model_ops kbase_ ## gpu ## _ipa_model_ops = { \
 		.name = "mali-" #gpu "-power-model", \
@@ -306,6 +340,7 @@ static const struct kbase_ipa_group ipa_groups_def_tnox[] = {
 	}; \
 	KBASE_EXPORT_TEST_API(kbase_ ## gpu ## _ipa_model_ops)
 
-STANDARD_POWER_MODEL(g71);
-STANDARD_POWER_MODEL(g72);
-STANDARD_POWER_MODEL(tnox);
+STANDARD_POWER_MODEL(g71, 800);
+STANDARD_POWER_MODEL(g72, 800);
+STANDARD_POWER_MODEL(tnox, 800);
+STANDARD_POWER_MODEL(tgox_r1, 1000);
