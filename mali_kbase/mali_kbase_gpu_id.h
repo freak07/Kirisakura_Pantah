@@ -110,8 +110,14 @@
 #define GPU_ID2_PRODUCT_TNOX              GPU_ID2_MODEL_MAKE(7, 1)
 #define GPU_ID2_PRODUCT_TGOX              GPU_ID2_MODEL_MAKE(7, 2)
 #define GPU_ID2_PRODUCT_TKAX              GPU_ID2_MODEL_MAKE(8, 0)
-#define GPU_ID2_PRODUCT_TTRX              GPU_ID2_MODEL_MAKE(9, 0)
 #define GPU_ID2_PRODUCT_TBOX              GPU_ID2_MODEL_MAKE(8, 2)
+#define GPU_ID2_PRODUCT_TEGX              GPU_ID2_MODEL_MAKE(8, 3)
+#define GPU_ID2_PRODUCT_TTRX              GPU_ID2_MODEL_MAKE(9, 0)
+#define GPU_ID2_PRODUCT_TNAX              GPU_ID2_MODEL_MAKE(9, 1)
+#define GPU_ID2_PRODUCT_TULX              GPU_ID2_MODEL_MAKE(10, 0)
+#define GPU_ID2_PRODUCT_TDUX              GPU_ID2_MODEL_MAKE(10, 1)
+#define GPU_ID2_PRODUCT_TIDX              GPU_ID2_MODEL_MAKE(10, 3)
+#define GPU_ID2_PRODUCT_TVAX              GPU_ID2_MODEL_MAKE(10, 4)
 
 /* Values for GPU_ID_VERSION_STATUS field for PRODUCT_ID GPU_ID_PI_T60X */
 #define GPU_ID_S_15DEV0                   0x1

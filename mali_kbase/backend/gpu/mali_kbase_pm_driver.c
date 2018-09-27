@@ -967,11 +967,10 @@ KBASE_EXPORT_TEST_API(kbase_pm_disable_interrupts);
 void kbase_pm_clock_on(struct kbase_device *kbdev, bool is_resume)
 {
 	bool reset_required = is_resume;
-	struct kbasep_js_device_data *js_devdata = &kbdev->js_data;
 	unsigned long flags;
 
 	KBASE_DEBUG_ASSERT(NULL != kbdev);
-	lockdep_assert_held(&js_devdata->runpool_mutex);
+	lockdep_assert_held(&kbdev->js_data.runpool_mutex);
 	lockdep_assert_held(&kbdev->pm.lock);
 
 	if (kbdev->pm.backend.gpu_powered) {

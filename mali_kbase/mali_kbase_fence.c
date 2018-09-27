@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2017 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2018 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -177,6 +177,7 @@ kbase_fence_add_callback(struct kbase_jd_atom *katom,
 	kbase_fence_cb->fence = fence;
 	kbase_fence_cb->katom = katom;
 	INIT_LIST_HEAD(&kbase_fence_cb->node);
+	atomic_inc(&katom->dma_fence.dep_count);
 
 	err = dma_fence_add_callback(fence, &kbase_fence_cb->fence_cb,
 				     callback);
@@ -189,15 +190,16 @@ kbase_fence_add_callback(struct kbase_jd_atom *katom,
 			err = 0;
 
 		kfree(kbase_fence_cb);
+		atomic_dec(&katom->dma_fence.dep_count);
 	} else if (err) {
 		kfree(kbase_fence_cb);
+		atomic_dec(&katom->dma_fence.dep_count);
 	} else {
 		/*
 		 * Get reference to fence that will be kept until callback gets
 		 * cleaned up in kbase_fence_free_callbacks().
 		 */
 		dma_fence_get(fence);
-		atomic_inc(&katom->dma_fence.dep_count);
 		/* Add callback to katom's list of callbacks */
 		list_add(&kbase_fence_cb->node, &katom->dma_fence.callbacks);
 	}

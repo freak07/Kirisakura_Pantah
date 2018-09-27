@@ -109,8 +109,6 @@ int kbase_device_has_feature(struct kbase_device *kbdev, u32 feature);
 struct kbase_device *kbase_find_device(int minor);
 void kbase_release_device(struct kbase_device *kbdev);
 
-void kbase_set_profiling_control(struct kbase_device *kbdev, u32 control, u32 value);
-
 
 /**
  * kbase_get_unmapped_area() - get an address range which is currently
@@ -251,6 +249,32 @@ void kbase_event_wakeup(struct kbase_context *kctx);
 int kbasep_jit_alloc_validate(struct kbase_context *kctx,
 					struct base_jit_alloc_info *info);
 /**
+ * kbase_free_user_buffer() - Free memory allocated for struct
+ *		@kbase_debug_copy_buffer.
+ *
+ * @buffer:	Pointer to the memory location allocated for the object
+ *		of the type struct @kbase_debug_copy_buffer.
+ */
+static inline void kbase_free_user_buffer(
+		struct kbase_debug_copy_buffer *buffer)
+{
+	struct page **pages = buffer->extres_pages;
+	int nr_pages = buffer->nr_extres_pages;
+
+	if (pages) {
+		int i;
+
+		for (i = 0; i < nr_pages; i++) {
+			struct page *pg = pages[i];
+
+			if (pg)
+				put_page(pg);
+		}
+		kfree(pages);
+	}
+}
+
+/**
  * kbase_mem_copy_from_extres_page() - Copy pages from external resources.
  *
  * @kctx:		kbase context within which the copying is to take place.
@@ -261,8 +285,8 @@ int kbasep_jit_alloc_validate(struct kbase_context *kctx,
  * @nr_pages:		Number of pages to copy.
  * @target_page_nr:	Number of target pages which will be used for copying.
  * @offset:		Offset into the target pages from which the copying
- *			is to be performed. 
- * @to_copy:		Size of the chunk to be copied, in bytes. 
+ *			is to be performed.
+ * @to_copy:		Size of the chunk to be copied, in bytes.
  */
 void kbase_mem_copy_from_extres_page(struct kbase_context *kctx,
 		void *extres_page, struct page **pages, unsigned int nr_pages,

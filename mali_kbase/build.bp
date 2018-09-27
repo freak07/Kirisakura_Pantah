@@ -37,6 +37,12 @@ bob_defaults {
     cinstr_job_dump: {
         kbuild_options: ["CONFIG_MALI_JOB_DUMP=y"],
     },
+    cinstr_vector_dump: {
+        kbuild_options: ["CONFIG_MALI_VECTOR_DUMP=y"],
+    },
+    cinstr_gwt: {
+        kbuild_options: ["CONFIG_MALI_CINSTR_GWT=y"],
+    },
     mali_gator_support: {
         kbuild_options: ["CONFIG_MALI_GATOR_SUPPORT=y"],
     },
@@ -104,5 +110,3 @@ bob_kernel_module {
     },
     defaults: ["mali_kbase_shared_config_defaults"],
 }
-
-optional_subdirs = ["tests"]

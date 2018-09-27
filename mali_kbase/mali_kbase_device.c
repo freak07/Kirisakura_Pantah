@@ -39,8 +39,6 @@
 #include <mali_kbase_hw.h>
 #include <mali_kbase_config_defaults.h>
 
-#include <mali_kbase_profiling_gator_api.h>
-
 /* NOTE: Magic - 0x45435254 (TRCE in ASCII).
  * Supports tracing feature provided in the base module.
  * Please keep it in sync with the value of base module.
@@ -81,7 +79,8 @@ static int kbase_device_as_init(struct kbase_device *kbdev, int i)
 	snprintf(name, sizeof(name), format, i);
 
 	kbdev->as[i].number = i;
-	kbdev->as[i].fault_addr = 0ULL;
+	kbdev->as[i].bf_data.addr = 0ULL;
+	kbdev->as[i].pf_data.addr = 0ULL;
 
 	kbdev->as[i].pf_wq = alloc_workqueue(name, 0, 1);
 	if (!kbdev->as[i].pf_wq)
@@ -148,7 +147,7 @@ static void kbase_device_all_as_term(struct kbase_device *kbdev)
 
 int kbase_device_init(struct kbase_device * const kbdev)
 {
-	int i, err;
+	int err;
 #ifdef CONFIG_ARM64
 	struct device_node *np = NULL;
 #endif /* CONFIG_ARM64 */
@@ -224,10 +223,6 @@ int kbase_device_init(struct kbase_device * const kbdev)
 		goto term_as;
 
 	mutex_init(&kbdev->cacheclean_lock);
-
-	/* fbdump profiling controls set to 0 - fbdump not enabled until changed by gator */
-	for (i = 0; i < FBDUMP_CONTROL_MAX; i++)
-		kbdev->kbase_profiling_controls[i] = 0;
 
 	kbase_debug_assert_register_hook(&kbasep_trace_hook_wrapper, kbdev);
 
@@ -543,39 +538,3 @@ void kbasep_trace_dump(struct kbase_device *kbdev)
 	CSTD_UNUSED(kbdev);
 }
 #endif				/* KBASE_TRACE_ENABLE  */
-
-void kbase_set_profiling_control(struct kbase_device *kbdev, u32 control, u32 value)
-{
-	switch (control) {
-	case FBDUMP_CONTROL_ENABLE:
-		/* fall through */
-	case FBDUMP_CONTROL_RATE:
-		/* fall through */
-	case SW_COUNTER_ENABLE:
-		/* fall through */
-	case FBDUMP_CONTROL_RESIZE_FACTOR:
-		kbdev->kbase_profiling_controls[control] = value;
-		break;
-	default:
-		dev_err(kbdev->dev, "Profiling control %d not found\n", control);
-		break;
-	}
-}
-
-/*
- * Called by gator to control the production of
- * profiling information at runtime
- * */
-
-void _mali_profiling_control(u32 action, u32 value)
-{
-	struct kbase_device *kbdev = NULL;
-
-	/* find the first i.e. call with -1 */
-	kbdev = kbase_find_device(-1);
-
-	if (NULL != kbdev)
-		kbase_set_profiling_control(kbdev, action, value);
-}
-KBASE_EXPORT_SYMBOL(_mali_profiling_control);
-

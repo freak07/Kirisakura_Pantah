@@ -62,9 +62,11 @@ extern "C" {
  *   with one softjob.
  * 11.11:
  * - Added BASE_MEM_GPU_VA_SAME_4GB_PAGE under base_mem_alloc_flags
+ * 11.12:
+ * - Removed ioctl: KBASE_IOCTL_GET_PROFILING_CONTROLS
  */
 #define BASE_UK_VERSION_MAJOR 11
-#define BASE_UK_VERSION_MINOR 11
+#define BASE_UK_VERSION_MINOR 12
 
 /**
  * struct kbase_ioctl_version_check - Check version compatibility with kernel
@@ -541,21 +543,6 @@ struct kbase_ioctl_fence_validate {
 
 #define KBASE_IOCTL_FENCE_VALIDATE \
 	_IOW(KBASE_IOCTL_TYPE, 25, struct kbase_ioctl_fence_validate)
-
-/**
- * struct kbase_ioctl_get_profiling_controls - Get the profiling controls
- * @count: The size of @buffer in u32 words
- * @buffer: The buffer to receive the profiling controls
- * @padding: Padding
- */
-struct kbase_ioctl_get_profiling_controls {
-	__u64 buffer;
-	__u32 count;
-	__u32 padding;
-};
-
-#define KBASE_IOCTL_GET_PROFILING_CONTROLS \
-	_IOW(KBASE_IOCTL_TYPE, 26, struct kbase_ioctl_get_profiling_controls)
 
 /**
  * struct kbase_ioctl_mem_profile_add - Provide profiling information to kernel

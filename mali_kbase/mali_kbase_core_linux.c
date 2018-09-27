@@ -50,7 +50,7 @@
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include "mali_kbase_ioctl.h"
 
-#ifdef CONFIG_MALI_JOB_DUMP
+#ifdef CONFIG_MALI_CINSTR_GWT
 #include "mali_kbase_gwt.h"
 #endif
 
@@ -406,6 +406,7 @@ static int kbase_open(struct inode *inode, struct file *filp)
 
 	init_waitqueue_head(&kctx->event_queue);
 	filp->private_data = kctx;
+	filp->f_mode |= FMODE_UNSIGNED_OFFSET;
 	kctx->filp = filp;
 
 	if (kbdev->infinite_cache_active_default)
@@ -477,7 +478,6 @@ static int kbase_release(struct inode *inode, struct file *filp)
 
 #ifdef CONFIG_DEBUG_FS
 	kbasep_mem_profile_debugfs_remove(kctx);
-	kbase_debug_job_fault_context_term(kctx);
 #endif
 
 	mutex_lock(&kbdev->kctx_list_lock);
@@ -919,24 +919,6 @@ static int kbase_api_fence_validate(struct kbase_context *kctx,
 #endif
 }
 
-static int kbase_api_get_profiling_controls(struct kbase_context *kctx,
-		struct kbase_ioctl_get_profiling_controls *controls)
-{
-	int ret;
-
-	if (controls->count > (FBDUMP_CONTROL_MAX - FBDUMP_CONTROL_MIN))
-		return -EINVAL;
-
-	ret = copy_to_user(u64_to_user_ptr(controls->buffer),
-			&kctx->kbdev->kbase_profiling_controls[
-				FBDUMP_CONTROL_MIN],
-			controls->count * sizeof(u32));
-
-	if (ret)
-		return -EFAULT;
-	return 0;
-}
-
 static int kbase_api_mem_profile_add(struct kbase_context *kctx,
 		struct kbase_ioctl_mem_profile_add *data)
 {
@@ -1246,11 +1228,6 @@ static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				kbase_api_fence_validate,
 				struct kbase_ioctl_fence_validate);
 		break;
-	case KBASE_IOCTL_GET_PROFILING_CONTROLS:
-		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_GET_PROFILING_CONTROLS,
-				kbase_api_get_profiling_controls,
-				struct kbase_ioctl_get_profiling_controls);
-		break;
 	case KBASE_IOCTL_MEM_PROFILE_ADD:
 		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_MEM_PROFILE_ADD,
 				kbase_api_mem_profile_add,
@@ -1298,7 +1275,7 @@ static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				struct kbase_ioctl_hwcnt_values);
 		break;
 #endif
-#ifdef CONFIG_MALI_JOB_DUMP
+#ifdef CONFIG_MALI_CINSTR_GWT
 	case KBASE_IOCTL_CINSTR_GWT_START:
 		KBASE_HANDLE_IOCTL(KBASE_IOCTL_CINSTR_GWT_START,
 				kbase_gpu_gwt_start);

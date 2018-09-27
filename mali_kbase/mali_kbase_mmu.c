@@ -114,7 +114,8 @@ static void kbase_mmu_sync_pgd(struct kbase_device *kbdev,
  */
 
 static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
-		struct kbase_as *as, const char *reason_str);
+		struct kbase_as *as, const char *reason_str,
+		struct kbase_fault *fault);
 
 static int kbase_mmu_update_pages_no_flush(struct kbase_context *kctx, u64 vpfn,
 					struct tagged_addr *phys, size_t nr,
@@ -188,7 +189,7 @@ static size_t reg_grow_calc_extra_pages(struct kbase_device *kbdev,
 	return minimum_extra + multiple - remainder;
 }
 
-#ifdef CONFIG_MALI_JOB_DUMP
+#ifdef CONFIG_MALI_CINSTR_GWT
 static void kbase_gpu_mmu_handle_write_faulting_as(
 				struct kbase_device *kbdev,
 				struct kbase_as *faulting_as,
@@ -213,6 +214,7 @@ static void kbase_gpu_mmu_handle_write_fault(struct kbase_context *kctx,
 	struct kbasep_gwt_list_element *pos;
 	struct kbase_va_region *region;
 	struct kbase_device *kbdev;
+	struct kbase_fault *fault;
 	u64 fault_pfn, pfn_offset;
 	u32 op;
 	int ret;
@@ -220,24 +222,27 @@ static void kbase_gpu_mmu_handle_write_fault(struct kbase_context *kctx,
 
 	as_no = faulting_as->number;
 	kbdev = container_of(faulting_as, struct kbase_device, as[as_no]);
-	fault_pfn = faulting_as->fault_addr >> PAGE_SHIFT;
+	fault = &faulting_as->pf_data;
+	fault_pfn = fault->addr >> PAGE_SHIFT;
 
 	kbase_gpu_vm_lock(kctx);
 
 	/* Find region and check if it should be writable. */
 	region = kbase_region_tracker_find_region_enclosing_address(kctx,
-			faulting_as->fault_addr);
+			fault->addr);
 	if (!region || region->flags & KBASE_REG_FREE) {
 		kbase_gpu_vm_unlock(kctx);
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Memory is not mapped on the GPU");
+				"Memory is not mapped on the GPU",
+				&faulting_as->pf_data);
 		return;
 	}
 
 	if (!(region->flags & KBASE_REG_GPU_WR)) {
 		kbase_gpu_vm_unlock(kctx);
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Region does not have write permissions");
+				"Region does not have write permissions",
+				&faulting_as->pf_data);
 		return;
 	}
 
@@ -245,7 +250,7 @@ static void kbase_gpu_mmu_handle_write_fault(struct kbase_context *kctx,
 	 * for job dumping if write tracking is enabled.
 	 */
 	if (kctx->gwt_enabled) {
-		u64 page_addr = faulting_as->fault_addr & PAGE_MASK;
+		u64 page_addr = fault->addr & PAGE_MASK;
 		bool found = false;
 		/* Check if this write was already handled. */
 		list_for_each_entry(pos, &kctx->gwt_current_list, link) {
@@ -289,26 +294,24 @@ static void kbase_gpu_mmu_handle_write_fault(struct kbase_context *kctx,
 static void kbase_gpu_mmu_handle_permission_fault(struct kbase_context *kctx,
 			struct kbase_as	*faulting_as)
 {
-	u32 fault_status;
+	struct kbase_fault *fault = &faulting_as->pf_data;
 
-	fault_status = faulting_as->fault_status;
-
-	switch (fault_status & AS_FAULTSTATUS_ACCESS_TYPE_MASK) {
+	switch (fault->status & AS_FAULTSTATUS_ACCESS_TYPE_MASK) {
 	case AS_FAULTSTATUS_ACCESS_TYPE_ATOMIC:
 	case AS_FAULTSTATUS_ACCESS_TYPE_WRITE:
 		kbase_gpu_mmu_handle_write_fault(kctx, faulting_as);
 		break;
 	case AS_FAULTSTATUS_ACCESS_TYPE_EX:
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Execute Permission fault");
+				"Execute Permission fault", fault);
 		break;
 	case AS_FAULTSTATUS_ACCESS_TYPE_READ:
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Read Permission fault");
+				"Read Permission fault", fault);
 		break;
 	default:
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Unknown Permission fault");
+				"Unknown Permission fault", fault);
 		break;
 	}
 }
@@ -522,6 +525,7 @@ void page_fault_worker(struct work_struct *data)
 	struct kbase_context *kctx;
 	struct kbase_device *kbdev;
 	struct kbase_va_region *region;
+	struct kbase_fault *fault;
 	int err;
 	bool grown = false;
 	int pages_to_grow;
@@ -530,7 +534,8 @@ void page_fault_worker(struct work_struct *data)
 	int i;
 
 	faulting_as = container_of(data, struct kbase_as, work_pagefault);
-	fault_pfn = faulting_as->fault_addr >> PAGE_SHIFT;
+	fault = &faulting_as->pf_data;
+	fault_pfn = fault->addr >> PAGE_SHIFT;
 	as_no = faulting_as->number;
 
 	kbdev = container_of(faulting_as, struct kbase_device, as[as_no]);
@@ -546,16 +551,16 @@ void page_fault_worker(struct work_struct *data)
 
 	KBASE_DEBUG_ASSERT(kctx->kbdev == kbdev);
 
-	if (unlikely(faulting_as->protected_mode)) {
+	if (unlikely(fault->protected_mode)) {
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Protected mode fault");
+				"Protected mode fault", fault);
 		kbase_mmu_hw_clear_fault(kbdev, faulting_as,
 				KBASE_MMU_FAULT_TYPE_PAGE);
 
 		goto fault_done;
 	}
 
-	fault_status = faulting_as->fault_status;
+	fault_status = fault->status;
 	switch (fault_status & AS_FAULTSTATUS_EXCEPTION_CODE_MASK) {
 
 	case AS_FAULTSTATUS_EXCEPTION_CODE_TRANSLATION_FAULT:
@@ -563,7 +568,7 @@ void page_fault_worker(struct work_struct *data)
 		break;
 
 	case AS_FAULTSTATUS_EXCEPTION_CODE_PERMISSION_FAULT:
-#ifdef CONFIG_MALI_JOB_DUMP
+#ifdef CONFIG_MALI_CINSTR_GWT
 		/* If GWT was ever enabled then we need to handle
 		 * write fault pages even if the feature was disabled later.
 		 */
@@ -575,12 +580,12 @@ void page_fault_worker(struct work_struct *data)
 #endif
 
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Permission failure");
+				"Permission failure", fault);
 		goto fault_done;
 
 	case AS_FAULTSTATUS_EXCEPTION_CODE_TRANSTAB_BUS_FAULT:
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Translation table bus fault");
+				"Translation table bus fault", fault);
 		goto fault_done;
 
 	case AS_FAULTSTATUS_EXCEPTION_CODE_ACCESS_FLAG:
@@ -591,24 +596,24 @@ void page_fault_worker(struct work_struct *data)
 	case AS_FAULTSTATUS_EXCEPTION_CODE_ADDRESS_SIZE_FAULT:
 		if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_AARCH64_MMU))
 			kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-					"Address size fault");
+					"Address size fault", fault);
 		else
 			kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-					"Unknown fault code");
+					"Unknown fault code", fault);
 		goto fault_done;
 
 	case AS_FAULTSTATUS_EXCEPTION_CODE_MEMORY_ATTRIBUTES_FAULT:
 		if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_AARCH64_MMU))
 			kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-					"Memory attributes fault");
+					"Memory attributes fault", fault);
 		else
 			kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-					"Unknown fault code");
+					"Unknown fault code", fault);
 		goto fault_done;
 
 	default:
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Unknown fault code");
+				"Unknown fault code", fault);
 		goto fault_done;
 	}
 
@@ -618,7 +623,8 @@ void page_fault_worker(struct work_struct *data)
 		prealloc_sas[i] = kmalloc(sizeof(*prealloc_sas[i]), GFP_KERNEL);
 		if (!prealloc_sas[i]) {
 			kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-					"Failed pre-allocating memory for sub-allocations' metadata");
+					"Failed pre-allocating memory for sub-allocations' metadata",
+					fault);
 			goto fault_done;
 		}
 	}
@@ -630,18 +636,18 @@ page_fault_retry:
 	kbase_gpu_vm_lock(kctx);
 
 	region = kbase_region_tracker_find_region_enclosing_address(kctx,
-			faulting_as->fault_addr);
+			fault->addr);
 	if (!region || region->flags & KBASE_REG_FREE) {
 		kbase_gpu_vm_unlock(kctx);
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Memory is not mapped on the GPU");
+				"Memory is not mapped on the GPU", fault);
 		goto fault_done;
 	}
 
 	if (region->gpu_alloc->type == KBASE_MEM_TYPE_IMPORTED_UMM) {
 		kbase_gpu_vm_unlock(kctx);
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"DMA-BUF is not mapped on the GPU");
+				"DMA-BUF is not mapped on the GPU", fault);
 		goto fault_done;
 	}
 
@@ -649,14 +655,14 @@ page_fault_retry:
 			!= GROWABLE_FLAGS_REQUIRED) {
 		kbase_gpu_vm_unlock(kctx);
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Memory is not growable");
+				"Memory is not growable", fault);
 		goto fault_done;
 	}
 
 	if ((region->flags & KBASE_REG_DONT_NEED)) {
 		kbase_gpu_vm_unlock(kctx);
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Don't need memory can't be grown");
+				"Don't need memory can't be grown", fault);
 		goto fault_done;
 	}
 
@@ -667,7 +673,7 @@ page_fault_retry:
 
 	if (fault_rel_pfn < kbase_reg_current_backed_size(region)) {
 		dev_dbg(kbdev->dev, "Page fault @ 0x%llx in allocated region 0x%llx-0x%llx of growable TMEM: Ignoring",
-				faulting_as->fault_addr, region->start_pfn,
+				fault->addr, region->start_pfn,
 				region->start_pfn +
 				kbase_reg_current_backed_size(region));
 
@@ -754,7 +760,7 @@ page_fault_retry:
 			kbase_gpu_vm_unlock(kctx);
 			/* The locked VA region will be unlocked and the cache invalidated in here */
 			kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-					"Page table update failure");
+					"Page table update failure", fault);
 			goto fault_done;
 		}
 #if defined(CONFIG_MALI_GATOR_SUPPORT)
@@ -783,9 +789,8 @@ page_fault_retry:
 					 KBASE_MMU_FAULT_TYPE_PAGE);
 
 		kbase_mmu_hw_do_operation(kbdev, faulting_as,
-					  faulting_as->fault_addr >> PAGE_SHIFT,
-					  new_pages,
-					  op, 1);
+				fault->addr >> PAGE_SHIFT,
+				new_pages, op, 1);
 
 		mutex_unlock(&kbdev->mmu_hw_mutex);
 		/* AS transaction end */
@@ -794,7 +799,7 @@ page_fault_retry:
 		kbase_mmu_hw_enable_fault(kbdev, faulting_as,
 					 KBASE_MMU_FAULT_TYPE_PAGE);
 
-#ifdef CONFIG_MALI_JOB_DUMP
+#ifdef CONFIG_MALI_CINSTR_GWT
 		if (kctx->gwt_enabled) {
 			/* GWT also tracks growable regions. */
 			struct kbasep_gwt_list_element *pos;
@@ -842,7 +847,7 @@ page_fault_retry:
 		if (ret < 0) {
 			/* failed to extend, handle as a normal PF */
 			kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-					"Page allocation failure");
+					"Page allocation failure", fault);
 		} else {
 			goto page_fault_retry;
 		}
@@ -2048,11 +2053,16 @@ void bus_fault_worker(struct work_struct *data)
 	int as_no;
 	struct kbase_context *kctx;
 	struct kbase_device *kbdev;
+	struct kbase_fault *fault;
 #if KBASE_GPU_RESET_EN
 	bool reset_status = false;
 #endif /* KBASE_GPU_RESET_EN */
 
 	faulting_as = container_of(data, struct kbase_as, work_busfault);
+	fault = &faulting_as->bf_data;
+
+	/* Ensure that any pending page fault worker has completed */
+	flush_work(&faulting_as->work_pagefault);
 
 	as_no = faulting_as->number;
 
@@ -2067,9 +2077,9 @@ void bus_fault_worker(struct work_struct *data)
 		return;
 	}
 
-	if (unlikely(faulting_as->protected_mode)) {
+	if (unlikely(fault->protected_mode)) {
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
-				"Permission failure");
+				"Permission failure", fault);
 		kbase_mmu_hw_clear_fault(kbdev, faulting_as,
 				KBASE_MMU_FAULT_TYPE_BUS_UNEXPECTED);
 		kbasep_js_runpool_release_ctx(kbdev, kctx);
@@ -2315,7 +2325,8 @@ static const char *access_type_name(struct kbase_device *kbdev,
  * The caller must ensure it's retained the ctx to prevent it from being scheduled out whilst it's being worked on.
  */
 static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
-		struct kbase_as *as, const char *reason_str)
+		struct kbase_as *as, const char *reason_str,
+		struct kbase_fault *fault)
 {
 	unsigned long flags;
 	int exception_type;
@@ -2337,9 +2348,9 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 	KBASE_DEBUG_ASSERT(atomic_read(&kctx->refcount) > 0);
 
 	/* decode the fault status */
-	exception_type = as->fault_status & 0xFF;
-	access_type = (as->fault_status >> 8) & 0x3;
-	source_id = (as->fault_status >> 16);
+	exception_type = fault->status & 0xFF;
+	access_type = (fault->status >> 8) & 0x3;
+	source_id = (fault->status >> 16);
 
 	/* terminal fault, print info about the fault */
 	dev_err(kbdev->dev,
@@ -2351,12 +2362,12 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 		"access type 0x%X: %s\n"
 		"source id 0x%X\n"
 		"pid: %d\n",
-		as_no, as->fault_addr,
+		as_no, fault->addr,
 		reason_str,
-		as->fault_status,
-		(as->fault_status & (1 << 10) ? "DECODER FAULT" : "SLAVE FAULT"),
+		fault->status,
+		(fault->status & (1 << 10) ? "DECODER FAULT" : "SLAVE FAULT"),
 		exception_type, kbase_exception_name(kbdev, exception_type),
-		access_type, access_type_name(kbdev, as->fault_status),
+		access_type, access_type_name(kbdev, fault->status),
 		source_id,
 		kctx->pid);
 
@@ -2366,8 +2377,8 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 						KBASE_INSTR_STATE_DUMPING)) {
 		unsigned int num_core_groups = kbdev->gpu_props.num_core_groups;
 
-		if ((as->fault_addr >= kbdev->hwcnt.addr) &&
-				(as->fault_addr < (kbdev->hwcnt.addr +
+		if ((fault->addr >= kbdev->hwcnt.addr) &&
+				(fault->addr < (kbdev->hwcnt.addr +
 						(num_core_groups * 2048))))
 			kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_FAULT;
 	}
@@ -2568,16 +2579,19 @@ void kbase_as_poking_timer_release_atom(struct kbase_device *kbdev, struct kbase
 	katom->poking = 0;
 }
 
-void kbase_mmu_interrupt_process(struct kbase_device *kbdev, struct kbase_context *kctx, struct kbase_as *as)
+void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
+		struct kbase_context *kctx, struct kbase_as *as,
+		struct kbase_fault *fault)
 {
 	struct kbasep_js_device_data *js_devdata = &kbdev->js_data;
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	if (!kctx) {
-		dev_warn(kbdev->dev, "%s in AS%d at 0x%016llx with no context present! Suprious IRQ or SW Design Error?\n",
-				 kbase_as_has_bus_fault(as) ? "Bus error" : "Page fault",
-				 as->number, as->fault_addr);
+		dev_warn(kbdev->dev, "%s in AS%d at 0x%016llx with no context present! Spurious IRQ or SW Design Error?\n",
+				kbase_as_has_bus_fault(as) ?
+						"Bus error" : "Page fault",
+				as->number, fault->addr);
 
 		/* Since no ctx was found, the MMU must be disabled. */
 		WARN_ON(as->current_setup.transtab);
@@ -2634,11 +2648,11 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev, struct kbase_contex
 		if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_AARCH64_MMU))
 			dev_warn(kbdev->dev,
 					"Bus error in AS%d at VA=0x%016llx, IPA=0x%016llx\n",
-					as->number, as->fault_addr,
-					as->fault_extra_addr);
+					as->number, fault->addr,
+					fault->extra_addr);
 		else
 			dev_warn(kbdev->dev, "Bus error in AS%d at 0x%016llx\n",
-					as->number, as->fault_addr);
+					as->number, fault->addr);
 
 		/*
 		 * We need to switch to UNMAPPED mode - but we do this in a

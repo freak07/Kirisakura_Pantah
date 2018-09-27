@@ -150,6 +150,7 @@ void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
 		struct kbase_as *as;
 		int as_no;
 		struct kbase_context *kctx;
+		struct kbase_fault *fault;
 
 		/*
 		 * the while logic ensures we have a bit set, no need to check
@@ -157,6 +158,16 @@ void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
 		 */
 		as_no = ffs(bf_bits | pf_bits) - 1;
 		as = &kbdev->as[as_no];
+
+		/* find the fault type */
+		as->fault_type = (bf_bits & (1 << as_no)) ?
+				KBASE_MMU_FAULT_TYPE_BUS :
+				KBASE_MMU_FAULT_TYPE_PAGE;
+
+		if (kbase_as_has_bus_fault(as))
+			fault = &as->bf_data;
+		else
+			fault = &as->pf_data;
 
 		/*
 		 * Refcount the kctx ASAP - it shouldn't disappear anyway, since
@@ -167,18 +178,16 @@ void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
 		kctx = kbasep_js_runpool_lookup_ctx(kbdev, as_no);
 
 		/* find faulting address */
-		as->fault_addr = kbase_reg_read(kbdev,
-						MMU_AS_REG(as_no,
-							AS_FAULTADDRESS_HI));
-		as->fault_addr <<= 32;
-		as->fault_addr |= kbase_reg_read(kbdev,
-						MMU_AS_REG(as_no,
-							AS_FAULTADDRESS_LO));
+		fault->addr = kbase_reg_read(kbdev, MMU_AS_REG(as_no,
+				AS_FAULTADDRESS_HI));
+		fault->addr <<= 32;
+		fault->addr |= kbase_reg_read(kbdev, MMU_AS_REG(as_no,
+				AS_FAULTADDRESS_LO));
 
 		/* Mark the fault protected or not */
-		as->protected_mode = kbdev->protected_mode;
+		fault->protected_mode = kbdev->protected_mode;
 
-		if (kbdev->protected_mode && as->fault_addr) {
+		if (kbdev->protected_mode && fault->addr) {
 			/* check if address reporting is allowed */
 			validate_protected_page_fault(kbdev);
 		}
@@ -187,20 +196,14 @@ void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
 		kbase_as_fault_debugfs_new(kbdev, as_no);
 
 		/* record the fault status */
-		as->fault_status = kbase_reg_read(kbdev,
-						  MMU_AS_REG(as_no,
-							AS_FAULTSTATUS));
-
-		/* find the fault type */
-		as->fault_type = (bf_bits & (1 << as_no)) ?
-				KBASE_MMU_FAULT_TYPE_BUS :
-				KBASE_MMU_FAULT_TYPE_PAGE;
+		fault->status = kbase_reg_read(kbdev, MMU_AS_REG(as_no,
+				AS_FAULTSTATUS));
 
 		if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_AARCH64_MMU)) {
-			as->fault_extra_addr = kbase_reg_read(kbdev,
+			fault->extra_addr = kbase_reg_read(kbdev,
 					MMU_AS_REG(as_no, AS_FAULTEXTRA_HI));
-			as->fault_extra_addr <<= 32;
-			as->fault_extra_addr |= kbase_reg_read(kbdev,
+			fault->extra_addr <<= 32;
+			fault->extra_addr |= kbase_reg_read(kbdev,
 					MMU_AS_REG(as_no, AS_FAULTEXTRA_LO));
 		}
 
@@ -224,7 +227,7 @@ void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
 
 		/* Process the interrupt for this address space */
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		kbase_mmu_interrupt_process(kbdev, kctx, as);
+		kbase_mmu_interrupt_process(kbdev, kctx, as, fault);
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 	}
 

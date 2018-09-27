@@ -36,7 +36,6 @@ typedef struct base_mem_handle {
 } base_mem_handle;
 
 #include "mali_base_mem_priv.h"
-#include "mali_kbase_profiling_gator_api.h"
 #include "mali_midg_coherency.h"
 #include "mali_kbase_gpu_id.h"
 
@@ -1766,10 +1765,6 @@ typedef struct base_jd_replay_jc {
 #define BASE_JD_REPLAY_F_CHAIN_JOB_LIMIT 256
 
 /** @} end group base_api */
-
-typedef struct base_profiling_controls {
-	u32 profiling_controls[FBDUMP_CONTROL_MAX];
-} base_profiling_controls;
 
 /* Enable additional tracepoints for latency measurements (TL_ATOM_READY,
  * TL_ATOM_DONE, TL_ATOM_PRIO_CHANGE, TL_ATOM_EVENT_POST) */

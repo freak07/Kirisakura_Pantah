@@ -143,14 +143,13 @@ enum tl_msg_id_obj {
 	KBASE_TL_NRET_AS_CTX,
 	KBASE_TL_RET_ATOM_AS,
 	KBASE_TL_NRET_ATOM_AS,
-	KBASE_TL_DEP_ATOM_ATOM,
-	KBASE_TL_NDEP_ATOM_ATOM,
-	KBASE_TL_RDEP_ATOM_ATOM,
 	KBASE_TL_ATTRIB_ATOM_CONFIG,
 	KBASE_TL_ATTRIB_ATOM_PRIORITY,
 	KBASE_TL_ATTRIB_ATOM_STATE,
 	KBASE_TL_ATTRIB_ATOM_PRIORITIZED,
 	KBASE_TL_ATTRIB_ATOM_JIT,
+	KBASE_TL_ATTRIB_ATOM_JITALLOCINFO,
+	KBASE_TL_ATTRIB_ATOM_JITFREEINFO,
 	KBASE_TL_ATTRIB_AS_CONFIG,
 	KBASE_TL_EVENT_LPU_SOFTSTOP,
 	KBASE_TL_EVENT_ATOM_SOFTSTOP_EX,
@@ -418,27 +417,6 @@ static const struct tp_desc tp_desc_obj[] = {
 		"atom,address_space"
 	},
 	{
-		KBASE_TL_DEP_ATOM_ATOM,
-		__stringify(KBASE_TL_DEP_ATOM_ATOM),
-		"atom2 depends on atom1",
-		"@pp",
-		"atom1,atom2"
-	},
-	{
-		KBASE_TL_NDEP_ATOM_ATOM,
-		__stringify(KBASE_TL_NDEP_ATOM_ATOM),
-		"atom2 no longer depends on atom1",
-		"@pp",
-		"atom1,atom2"
-	},
-	{
-		KBASE_TL_RDEP_ATOM_ATOM,
-		__stringify(KBASE_TL_RDEP_ATOM_ATOM),
-		"resolved dependecy of atom2 depending on atom1",
-		"@pp",
-		"atom1,atom2"
-	},
-	{
 		KBASE_TL_ATTRIB_ATOM_CONFIG,
 		__stringify(KBASE_TL_ATTRIB_ATOM_CONFIG),
 		"atom job slot attributes",
@@ -472,6 +450,20 @@ static const struct tp_desc tp_desc_obj[] = {
 		"jit done for atom",
 		"@pLL",
 		"atom,edit_addr,new_addr"
+	},
+	{
+		KBASE_TL_ATTRIB_ATOM_JITALLOCINFO,
+		__stringify(KBASE_TL_ATTRIB_ATOM_JITALLOCINFO),
+		"Information about JIT allocations",
+		"@pLLLIIIII",
+		"atom,va_pgs,com_pgs,extent,j_id,bin_id,max_allocs,flags,usg_id"
+	},
+	{
+		KBASE_TL_ATTRIB_ATOM_JITFREEINFO,
+		__stringify(KBASE_TL_ATTRIB_ATOM_JITFREEINFO),
+		"Information about JIT frees",
+		"@pI",
+		"atom,j_id"
 	},
 	{
 		KBASE_TL_ATTRIB_AS_CONFIG,
@@ -899,7 +891,6 @@ static size_t kbasep_tlstream_msgbuf_submit(
 		unsigned int      wb_idx_raw,
 		unsigned int      wb_size)
 {
-	unsigned int rb_idx_raw = atomic_read(&stream->rbi);
 	unsigned int wb_idx = wb_idx_raw % PACKET_COUNT;
 
 	/* Set stream as flushed. */
@@ -918,22 +909,10 @@ static size_t kbasep_tlstream_msgbuf_submit(
 	 * As stream->lock is not taken on reader side we must make sure memory
 	 * is updated correctly before this will happen. */
 	smp_wmb();
-	wb_idx_raw++;
-	atomic_set(&stream->wbi, wb_idx_raw);
+	atomic_inc(&stream->wbi);
 
 	/* Inform user that packets are ready for reading. */
 	wake_up_interruptible(&tl_event_queue);
-
-	/* Detect and mark overflow in this stream. */
-	if (PACKET_COUNT == wb_idx_raw - rb_idx_raw) {
-		/* Reader side depends on this increment to correctly handle
-		 * overflows. The value shall be updated only if it was not
-		 * modified by the reader. The data holding buffer will not be
-		 * updated before stream->lock is released, however size of the
-		 * buffer will. Make sure this increment is globally visible
-		 * before information about selected write buffer size. */
-		atomic_cmpxchg(&stream->rbi, rb_idx_raw, rb_idx_raw + 1);
-	}
 
 	wb_size = PACKET_HEADER_SIZE;
 	if (stream->numbered)
@@ -1191,6 +1170,7 @@ static ssize_t kbasep_tlstream_read(
 	while (copy_len < size) {
 		enum tl_stream_type stype;
 		unsigned int        rb_idx_raw = 0;
+		unsigned int        wb_idx_raw;
 		unsigned int        rb_idx;
 		size_t              rb_size;
 
@@ -1227,18 +1207,26 @@ static ssize_t kbasep_tlstream_read(
 			break;
 		}
 
-		/* If the rbi still points to the packet we just processed
-		 * then there was no overflow so we add the copied size to
-		 * copy_len and move rbi on to the next packet
+		/* If the distance between read buffer index and write
+		 * buffer index became more than PACKET_COUNT, then overflow
+		 * happened and we need to ignore the last portion of bytes
+		 * that we have just sent to user.
 		 */
 		smp_rmb();
-		if (atomic_read(&tl_stream[stype]->rbi) == rb_idx_raw) {
+		wb_idx_raw = atomic_read(&tl_stream[stype]->wbi);
+
+		if (wb_idx_raw - rb_idx_raw < PACKET_COUNT) {
 			copy_len += rb_size;
 			atomic_inc(&tl_stream[stype]->rbi);
-
 #if MALI_UNIT_TEST
 			atomic_add(rb_size, &tlstream_bytes_collected);
 #endif /* MALI_UNIT_TEST */
+
+		} else {
+			const unsigned int new_rb_idx_raw =
+				wb_idx_raw - PACKET_COUNT + 1;
+			/* Adjust read buffer index to the next valid buffer */
+			atomic_set(&tl_stream[stype]->rbi, new_rb_idx_raw);
 		}
 	}
 
@@ -1947,81 +1935,6 @@ void __kbase_tlstream_tl_nret_atom_ctx(void *atom, void *context)
 	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_OBJ, flags);
 }
 
-void __kbase_tlstream_tl_dep_atom_atom(void *atom1, void *atom2)
-{
-	const u32     msg_id = KBASE_TL_DEP_ATOM_ATOM;
-	const size_t  msg_size =
-		sizeof(msg_id) + sizeof(u64) + sizeof(atom1) + sizeof(atom2);
-	unsigned long flags;
-	char          *buffer;
-	size_t        pos = 0;
-
-	buffer = kbasep_tlstream_msgbuf_acquire(
-			TL_STREAM_TYPE_OBJ,
-			msg_size, &flags);
-	KBASE_DEBUG_ASSERT(buffer);
-
-	pos = kbasep_tlstream_write_bytes(buffer, pos, &msg_id, sizeof(msg_id));
-	pos = kbasep_tlstream_write_timestamp(buffer, pos);
-	pos = kbasep_tlstream_write_bytes(
-			buffer, pos, &atom1, sizeof(atom1));
-	pos = kbasep_tlstream_write_bytes(
-			buffer, pos, &atom2, sizeof(atom2));
-	KBASE_DEBUG_ASSERT(msg_size == pos);
-
-	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_OBJ, flags);
-}
-
-void __kbase_tlstream_tl_ndep_atom_atom(void *atom1, void *atom2)
-{
-	const u32     msg_id = KBASE_TL_NDEP_ATOM_ATOM;
-	const size_t  msg_size =
-		sizeof(msg_id) + sizeof(u64) + sizeof(atom1) + sizeof(atom2);
-	unsigned long flags;
-	char          *buffer;
-	size_t        pos = 0;
-
-	buffer = kbasep_tlstream_msgbuf_acquire(
-			TL_STREAM_TYPE_OBJ,
-			msg_size, &flags);
-	KBASE_DEBUG_ASSERT(buffer);
-
-	pos = kbasep_tlstream_write_bytes(buffer, pos, &msg_id, sizeof(msg_id));
-	pos = kbasep_tlstream_write_timestamp(buffer, pos);
-	pos = kbasep_tlstream_write_bytes(
-			buffer, pos, &atom1, sizeof(atom1));
-	pos = kbasep_tlstream_write_bytes(
-			buffer, pos, &atom2, sizeof(atom2));
-	KBASE_DEBUG_ASSERT(msg_size == pos);
-
-	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_OBJ, flags);
-}
-
-void __kbase_tlstream_tl_rdep_atom_atom(void *atom1, void *atom2)
-{
-	const u32     msg_id = KBASE_TL_RDEP_ATOM_ATOM;
-	const size_t  msg_size =
-		sizeof(msg_id) + sizeof(u64) + sizeof(atom1) + sizeof(atom2);
-	unsigned long flags;
-	char          *buffer;
-	size_t        pos = 0;
-
-	buffer = kbasep_tlstream_msgbuf_acquire(
-			TL_STREAM_TYPE_OBJ,
-			msg_size, &flags);
-	KBASE_DEBUG_ASSERT(buffer);
-
-	pos = kbasep_tlstream_write_bytes(buffer, pos, &msg_id, sizeof(msg_id));
-	pos = kbasep_tlstream_write_timestamp(buffer, pos);
-	pos = kbasep_tlstream_write_bytes(
-			buffer, pos, &atom1, sizeof(atom1));
-	pos = kbasep_tlstream_write_bytes(
-			buffer, pos, &atom2, sizeof(atom2));
-	KBASE_DEBUG_ASSERT(msg_size == pos);
-
-	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_OBJ, flags);
-}
-
 void __kbase_tlstream_tl_nret_atom_lpu(void *atom, void *lpu)
 {
 	const u32     msg_id = KBASE_TL_NRET_ATOM_LPU;
@@ -2279,6 +2192,81 @@ void __kbase_tlstream_tl_attrib_atom_jit(
 
 	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_OBJ, flags);
 }
+
+void __kbase_tlstream_tl_attrib_atom_jitallocinfo(
+		void *atom, u64 va_pages, u64 commit_pages, u64 extent,
+		u32 jit_id, u32 bin_id, u32 max_allocations, u32 jit_flags,
+		u32 usage_id)
+{
+	const u32     msg_id = KBASE_TL_ATTRIB_ATOM_JITALLOCINFO;
+	const size_t  msg_size =
+		sizeof(msg_id) + sizeof(u64) + sizeof(atom) +
+		sizeof(va_pages) + sizeof(commit_pages) +
+		sizeof(extent) + sizeof(jit_id) +
+		sizeof(bin_id) + sizeof(max_allocations) +
+		sizeof(jit_flags) + sizeof(usage_id);
+	unsigned long flags;
+	char          *buffer;
+	size_t        pos = 0;
+
+	buffer = kbasep_tlstream_msgbuf_acquire(
+			TL_STREAM_TYPE_OBJ,
+			msg_size, &flags);
+	KBASE_DEBUG_ASSERT(buffer);
+
+	pos = kbasep_tlstream_write_bytes(buffer, pos, &msg_id,
+			sizeof(msg_id));
+	pos = kbasep_tlstream_write_timestamp(buffer, pos);
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &atom, sizeof(atom));
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &va_pages, sizeof(va_pages));
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &commit_pages, sizeof(commit_pages));
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &extent, sizeof(extent));
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &jit_id, sizeof(jit_id));
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &bin_id, sizeof(bin_id));
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &max_allocations,
+			sizeof(max_allocations));
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &jit_flags, sizeof(jit_flags));
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &usage_id, sizeof(usage_id));
+	KBASE_DEBUG_ASSERT(msg_size == pos);
+
+	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_OBJ, flags);
+}
+
+void __kbase_tlstream_tl_attrib_atom_jitfreeinfo(void *atom, u32 jit_id)
+{
+	const u32     msg_id = KBASE_TL_ATTRIB_ATOM_JITFREEINFO;
+	const size_t  msg_size =
+		sizeof(msg_id) + sizeof(u64) + sizeof(atom) + sizeof(jit_id);
+	unsigned long flags;
+	char          *buffer;
+	size_t        pos = 0;
+
+	buffer = kbasep_tlstream_msgbuf_acquire(
+			TL_STREAM_TYPE_OBJ,
+			msg_size, &flags);
+	KBASE_DEBUG_ASSERT(buffer);
+
+	pos = kbasep_tlstream_write_bytes(buffer, pos, &msg_id,
+			sizeof(msg_id));
+	pos = kbasep_tlstream_write_timestamp(buffer, pos);
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &atom, sizeof(atom));
+	pos = kbasep_tlstream_write_bytes(
+			buffer, pos, &jit_id, sizeof(jit_id));
+	KBASE_DEBUG_ASSERT(msg_size == pos);
+
+	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_OBJ, flags);
+}
+
 
 void __kbase_tlstream_tl_attrib_as_config(
 		void *as, u64 transtab, u64 memattr, u64 transcfg)

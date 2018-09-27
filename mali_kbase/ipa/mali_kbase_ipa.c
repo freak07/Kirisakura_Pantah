@@ -457,7 +457,8 @@ static struct kbase_ipa_model *get_current_model(struct kbase_device *kbdev)
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
-	if (kbdev->ipa_protection_mode_switched)
+	if (kbdev->ipa_protection_mode_switched ||
+			kbdev->ipa.force_fallback_model)
 		model = kbdev->ipa.fallback_model;
 	else
 		model = kbdev->ipa.configured_model;

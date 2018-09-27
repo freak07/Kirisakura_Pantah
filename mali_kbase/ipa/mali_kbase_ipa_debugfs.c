@@ -188,6 +188,33 @@ void kbase_ipa_model_param_free_all(struct kbase_ipa_model *model)
 	}
 }
 
+static int force_fallback_model_get(void *data, u64 *val)
+{
+	struct kbase_device *kbdev = data;
+
+	mutex_lock(&kbdev->ipa.lock);
+	*val = kbdev->ipa.force_fallback_model;
+	mutex_unlock(&kbdev->ipa.lock);
+
+	return 0;
+}
+
+static int force_fallback_model_set(void *data, u64 val)
+{
+	struct kbase_device *kbdev = data;
+
+	mutex_lock(&kbdev->ipa.lock);
+	kbdev->ipa.force_fallback_model = (val ? true : false);
+	mutex_unlock(&kbdev->ipa.lock);
+
+	return 0;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(force_fallback_model,
+		force_fallback_model_get,
+		force_fallback_model_set,
+		"%llu\n");
+
 static int current_power_get(void *data, u64 *val)
 {
 	struct kbase_device *kbdev = data;
@@ -282,7 +309,9 @@ void kbase_ipa_debugfs_init(struct kbase_device *kbdev)
 	kbase_ipa_model_debugfs_init(kbdev->ipa.fallback_model);
 
 	debugfs_create_file("ipa_current_power", 0444,
-			kbdev->mali_debugfs_directory, kbdev, &current_power);
+		kbdev->mali_debugfs_directory, kbdev, &current_power);
+	debugfs_create_file("ipa_force_fallback_model", 0644,
+		kbdev->mali_debugfs_directory, kbdev, &force_fallback_model);
 
 	mutex_unlock(&kbdev->ipa.lock);
 }

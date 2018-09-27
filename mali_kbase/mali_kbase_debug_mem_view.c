@@ -32,6 +32,10 @@
 
 #ifdef CONFIG_DEBUG_FS
 
+#if (KERNEL_VERSION(4, 1, 0) > LINUX_VERSION_CODE)
+#define get_file_rcu(x) atomic_long_inc_not_zero(&(x)->f_count)
+#endif
+
 struct debug_mem_mapping {
 	struct list_head node;
 
@@ -199,9 +203,12 @@ static int debug_mem_open(struct inode *i, struct file *file)
 	struct debug_mem_data *mem_data;
 	int ret;
 
+	if (get_file_rcu(kctx_file) == 0)
+		return -ENOENT;
+
 	ret = seq_open(file, &ops);
 	if (ret)
-		return ret;
+		goto open_fail;
 
 	mem_data = kmalloc(sizeof(*mem_data), GFP_KERNEL);
 	if (!mem_data) {
@@ -212,8 +219,6 @@ static int debug_mem_open(struct inode *i, struct file *file)
 	mem_data->kctx = kctx;
 
 	INIT_LIST_HEAD(&mem_data->mapping_list);
-
-	get_file(kctx_file);
 
 	kbase_gpu_vm_lock(kctx);
 
@@ -246,10 +251,12 @@ out:
 			list_del(&mapping->node);
 			kfree(mapping);
 		}
-		fput(kctx_file);
 		kfree(mem_data);
 	}
 	seq_release(i, file);
+open_fail:
+	fput(kctx_file);
+
 	return ret;
 }
 

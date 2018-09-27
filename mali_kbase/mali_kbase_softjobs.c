@@ -495,24 +495,6 @@ static void kbasep_soft_event_cancel_job(struct kbase_jd_atom *katom)
 		kbase_js_sched_all(katom->kctx->kbdev);
 }
 
-static inline void free_user_buffer(struct kbase_debug_copy_buffer *buffer)
-{
-	struct page **pages = buffer->extres_pages;
-	int nr_pages = buffer->nr_extres_pages;
-
-	if (pages) {
-		int i;
-
-		for (i = 0; i < nr_pages; i++) {
-			struct page *pg = pages[i];
-
-			if (pg)
-				put_page(pg);
-		}
-		kfree(pages);
-	}
-}
-
 static void kbase_debug_copy_finish(struct kbase_jd_atom *katom)
 {
 	struct kbase_debug_copy_buffer *buffers = katom->softjob_data;
@@ -535,12 +517,15 @@ static void kbase_debug_copy_finish(struct kbase_jd_atom *katom)
 			if (pg)
 				put_page(pg);
 		}
-		kfree(buffers[i].pages);
+		if (buffers[i].is_vmalloc)
+			vfree(buffers[i].pages);
+		else
+			kfree(buffers[i].pages);
 		if (gpu_alloc) {
 			switch (gpu_alloc->type) {
 			case KBASE_MEM_TYPE_IMPORTED_USER_BUF:
 			{
-				free_user_buffer(&buffers[i]);
+				kbase_free_user_buffer(&buffers[i]);
 				break;
 			}
 			default:
@@ -602,6 +587,11 @@ static int kbase_debug_copy_prepare(struct kbase_jd_atom *katom)
 		if (!addr)
 			continue;
 
+		if (last_page_addr < page_addr) {
+			ret = -EINVAL;
+			goto out_cleanup;
+		}
+
 		buffers[i].nr_pages = nr_pages;
 		buffers[i].offset = addr & ~PAGE_MASK;
 		if (buffers[i].offset >= PAGE_SIZE) {
@@ -610,8 +600,17 @@ static int kbase_debug_copy_prepare(struct kbase_jd_atom *katom)
 		}
 		buffers[i].size = user_buffers[i].size;
 
-		buffers[i].pages = kcalloc(nr_pages, sizeof(struct page *),
-				GFP_KERNEL);
+		if (nr_pages > (KBASE_MEM_PHY_ALLOC_LARGE_THRESHOLD /
+				sizeof(struct page *))) {
+			buffers[i].is_vmalloc = true;
+			buffers[i].pages = vzalloc(nr_pages *
+					sizeof(struct page *));
+		} else {
+			buffers[i].is_vmalloc = false;
+			buffers[i].pages = kcalloc(nr_pages,
+					sizeof(struct page *), GFP_KERNEL);
+		}
+
 		if (!buffers[i].pages) {
 			ret = -ENOMEM;
 			goto out_cleanup;
@@ -938,6 +937,10 @@ static int kbase_jit_allocate_prepare(struct kbase_jd_atom *katom)
 		ret = kbasep_jit_alloc_validate(kctx, info);
 		if (ret)
 			goto free_info;
+		KBASE_TLSTREAM_TL_ATTRIB_ATOM_JITALLOCINFO(katom,
+			info->va_pages, info->commit_pages, info->extent,
+			info->id, info->bin_id, info->max_allocations,
+			info->flags, info->usage_id);
 	}
 
 	katom->jit_blocked = false;
@@ -1164,6 +1167,7 @@ static int kbase_jit_free_prepare(struct kbase_jd_atom *katom)
 	__user void *data = (__user void *)(uintptr_t) katom->jc;
 	u8 *ids;
 	u32 count = MAX(katom->nr_extres, 1);
+	u32 i;
 	int ret;
 
 	/* Sanity checks */
@@ -1198,6 +1202,8 @@ static int kbase_jit_free_prepare(struct kbase_jd_atom *katom)
 		katom->nr_extres = 1;
 		*ids = (u8)katom->jc;
 	}
+	for (i = 0; i < count; i++)
+		KBASE_TLSTREAM_TL_ATTRIB_ATOM_JITFREEINFO(katom, ids[i]);
 
 	list_add_tail(&katom->jit_node, &kctx->jit_atoms_head);
 

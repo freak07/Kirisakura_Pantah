@@ -177,7 +177,6 @@
 #define KBASE_PERMANENTLY_MAPPED_MEM_LIMIT_PAGES ((1024ul * 1024ul) >> \
 								PAGE_SHIFT)
 
-
 /** Atom has been previously soft-stoppped */
 #define KBASE_KATOM_FLAG_BEEN_SOFT_STOPPPED (1<<1)
 /** Atom has been previously retried to execute */
@@ -742,6 +741,8 @@ struct kbase_jd_atom {
  * @size:	size of the buffer in bytes
  * @pages:	pointer to an array of pointers to the pages which contain
  *		the buffer
+ * @is_vmalloc: true if @pages was allocated with vzalloc. false if @pages was
+ *              allocated with kcalloc
  * @nr_pages:	number of pages
  * @offset:	offset into the pages
  * @gpu_alloc:	pointer to physical memory allocated by the GPU
@@ -752,6 +753,7 @@ struct kbase_jd_atom {
 struct kbase_debug_copy_buffer {
 	size_t size;
 	struct page **pages;
+	bool is_vmalloc;
 	int nr_pages;
 	size_t offset;
 	struct kbase_mem_phy_alloc *gpu_alloc;
@@ -857,6 +859,21 @@ struct kbase_mmu_setup {
 };
 
 /**
+ * struct kbase_fault - object containing data relating to a page or bus fault.
+ * @addr:           Records the faulting address.
+ * @extra_addr:     Records the secondary fault address.
+ * @status:         Records the fault status as reported by Hw.
+ * @protected_mode: Flag indicating whether the fault occurred in protected mode
+ *                  or not.
+ */
+struct kbase_fault {
+	u64 addr;
+	u64 extra_addr;
+	u32 status;
+	bool protected_mode;
+};
+
+/**
  * struct kbase_as   - object representing an address space of GPU.
  * @number:            Index at which this address space structure is present
  *                     in an array of address space structures embedded inside the
@@ -867,11 +884,8 @@ struct kbase_mmu_setup {
  * @work_busfault:     Work item for the Bus fault handling.
  * @fault_type:        Type of fault which occured for this address space,
  *                     regular/unexpected Bus or Page fault.
- * @protected_mode:    Flag indicating whether the fault occurred in protected
- *                     mode or not.
- * @fault_status:      Records the fault status as reported by Hw.
- * @fault_addr:        Records the faulting address.
- * @fault_extra_addr:  Records the secondary fault address.
+ * @pf_data:           Data relating to page fault.
+ * @bf_data:           Data relating to bus fault.
  * @current_setup:     Stores the MMU configuration for this address space.
  * @poke_wq:           Workqueue to process the work items queue for poking the
  *                     MMU as a WA for BASE_HW_ISSUE_8316.
@@ -889,10 +903,8 @@ struct kbase_as {
 	struct work_struct work_pagefault;
 	struct work_struct work_busfault;
 	enum kbase_mmu_fault_type fault_type;
-	bool protected_mode;
-	u32 fault_status;
-	u64 fault_addr;
-	u64 fault_extra_addr;
+	struct kbase_fault pf_data;
+	struct kbase_fault bf_data;
 	struct kbase_mmu_setup current_setup;
 	struct workqueue_struct *poke_wq;
 	struct work_struct poke_work;
@@ -1344,8 +1356,6 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  * @job_fault_event_lock:  Lock to protect concurrent accesses to @job_fault_event_list
  * @regs_dump_debugfs_data: Contains the offset of register to be read through debugfs
  *                         file "read_register".
- * @kbase_profiling_controls: Profiling controls set by gator to control frame buffer
- *                         dumping and s/w counter reporting.
  * @force_replay_limit:    Number of gpu jobs, having replay atoms associated with them,
  *                         that are run before a job is forced to fail and replay.
  *                         Set to 0 to disable forced failures.
@@ -1558,6 +1568,9 @@ struct kbase_device {
 
 		/* true if IPA is currently using vinstr */
 		bool vinstr_active;
+
+		/* true if use of fallback model has been forced by the User */
+		bool force_fallback_model;
 	} ipa;
 #endif /* CONFIG_DEVFREQ_THERMAL */
 #endif /* CONFIG_MALI_DEVFREQ */
@@ -1584,8 +1597,6 @@ struct kbase_device {
 	} regs_dump_debugfs_data;
 #endif /* !MALI_CUSTOMER_RELEASE */
 #endif /* CONFIG_DEBUG_FS */
-
-	u32 kbase_profiling_controls[FBDUMP_CONTROL_MAX];
 
 
 #if MALI_CUSTOMER_RELEASE == 0
@@ -1648,7 +1659,7 @@ struct kbase_device {
 	/* See KBASE_SERIALIZE_* for details */
 	u8 serialize_jobs;
 
-#ifdef CONFIG_MALI_JOB_DUMP
+#ifdef CONFIG_MALI_CINSTR_GWT
 	u8 backup_serialize_jobs;
 #endif
 
@@ -2106,7 +2117,7 @@ struct kbase_context {
 
 	u8 trim_level;
 
-#ifdef CONFIG_MALI_JOB_DUMP
+#ifdef CONFIG_MALI_CINSTR_GWT
 	bool gwt_enabled;
 
 	bool gwt_was_enabled;
@@ -2120,7 +2131,7 @@ struct kbase_context {
 	s16 atoms_count[KBASE_JS_ATOM_SCHED_PRIO_COUNT];
 };
 
-#ifdef CONFIG_MALI_JOB_DUMP
+#ifdef CONFIG_MALI_CINSTR_GWT
 /**
  * struct kbasep_gwt_list_element - Structure used to collect GPU
  *                                  write faults.

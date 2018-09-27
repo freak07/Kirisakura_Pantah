@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2017 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -116,7 +116,7 @@ static enum hrtimer_restart timer_callback(struct hrtimer *timer)
 			if (!kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_5736)) {
 				u32 ticks = atom->ticks++;
 
-#ifndef CONFIG_MALI_JOB_DUMP
+#if !defined(CONFIG_MALI_JOB_DUMP) && !defined(CONFIG_MALI_VECTOR_DUMP)
 				u32 soft_stop_ticks, hard_stop_ticks,
 								gpu_reset_ticks;
 				if (atom->core_req & BASE_JD_REQ_ONLY_COMPUTE) {

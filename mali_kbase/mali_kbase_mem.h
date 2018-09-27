@@ -127,7 +127,11 @@ struct kbase_mem_phy_alloc {
 	/* type of buffer */
 	enum kbase_memory_type type;
 
-	/* Kernel side mapping of the alloc */
+	/* Kernel side mapping of the alloc, shall never be referred directly.
+	 * kbase_phy_alloc_mapping_get() & kbase_phy_alloc_mapping_put() pair
+	 * should be used around access to the kernel-side CPU mapping so that
+	 * mapping doesn't disappear whilst it is being accessed.
+	 */
 	struct kbase_vmap_struct *permanent_map;
 
 	unsigned long properties;
@@ -1228,17 +1232,17 @@ static inline void kbase_clear_dma_addr(struct page *p)
 }
 
 /**
-* @brief Process a bus or page fault.
-*
-* This function will process a fault on a specific address space
-*
-* @param[in] kbdev   The @ref kbase_device the fault happened on
-* @param[in] kctx    The @ref kbase_context for the faulting address space if
-*                    one was found.
-* @param[in] as      The address space that has the fault
-*/
+ * kbase_mmu_interrupt_process - Process a bus or page fault.
+ * @kbdev   The kbase_device the fault happened on
+ * @kctx    The kbase_context for the faulting address space if one was found.
+ * @as      The address space that has the fault
+ * @fault   Data relating to the fault
+ *
+ * This function will process a fault on a specific address space
+ */
 void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
-		struct kbase_context *kctx, struct kbase_as *as);
+		struct kbase_context *kctx, struct kbase_as *as,
+		struct kbase_fault *fault);
 
 /**
  * @brief Process a page fault.

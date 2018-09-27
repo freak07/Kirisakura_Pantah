@@ -1422,7 +1422,8 @@ void kbase_backend_reset(struct kbase_device *kbdev, ktime_t *end_timestamp)
 					!kbase_jd_katom_is_protected(katom),
 					"Protected atom on JS%d not supported", js);
 			}
-			if (katom->gpu_rb_state < KBASE_ATOM_GPU_RB_SUBMITTED)
+			if ((katom->gpu_rb_state < KBASE_ATOM_GPU_RB_SUBMITTED) &&
+			    !kbase_ctx_flag(katom->kctx, KCTX_DYING))
 				keep_in_jm_rb = true;
 
 			kbase_gpu_release_atom(kbdev, katom, NULL);

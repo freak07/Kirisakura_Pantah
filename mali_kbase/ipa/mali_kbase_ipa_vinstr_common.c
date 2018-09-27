@@ -118,6 +118,7 @@ s64 kbase_ipa_single_counter(
 	return counter_value * (s64) coeff;
 }
 
+#ifndef CONFIG_MALI_NO_MALI
 /**
  * kbase_ipa_gpu_active - Inform IPA that GPU is now active
  * @model_data: Pointer to model data
@@ -153,6 +154,7 @@ static void kbase_ipa_gpu_idle(struct kbase_ipa_model_vinstr_data *model_data)
 		kbdev->ipa.vinstr_active = false;
 	}
 }
+#endif
 
 int kbase_ipa_attach_vinstr(struct kbase_ipa_model_vinstr_data *model_data)
 {
@@ -182,6 +184,7 @@ int kbase_ipa_attach_vinstr(struct kbase_ipa_model_vinstr_data *model_data)
 
 	kbase_vinstr_hwc_clear(model_data->vinstr_cli);
 
+#ifndef CONFIG_MALI_NO_MALI
 	kbdev->ipa.gpu_active_callback = kbase_ipa_gpu_active;
 	kbdev->ipa.gpu_idle_callback = kbase_ipa_gpu_idle;
 	kbdev->ipa.model_data = model_data;
@@ -190,6 +193,11 @@ int kbase_ipa_attach_vinstr(struct kbase_ipa_model_vinstr_data *model_data)
 	 * something to execute.
 	 */
 	kbase_vinstr_suspend_client(model_data->vinstr_cli);
+#else
+	kbdev->ipa.gpu_active_callback = NULL;
+	kbdev->ipa.gpu_idle_callback = NULL;
+	kbdev->ipa.vinstr_active = true;
+#endif
 
 	return 0;
 }

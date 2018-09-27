@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014, 2017 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014, 2017-2018 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -242,8 +242,6 @@ static void kutf_add_explicit_result(struct kutf_context *context)
 {
 	switch (context->expected_status) {
 	case KUTF_RESULT_UNKNOWN:
-		if (context->status == KUTF_RESULT_UNKNOWN)
-			kutf_test_pass(context, "(implicit pass)");
 		break;
 
 	case KUTF_RESULT_WARN:

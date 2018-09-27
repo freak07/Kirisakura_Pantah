@@ -386,6 +386,8 @@ jsctx_tree_add(struct kbase_context *kctx, struct kbase_jd_atom *katom)
 	/* Add new node and rebalance tree. */
 	rb_link_node(&katom->runnable_tree_node, parent, new);
 	rb_insert_color(&katom->runnable_tree_node, &queue->runnable_tree);
+
+	KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(katom, TL_ATOM_STATE_READY);
 }
 
 /**
@@ -1182,8 +1184,6 @@ bool kbasep_js_add_job(struct kbase_context *kctx,
 
 		goto out_unlock;
 	}
-
-	KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(atom, TL_ATOM_STATE_READY);
 
 	enqueue_required = kbase_js_dep_resolved_submit(kctx, atom);
 

@@ -1028,7 +1028,7 @@ int kbase_gpu_mmap(struct kbase_context *kctx, struct kbase_va_region *reg, u64 
 	unsigned long mask = ~KBASE_REG_MEMATTR_MASK;
 	unsigned long gwt_mask = ~0;
 
-#ifdef CONFIG_MALI_JOB_DUMP
+#ifdef CONFIG_MALI_CINSTR_GWT
 	if (kctx->gwt_enabled)
 		gwt_mask = ~KBASE_REG_GPU_WR;
 #endif
@@ -2281,7 +2281,10 @@ void kbase_mem_kref_free(struct kref *kref)
 	case KBASE_MEM_TYPE_IMPORTED_USER_BUF:
 		if (alloc->imported.user_buf.mm)
 			mmdrop(alloc->imported.user_buf.mm);
-		kfree(alloc->imported.user_buf.pages);
+		if (alloc->properties & KBASE_MEM_PHY_ALLOC_LARGE)
+			vfree(alloc->imported.user_buf.pages);
+		else
+			kfree(alloc->imported.user_buf.pages);
 		break;
 	default:
 		WARN(1, "Unexecpted free of type %d\n", alloc->type);
@@ -2939,11 +2942,9 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 	if (info->usage_id != 0) {
 		/* First scan for an allocation with the same usage ID */
 		struct kbase_va_region *walker;
-		struct kbase_va_region *temp;
 		size_t current_diff = SIZE_MAX;
 
-		list_for_each_entry_safe(walker, temp, &kctx->jit_pool_head,
-				jit_node) {
+		list_for_each_entry(walker, &kctx->jit_pool_head, jit_node) {
 
 			if (walker->jit_usage_id == info->usage_id &&
 					walker->jit_bin_id == info->bin_id &&
@@ -2981,11 +2982,9 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 		 * use. Search for an allocation we can reuse.
 		 */
 		struct kbase_va_region *walker;
-		struct kbase_va_region *temp;
 		size_t current_diff = SIZE_MAX;
 
-		list_for_each_entry_safe(walker, temp, &kctx->jit_pool_head,
-				jit_node) {
+		list_for_each_entry(walker, &kctx->jit_pool_head, jit_node) {
 
 			if (walker->jit_bin_id == info->bin_id &&
 					meet_size_and_tiler_align_top_requirements(
@@ -3309,7 +3308,7 @@ static int kbase_jd_user_buf_map(struct kbase_context *kctx,
 	}
 
 	alloc->nents = pinned_pages;
-#ifdef CONFIG_MALI_JOB_DUMP
+#ifdef CONFIG_MALI_CINSTR_GWT
 	if (kctx->gwt_enabled)
 		gwt_mask = ~KBASE_REG_GPU_WR;
 #endif
@@ -3423,7 +3422,7 @@ static int kbase_jd_umm_map(struct kbase_context *kctx,
 	/* Update nents as we now have pages to map */
 	alloc->nents = reg->nr_pages;
 
-#ifdef CONFIG_MALI_JOB_DUMP
+#ifdef CONFIG_MALI_CINSTR_GWT
 	if (kctx->gwt_enabled)
 		gwt_mask = ~KBASE_REG_GPU_WR;
 #endif

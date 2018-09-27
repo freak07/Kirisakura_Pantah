@@ -21,7 +21,7 @@
 
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= "r14p0-01rel0"
+MALI_RELEASE_NAME ?= "r15p0-01rel0"
 
 # Paths required for build
 KBASE_PATH = $(src)
@@ -106,7 +106,7 @@ SRC := \
 	thirdparty/mali_kbase_mmap.c
 
 
-ifeq ($(CONFIG_MALI_JOB_DUMP),y)
+ifeq ($(CONFIG_MALI_CINSTR_GWT),y)
 	SRC += mali_kbase_gwt.c
 endif
 

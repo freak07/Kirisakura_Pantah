@@ -444,4 +444,16 @@ void *kbase_phy_alloc_mapping_get(struct kbase_context *kctx, u64 gpu_addr,
 void kbase_phy_alloc_mapping_put(struct kbase_context *kctx,
 		struct kbase_vmap_struct *kern_mapping);
 
+/**
+ * kbase_get_cache_line_alignment - Return cache line alignment
+ *
+ * Helper function to return the maximum cache line alignment considering
+ * both CPU and GPU cache sizes.
+ *
+ * Return: CPU and GPU cache line alignment, in bytes.
+ *
+ * @kbdev: Device pointer.
+ */
+u32 kbase_get_cache_line_alignment(struct kbase_device *kbdev);
+
 #endif				/* _KBASE_MEM_LINUX_H_ */

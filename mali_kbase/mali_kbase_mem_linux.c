@@ -961,11 +961,11 @@ no_buf:
 }
 #endif  /* CONFIG_DMA_SHARED_BUFFER */
 
-static u32 kbase_get_cache_line_alignment(struct kbase_context *kctx)
+u32 kbase_get_cache_line_alignment(struct kbase_device *kbdev)
 {
 	u32 cpu_cache_line_size = cache_line_size();
 	u32 gpu_cache_line_size =
-		(1UL << kctx->kbdev->gpu_props.props.l2_props.log2_line_size);
+		(1UL << kbdev->gpu_props.props.l2_props.log2_line_size);
 
 	return ((cpu_cache_line_size > gpu_cache_line_size) ?
 				cpu_cache_line_size :
@@ -982,7 +982,7 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 	long faulted_pages;
 	int zone = KBASE_REG_ZONE_CUSTOM_VA;
 	bool shared_zone = false;
-	u32 cache_line_alignment = kbase_get_cache_line_alignment(kctx);
+	u32 cache_line_alignment = kbase_get_cache_line_alignment(kctx->kbdev);
 	struct kbase_alloc_import_user_buf *user_buf;
 	struct page **pages = NULL;
 
@@ -1070,8 +1070,11 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 #else
 	mmgrab(current->mm);
 #endif
-	user_buf->pages = kmalloc_array(*va_pages, sizeof(struct page *),
-			GFP_KERNEL);
+	if (reg->gpu_alloc->properties & KBASE_MEM_PHY_ALLOC_LARGE)
+		user_buf->pages = vmalloc(*va_pages * sizeof(struct page *));
+	else
+		user_buf->pages = kmalloc_array(*va_pages,
+				sizeof(struct page *), GFP_KERNEL);
 
 	if (!user_buf->pages)
 		goto no_page_array;
@@ -1381,6 +1384,11 @@ int kbase_mem_import(struct kbase_context *kctx, enum base_mem_import_type type,
 		goto bad_flags;
 	}
 
+	if ((*flags & BASE_MEM_UNCACHED_GPU) != 0 &&
+			(*flags & BASE_MEM_COHERENT_SYSTEM_REQUIRED) != 0) {
+		/* Remove COHERENT_SYSTEM_REQUIRED flag if uncached GPU mapping is requested */
+		*flags &= ~BASE_MEM_COHERENT_SYSTEM_REQUIRED;
+	}
 	if ((*flags & BASE_MEM_COHERENT_SYSTEM_REQUIRED) != 0 &&
 			!kbase_device_is_cpu_coherent(kctx->kbdev)) {
 		dev_warn(kctx->kbdev->dev,
