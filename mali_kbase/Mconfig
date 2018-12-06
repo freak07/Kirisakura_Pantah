@@ -23,15 +23,12 @@ menuconfig MALI_MIDGARD
 	  this will generate a single module, called mali_kbase.
 
 config MALI_GATOR_SUPPORT
-	bool "Streamline support via Gator"
+	bool "Enable Streamline tracing support"
 	depends on MALI_MIDGARD && !BACKEND_USER
-	default y if INSTRUMENTATION_STREAMLINE_OLD
-	default n
+	default y
 	help
-	  Adds diagnostic support for use with the ARM Streamline Performance Analyzer.
-	  You will need the Gator device driver already loaded before loading this driver when enabling
-	  Streamline debug support.
-	  This is a legacy interface required by older versions of Streamline.
+	  Enables kbase tracing used by the Arm Streamline Performance Analyzer.
+	  The tracepoints are used to derive GPU activity charts in Streamline.
 
 config MALI_MIDGARD_DVFS
 	bool "Enable legacy DVFS"
@@ -87,11 +84,6 @@ config MALI_PLATFORM_NAME
 
 	  When PLATFORM_CUSTOM is set, this needs to be set manually to
 	  pick up the desired platform files.
-
-config MALI_MOCK_TEST
-	bool
-	depends on MALI_MIDGARD && !RELEASE
-	default y
 
 # MALI_EXPERT configuration options
 

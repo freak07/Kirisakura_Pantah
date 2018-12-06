@@ -29,15 +29,14 @@
 #include <mali_kbase.h>
 #include <mali_kbase_config_defaults.h>
 #include <mali_midg_regmap.h>
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
 #include <mali_kbase_gator.h>
-#endif
 #include <mali_kbase_tlstream.h>
 #include <mali_kbase_pm.h>
 #include <mali_kbase_config_defaults.h>
 #include <mali_kbase_smc.h>
 #include <mali_kbase_hwaccess_jm.h>
 #include <mali_kbase_ctx_sched.h>
+#include <mali_kbase_hwcnt_context.h>
 #include <backend/gpu/mali_kbase_cache_policy_backend.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_irq_internal.h>
@@ -45,11 +44,23 @@
 
 #include <linux/of.h>
 
-#if MALI_MOCK_TEST
-#define MOCKABLE(function) function##_original
+#ifdef CONFIG_MALI_CORESTACK
+bool corestack_driver_control = true;
 #else
-#define MOCKABLE(function) function
-#endif				/* MALI_MOCK_TEST */
+bool corestack_driver_control; /* Default value of 0/false */
+#endif
+module_param(corestack_driver_control, bool, 0000);
+MODULE_PARM_DESC(corestack_driver_control,
+		"Let the driver power on/off the GPU core stack independently "
+		"without involving the Power Domain Controller. This should "
+		"only be enabled on platforms for which integration of the PDC "
+		"to the Mali GPU is known to be problematic.");
+KBASE_EXPORT_TEST_API(corestack_driver_control);
+
+bool platform_power_down_only = PLATFORM_POWER_DOWN_ONLY;
+module_param(platform_power_down_only, bool, 0000);
+MODULE_PARM_DESC(platform_power_down_only,
+		"Disable power down of individual cores.");
 
 /**
  * enum kbasep_pm_action - Actions that can be performed on a core.
@@ -79,6 +90,47 @@ static u64 kbase_pm_get_state(
 		enum kbase_pm_core_type core_type,
 		enum kbasep_pm_action action);
 
+static bool kbase_pm_is_l2_desired(struct kbase_device *kbdev)
+{
+	if (kbdev->pm.backend.protected_transition_override &&
+			kbdev->pm.backend.protected_l2_override)
+		return true;
+
+	if (kbdev->pm.backend.protected_transition_override &&
+			!kbdev->pm.backend.shaders_desired)
+		return false;
+
+	return kbdev->pm.backend.l2_desired;
+}
+
+void kbase_pm_protected_override_enable(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	kbdev->pm.backend.protected_transition_override = true;
+}
+void kbase_pm_protected_override_disable(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	kbdev->pm.backend.protected_transition_override = false;
+}
+
+void kbase_pm_protected_l2_override(struct kbase_device *kbdev, bool override)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	if (override) {
+		kbdev->pm.backend.protected_l2_override++;
+		WARN_ON(kbdev->pm.backend.protected_l2_override <= 0);
+	} else {
+		kbdev->pm.backend.protected_l2_override--;
+		WARN_ON(kbdev->pm.backend.protected_l2_override < 0);
+	}
+
+	kbase_pm_update_state(kbdev);
+}
+
 /**
  * core_type_to_reg - Decode a core type and action to a register.
  *
@@ -96,24 +148,24 @@ static u64 kbase_pm_get_state(
 static u32 core_type_to_reg(enum kbase_pm_core_type core_type,
 						enum kbasep_pm_action action)
 {
-#ifdef CONFIG_MALI_CORESTACK
-	if (core_type == KBASE_PM_CORE_STACK) {
-		switch (action) {
-		case ACTION_PRESENT:
-			return STACK_PRESENT_LO;
-		case ACTION_READY:
-			return STACK_READY_LO;
-		case ACTION_PWRON:
-			return STACK_PWRON_LO;
-		case ACTION_PWROFF:
-			return STACK_PWROFF_LO;
-		case ACTION_PWRTRANS:
-			return STACK_PWRTRANS_LO;
-		default:
-			BUG();
+	if (corestack_driver_control) {
+		if (core_type == KBASE_PM_CORE_STACK) {
+			switch (action) {
+			case ACTION_PRESENT:
+				return STACK_PRESENT_LO;
+			case ACTION_READY:
+				return STACK_READY_LO;
+			case ACTION_PWRON:
+				return STACK_PWRON_LO;
+			case ACTION_PWROFF:
+				return STACK_PWROFF_LO;
+			case ACTION_PWRTRANS:
+				return STACK_PWRTRANS_LO;
+			default:
+				WARN(1, "Invalid action for core type\n");
+			}
 		}
 	}
-#endif /* CONFIG_MALI_CORESTACK */
 
 	return (u32)core_type + (u32)action;
 }
@@ -169,6 +221,12 @@ static void kbase_pm_invoke(struct kbase_device *kbdev,
 	u32 reg;
 	u32 lo = cores & 0xFFFFFFFF;
 	u32 hi = (cores >> 32) & 0xFFFFFFFF;
+
+	/* When 'platform_power_down_only' is enabled, no core type should be
+	 * turned off individually.
+	 */
+	KBASE_DEBUG_ASSERT(!(action == ACTION_PWROFF &&
+			platform_power_down_only));
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
@@ -270,16 +328,6 @@ static u64 kbase_pm_get_state(struct kbase_device *kbdev,
 	hi = kbase_reg_read(kbdev, GPU_CONTROL_REG(reg + 4));
 
 	return (((u64) hi) << 32) | ((u64) lo);
-}
-
-void kbasep_pm_init_core_use_bitmaps(struct kbase_device *kbdev)
-{
-	kbdev->shader_available_bitmap = 0;
-	kbdev->tiler_available_bitmap = 0;
-	kbdev->l2_users_count = 0;
-	kbdev->l2_available_bitmap = 0;
-	kbdev->tiler_needed_cnt = 0;
-	kbdev->shader_needed_cnt = 0;
 }
 
 /**
@@ -385,525 +433,776 @@ u64 kbase_pm_get_ready_cores(struct kbase_device *kbdev,
 
 KBASE_EXPORT_TEST_API(kbase_pm_get_ready_cores);
 
-/**
- * kbase_pm_transition_core_type - Perform power transitions for a particular
- *                                 core type.
- *
- * This function will perform any available power transitions to make the actual
- * hardware state closer to the desired state. If a core is currently
- * transitioning then changes to the power state of that call cannot be made
- * until the transition has finished. Cores which are not present in the
- * hardware are ignored if they are specified in the desired_state bitmask,
- * however the return value will always be 0 in this case.
- *
- * @kbdev:             The kbase device
- * @type:              The core type to perform transitions for
- * @desired_state:     A bit mask of the desired state of the cores
- * @in_use:            A bit mask of the cores that are currently running
- *                     jobs. These cores have to be kept powered up because
- *                     there are jobs running (or about to run) on them.
- * @available:         Receives a bit mask of the cores that the job
- *                     scheduler can use to submit jobs to. May be NULL if
- *                     this is not needed.
- * @powering_on:       Bit mask to update with cores that are
- *                    transitioning to a power-on state.
- *
- * Return: true if the desired state has been reached, false otherwise
- */
-static bool kbase_pm_transition_core_type(struct kbase_device *kbdev,
-						enum kbase_pm_core_type type,
-						u64 desired_state,
-						u64 in_use,
-						u64 * const available,
-						u64 *powering_on)
+static u64 kbase_pm_l2_update_state(struct kbase_device *kbdev)
 {
-	u64 present;
-	u64 ready;
-	u64 trans;
-	u64 powerup;
-	u64 powerdown;
-	u64 powering_on_trans;
-	u64 desired_state_in_use;
+	struct kbase_pm_backend_data *backend = &kbdev->pm.backend;
+	u64 l2_present = kbdev->gpu_props.props.raw_props.l2_present;
+	u64 tiler_present = kbdev->gpu_props.props.raw_props.tiler_present;
+	enum kbase_l2_core_state prev_state;
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-	/* Get current state */
-	present = kbase_pm_get_present_cores(kbdev, type);
-	trans = kbase_pm_get_trans_cores(kbdev, type);
-	ready = kbase_pm_get_ready_cores(kbdev, type);
+	do {
+		/* Get current state */
+		u64 l2_trans = kbase_pm_get_trans_cores(kbdev,
+				KBASE_PM_CORE_L2);
+		u64 l2_ready = kbase_pm_get_ready_cores(kbdev,
+				KBASE_PM_CORE_L2);
+		u64 tiler_trans = kbase_pm_get_trans_cores(kbdev,
+				KBASE_PM_CORE_TILER);
+		u64 tiler_ready = kbase_pm_get_ready_cores(kbdev,
+				KBASE_PM_CORE_TILER);
 
-	/* mask off ready from trans in case transitions finished between the
-	 * register reads */
-	trans &= ~ready;
-
-	powering_on_trans = trans & *powering_on;
-
-	if (available != NULL)
-		*available = (ready | powering_on_trans) & desired_state;
-
-	if (trans) /* Do not progress if any cores are transitioning */
-		return false;
-
-	*powering_on = powering_on_trans;
-
-	/* Update desired state to include the in-use cores. These have to be
-	 * kept powered up because there are jobs running or about to run on
-	 * these cores
-	 */
-	desired_state_in_use = desired_state | in_use;
-
-	/* Update state of whether l2 caches are powered */
-	if (type == KBASE_PM_CORE_L2) {
-		if ((ready == present) && (desired_state_in_use == ready) &&
-								(trans == 0)) {
-			/* All are ready, none will be turned off, and none are
-			 * transitioning */
-			kbdev->pm.backend.l2_powered = 1;
-			/*
-			 * Ensure snoops are enabled after L2 is powered up,
-			 * note that kbase keeps track of the snoop state, so
-			 * safe to repeatedly call.
-			 */
-			kbase_pm_cache_snoop_enable(kbdev);
-			if (kbdev->l2_users_count > 0) {
-				/* Notify any registered l2 cache users
-				 * (optimized out when no users waiting) */
-				wake_up(&kbdev->pm.backend.l2_powered_wait);
-			}
-		} else
-			kbdev->pm.backend.l2_powered = 0;
-	}
-
-	if (desired_state == ready && (trans == 0))
-		return true;
-
-	/* Restrict the cores to those that are actually present */
-	powerup = desired_state_in_use & present;
-	powerdown = (~desired_state_in_use) & present;
-
-	/* Restrict to cores that are not already in the desired state */
-	powerup &= ~ready;
-	powerdown &= ready;
-
-	/* Don't transition any cores that are already transitioning, except for
-	 * Mali cores that support the following case:
-	 *
-	 * If the SHADER_PWRON or TILER_PWRON registers are written to turn on
-	 * a core that is currently transitioning to power off, then this is
-	 * remembered and the shader core is automatically powered up again once
-	 * the original transition completes. Once the automatic power on is
-	 * complete any job scheduled on the shader core should start.
-	 */
-	powerdown &= ~trans;
-
-	if (kbase_hw_has_feature(kbdev,
-				BASE_HW_FEATURE_PWRON_DURING_PWROFF_TRANS))
-		if (KBASE_PM_CORE_SHADER == type || KBASE_PM_CORE_TILER == type)
-			trans = powering_on_trans; /* for exception cases, only
-						    * mask off cores in power on
-						    * transitions */
-
-	powerup &= ~trans;
-
-	/* Perform transitions if any */
-	kbase_pm_invoke(kbdev, type, powerup, ACTION_PWRON);
-#if !PLATFORM_POWER_DOWN_ONLY
-	kbase_pm_invoke(kbdev, type, powerdown, ACTION_PWROFF);
-#endif
-
-	/* Recalculate cores transitioning on, and re-evaluate our state */
-	powering_on_trans |= powerup;
-	*powering_on = powering_on_trans;
-	if (available != NULL)
-		*available = (ready | powering_on_trans) & desired_state;
-
-	return false;
-}
-
-KBASE_EXPORT_TEST_API(kbase_pm_transition_core_type);
-
-/**
- * get_desired_cache_status - Determine which caches should be on for a
- *                            particular core state
- *
- * This function takes a bit mask of the present caches and the cores (or
- * caches) that are attached to the caches that will be powered. It then
- * computes which caches should be turned on to allow the cores requested to be
- * powered up.
- *
- * @present:       The bit mask of present caches
- * @cores_powered: A bit mask of cores (or L2 caches) that are desired to
- *                 be powered
- * @tilers_powered: The bit mask of tilers that are desired to be powered
- *
- * Return: A bit mask of the caches that should be turned on
- */
-static u64 get_desired_cache_status(u64 present, u64 cores_powered,
-		u64 tilers_powered)
-{
-	u64 desired = 0;
-
-	while (present) {
-		/* Find out which is the highest set bit */
-		u64 bit = fls64(present) - 1;
-		u64 bit_mask = 1ull << bit;
-		/* Create a mask which has all bits from 'bit' upwards set */
-
-		u64 mask = ~(bit_mask - 1);
-
-		/* If there are any cores powered at this bit or above (that
-		 * haven't previously been processed) then we need this core on
+		/* mask off ready from trans in case transitions finished
+		 * between the register reads
 		 */
-		if (cores_powered & mask)
-			desired |= bit_mask;
+		l2_trans &= ~l2_ready;
+		tiler_trans &= ~tiler_ready;
 
-		/* Remove bits from cores_powered and present */
-		cores_powered &= ~mask;
-		present &= ~bit_mask;
-	}
+		prev_state = backend->l2_state;
 
-	/* Power up the required L2(s) for the tiler */
-	if (tilers_powered)
-		desired |= 1;
+		switch (backend->l2_state) {
+		case KBASE_L2_OFF:
+			if (kbase_pm_is_l2_desired(kbdev)) {
+				/* L2 is required, power on.  Powering on the
+				 * tiler will also power the first L2 cache.
+				 */
+				kbase_pm_invoke(kbdev, KBASE_PM_CORE_TILER,
+						tiler_present, ACTION_PWRON);
 
-	return desired;
-}
+				/* If we have more than one L2 cache then we
+				 * must power them on explicitly.
+				 */
+				if (l2_present != 1)
+					kbase_pm_invoke(kbdev, KBASE_PM_CORE_L2,
+							l2_present & ~1,
+							ACTION_PWRON);
+				backend->l2_state = KBASE_L2_PEND_ON;
+			}
+			break;
 
-KBASE_EXPORT_TEST_API(get_desired_cache_status);
+		case KBASE_L2_PEND_ON:
+			if (!l2_trans && l2_ready == l2_present && !tiler_trans
+					&& tiler_ready == tiler_present) {
+				KBASE_TRACE_ADD(kbdev,
+						PM_CORES_CHANGE_AVAILABLE_TILER,
+						NULL, NULL, 0u,
+						(u32)tiler_ready);
+				/*
+				 * Ensure snoops are enabled after L2 is powered
+				 * up. Note that kbase keeps track of the snoop
+				 * state, so safe to repeatedly call.
+				 */
+				kbase_pm_cache_snoop_enable(kbdev);
 
-#ifdef CONFIG_MALI_CORESTACK
-u64 kbase_pm_core_stack_mask(u64 cores)
-{
-	u64 stack_mask = 0;
-	size_t const MAX_CORE_ID = 31;
-	size_t const NUM_CORES_PER_STACK = 4;
-	size_t i;
+				/* With the L2 enabled, we can now enable
+				 * hardware counters.
+				 */
+				backend->l2_state = KBASE_L2_ON_HWCNT_ENABLE;
 
-	for (i = 0; i <= MAX_CORE_ID; ++i) {
-		if (test_bit(i, (unsigned long *)&cores)) {
-			/* Every core which ID >= 16 is filled to stacks 4-7
-			 * instead of 0-3 */
-			size_t const stack_num = (i >= 16) ?
-				(i % NUM_CORES_PER_STACK) + 4 :
-				(i % NUM_CORES_PER_STACK);
-			set_bit(stack_num, (unsigned long *)&stack_mask);
+				/* Now that the L2 is on, the shaders can start
+				 * powering on if they're required. The obvious
+				 * way to do this would be to call
+				 * kbase_pm_shaders_update_state() here.
+				 * However, that would make the two state
+				 * machines mutually recursive, as the opposite
+				 * would be needed for powering down. Instead,
+				 * callers of this function should use the
+				 * kbase_pm_update_state() wrapper, which will
+				 * call the shader state machine immediately
+				 * after the L2 (for power up), or
+				 * automatically re-invoke the L2 state machine
+				 * when the shaders power down.
+				 */
+			}
+			break;
+
+		case KBASE_L2_ON_HWCNT_ENABLE:
+			backend->hwcnt_desired = true;
+			if (backend->hwcnt_disabled) {
+				kbase_hwcnt_context_enable(
+					kbdev->hwcnt_gpu_ctx);
+				backend->hwcnt_disabled = false;
+			}
+			backend->l2_state = KBASE_L2_ON;
+			break;
+
+		case KBASE_L2_ON:
+			if (!kbase_pm_is_l2_desired(kbdev)) {
+				/* Do not power off L2 until the shaders and
+				 * core stacks are off.
+				 */
+				if (backend->shaders_state != KBASE_SHADERS_OFF_CORESTACK_OFF)
+					break;
+
+				/* We need to make sure hardware counters are
+				 * disabled before powering down the L2, to
+				 * prevent loss of data.
+				 *
+				 * We waited until after the cores were powered
+				 * down to prevent ping-ponging between hwcnt
+				 * enabled and disabled, which would have
+				 * happened if userspace submitted more work
+				 * while we were trying to power down.
+				 */
+				backend->l2_state = KBASE_L2_ON_HWCNT_DISABLE;
+			}
+			break;
+
+		case KBASE_L2_ON_HWCNT_DISABLE:
+			/* If the L2 became desired while we were waiting on the
+			 * worker to do the actual hwcnt disable (which might
+			 * happen if some work was submitted immediately after
+			 * the shaders powered off), then we need to early-out
+			 * of this state and re-enable hwcnt.
+			 *
+			 * If we get lucky, the hwcnt disable might not have
+			 * actually started yet, and the logic in the hwcnt
+			 * enable state will prevent the worker from
+			 * performing the disable entirely, preventing loss of
+			 * any hardware counter data.
+			 *
+			 * If the hwcnt disable has started, then we'll lose
+			 * a tiny amount of hardware counter data between the
+			 * disable and the re-enable occurring.
+			 *
+			 * This loss of data is preferable to the alternative,
+			 * which is to block the shader cores from doing any
+			 * work until we're sure hwcnt has been re-enabled.
+			 */
+			if (kbase_pm_is_l2_desired(kbdev)) {
+				backend->l2_state = KBASE_L2_ON_HWCNT_ENABLE;
+				break;
+			}
+
+			/* See if we can get away with disabling hwcnt
+			 * atomically, otherwise kick off a worker.
+			 */
+			backend->hwcnt_desired = false;
+			if (!backend->hwcnt_disabled) {
+				if (kbase_hwcnt_context_disable_atomic(
+					kbdev->hwcnt_gpu_ctx))
+					backend->hwcnt_disabled = true;
+				else
+#if KERNEL_VERSION(3, 16, 0) > LINUX_VERSION_CODE
+					queue_work(system_wq,
+						&backend->hwcnt_disable_work);
+#else
+					queue_work(system_highpri_wq,
+						&backend->hwcnt_disable_work);
+#endif
+			}
+
+			if (backend->hwcnt_disabled)
+				backend->l2_state = KBASE_L2_POWER_DOWN;
+			break;
+
+		case KBASE_L2_POWER_DOWN:
+			if (!platform_power_down_only)
+				/* Powering off the L2 will also power off the
+				 * tiler.
+				 */
+				kbase_pm_invoke(kbdev, KBASE_PM_CORE_L2,
+						l2_present,
+						ACTION_PWROFF);
+			else
+				/* If L2 cache is powered then we must flush it
+				 * before we power off the GPU. Normally this
+				 * would have been handled when the L2 was
+				 * powered off.
+				 */
+				kbase_gpu_start_cache_clean_nolock(
+						kbdev);
+
+			KBASE_TRACE_ADD(kbdev, PM_CORES_CHANGE_AVAILABLE_TILER,
+					NULL, NULL, 0u, 0u);
+
+			backend->l2_state = KBASE_L2_PEND_OFF;
+			break;
+
+		case KBASE_L2_PEND_OFF:
+			if (!platform_power_down_only) {
+				/* We only need to check the L2 here - if the L2
+				 * is off then the tiler is definitely also off.
+				 */
+				if (!l2_trans && !l2_ready)
+					/* L2 is now powered off */
+					backend->l2_state = KBASE_L2_OFF;
+			} else {
+				if (!kbdev->cache_clean_in_progress)
+					backend->l2_state = KBASE_L2_OFF;
+			}
+			break;
+
+		case KBASE_L2_RESET_WAIT:
+			if (!backend->in_reset) {
+				/* Reset complete */
+				backend->l2_state = KBASE_L2_OFF;
+			}
+			break;
+
+		default:
+			WARN(1, "Invalid state in l2_state: %d",
+					backend->l2_state);
 		}
+	} while (backend->l2_state != prev_state);
+
+	if (kbdev->pm.backend.invoke_poweroff_wait_wq_when_l2_off &&
+			backend->l2_state == KBASE_L2_OFF) {
+		kbdev->pm.backend.invoke_poweroff_wait_wq_when_l2_off = false;
+		queue_work(kbdev->pm.backend.gpu_poweroff_wait_wq,
+				&kbdev->pm.backend.gpu_poweroff_wait_work);
 	}
 
-	return stack_mask;
+	if (backend->l2_state == KBASE_L2_ON)
+		return l2_present;
+	return 0;
 }
-#endif /* CONFIG_MALI_CORESTACK */
 
-bool
-MOCKABLE(kbase_pm_check_transitions_nolock) (struct kbase_device *kbdev)
+static void shader_poweroff_timer_stop_callback(struct work_struct *data)
 {
-	bool cores_are_available = false;
-	bool in_desired_state = true;
-	u64 desired_l2_state;
-#ifdef CONFIG_MALI_CORESTACK
-	u64 desired_stack_state;
-	u64 stacks_powered;
-#endif /* CONFIG_MALI_CORESTACK */
-	u64 cores_powered;
-	u64 tilers_powered;
-	u64 tiler_available_bitmap;
-	u64 tiler_transitioning_bitmap;
-	u64 shader_available_bitmap;
-	u64 shader_ready_bitmap;
-	u64 shader_transitioning_bitmap;
-	u64 l2_available_bitmap;
-	u64 prev_l2_available_bitmap;
-	u64 l2_inuse_bitmap;
+	unsigned long flags;
+	struct kbasep_pm_tick_timer_state *stt = container_of(data,
+			struct kbasep_pm_tick_timer_state, work);
+	struct kbase_device *kbdev = container_of(stt, struct kbase_device,
+			pm.backend.shader_tick_timer);
 
-	KBASE_DEBUG_ASSERT(NULL != kbdev);
+	hrtimer_cancel(&stt->timer);
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+
+	stt->cancel_queued = false;
+	if (kbdev->pm.backend.gpu_powered)
+		kbase_pm_update_state(kbdev);
+
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+}
+
+/**
+ * shader_poweroff_timer_queue_cancel - cancel the shader poweroff tick timer
+ * @kbdev:      pointer to kbase device
+ *
+ * Synchronization between the shader state machine and the timer thread is
+ * difficult. This is because situations may arise where the state machine
+ * wants to start the timer, but the callback is already running, and has
+ * already passed the point at which it checks whether it is required, and so
+ * cancels itself, even though the state machine may have just tried to call
+ * hrtimer_start.
+ *
+ * This cannot be stopped by holding hwaccess_lock in the timer thread,
+ * because there are still infinitesimally small sections at the start and end
+ * of the callback where the lock is not held.
+ *
+ * Instead, a new state is added to the shader state machine,
+ * KBASE_SHADERS_OFF_CORESTACK_OFF_TIMER_PEND_OFF. This is used to guarantee
+ * that when the shaders are switched off, the timer has definitely been
+ * cancelled. As a result, when KBASE_SHADERS_ON_CORESTACK_ON is left and the
+ * timer is started, it is guaranteed that either the timer is already running
+ * (from an availability change or cancelled timer), or hrtimer_start will
+ * succeed. It is critical to avoid ending up in
+ * KBASE_SHADERS_WAIT_OFF_CORESTACK_ON without the timer running, or it could
+ * hang there forever.
+ */
+static void shader_poweroff_timer_queue_cancel(struct kbase_device *kbdev)
+{
+	struct kbasep_pm_tick_timer_state *stt =
+			&kbdev->pm.backend.shader_tick_timer;
+
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-	spin_lock(&kbdev->pm.backend.gpu_powered_lock);
-	if (kbdev->pm.backend.gpu_powered == false) {
-		spin_unlock(&kbdev->pm.backend.gpu_powered_lock);
-		if (kbdev->pm.backend.desired_shader_state == 0 &&
-				kbdev->pm.backend.desired_tiler_state == 0)
-			return true;
-		return false;
+	stt->needed = false;
+
+	if (hrtimer_active(&stt->timer) && !stt->cancel_queued) {
+		stt->cancel_queued = true;
+		queue_work(stt->wq, &stt->work);
 	}
+}
 
-	/* If any cores are already powered then, we must keep the caches on */
-	shader_transitioning_bitmap = kbase_pm_get_trans_cores(kbdev,
-							KBASE_PM_CORE_SHADER);
-	cores_powered = kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_SHADER);
-	cores_powered |= kbdev->pm.backend.desired_shader_state;
+static void kbase_pm_shaders_update_state(struct kbase_device *kbdev)
+{
+	struct kbase_pm_backend_data *backend = &kbdev->pm.backend;
+	struct kbasep_pm_tick_timer_state *stt =
+			&kbdev->pm.backend.shader_tick_timer;
+	enum kbase_shader_core_state prev_state;
+	u64 stacks_avail = 0;
 
-#ifdef CONFIG_MALI_CORESTACK
-	/* Work out which core stacks want to be powered */
-	desired_stack_state = kbase_pm_core_stack_mask(cores_powered);
-	stacks_powered = kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_STACK) |
-		desired_stack_state;
-#endif /* CONFIG_MALI_CORESTACK */
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-	/* Work out which tilers want to be powered */
-	tiler_transitioning_bitmap = kbase_pm_get_trans_cores(kbdev,
-							KBASE_PM_CORE_TILER);
-	tilers_powered = kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_TILER);
-	tilers_powered |= kbdev->pm.backend.desired_tiler_state;
+	if (corestack_driver_control)
+		/* Always power on all the corestacks. Disabling certain
+		 * corestacks when their respective shaders are not in the
+		 * available bitmap is not currently supported.
+		 */
+		stacks_avail = kbase_pm_get_present_cores(kbdev, KBASE_PM_CORE_STACK);
 
-	/* If there are l2 cache users registered, keep all l2s powered even if
-	 * all other cores are off. */
-	if (kbdev->l2_users_count > 0)
-		cores_powered |= kbdev->gpu_props.props.raw_props.l2_present;
+	do {
+		u64 shaders_trans = kbase_pm_get_trans_cores(kbdev, KBASE_PM_CORE_SHADER);
+		u64 shaders_ready = kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_SHADER);
+		u64 stacks_trans = 0;
+		u64 stacks_ready = 0;
 
-	desired_l2_state = get_desired_cache_status(
-			kbdev->gpu_props.props.raw_props.l2_present,
-			cores_powered, tilers_powered);
+		if (corestack_driver_control) {
+			stacks_trans = kbase_pm_get_trans_cores(kbdev, KBASE_PM_CORE_STACK);
+			stacks_ready = kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_STACK);
+		}
 
-	l2_inuse_bitmap = get_desired_cache_status(
-			kbdev->gpu_props.props.raw_props.l2_present,
-			cores_powered | shader_transitioning_bitmap,
-			tilers_powered | tiler_transitioning_bitmap);
+		/* mask off ready from trans in case transitions finished
+		 * between the register reads
+		 */
+		shaders_trans &= ~shaders_ready;
+		stacks_trans &= ~stacks_ready;
 
-#ifdef CONFIG_MALI_CORESTACK
-	if (stacks_powered)
-		desired_l2_state |= 1;
-#endif /* CONFIG_MALI_CORESTACK */
+		prev_state = backend->shaders_state;
 
-	/* If any l2 cache is on, then enable l2 #0, for use by job manager */
-	if (0 != desired_l2_state)
-		desired_l2_state |= 1;
+		switch (backend->shaders_state) {
+		case KBASE_SHADERS_OFF_CORESTACK_OFF:
+			/* Ignore changes to the shader core availability
+			 * except at certain points where we can handle it,
+			 * i.e. off and SHADERS_ON_CORESTACK_ON.
+			 */
+			backend->shaders_avail = kbase_pm_ca_get_core_mask(kbdev);
 
-	prev_l2_available_bitmap = kbdev->l2_available_bitmap;
-	in_desired_state &= kbase_pm_transition_core_type(kbdev,
-			KBASE_PM_CORE_L2, desired_l2_state, l2_inuse_bitmap,
-			&l2_available_bitmap,
-			&kbdev->pm.backend.powering_on_l2_state);
+			if (backend->shaders_desired && backend->l2_state == KBASE_L2_ON) {
+				if (corestack_driver_control)
+					kbase_pm_invoke(kbdev, KBASE_PM_CORE_STACK,
+							stacks_avail, ACTION_PWRON);
 
-	kbdev->l2_available_bitmap = l2_available_bitmap;
+				backend->shaders_state = KBASE_SHADERS_OFF_CORESTACK_PEND_ON;
+			}
+			break;
 
+		case KBASE_SHADERS_OFF_CORESTACK_PEND_ON:
+			if (!stacks_trans && stacks_ready == stacks_avail) {
+				kbase_pm_invoke(kbdev, KBASE_PM_CORE_SHADER,
+						backend->shaders_avail, ACTION_PWRON);
 
-#ifdef CONFIG_MALI_CORESTACK
-	if (in_desired_state) {
-		in_desired_state &= kbase_pm_transition_core_type(kbdev,
-				KBASE_PM_CORE_STACK, desired_stack_state, 0,
-				&kbdev->stack_available_bitmap,
-				&kbdev->pm.backend.powering_on_stack_state);
-	}
-#endif /* CONFIG_MALI_CORESTACK */
+				backend->shaders_state = KBASE_SHADERS_PEND_ON_CORESTACK_ON;
 
-	if (in_desired_state) {
-		in_desired_state &= kbase_pm_transition_core_type(kbdev,
-				KBASE_PM_CORE_TILER,
-				kbdev->pm.backend.desired_tiler_state,
-				0, &tiler_available_bitmap,
-				&kbdev->pm.backend.powering_on_tiler_state);
-		in_desired_state &= kbase_pm_transition_core_type(kbdev,
-				KBASE_PM_CORE_SHADER,
-				kbdev->pm.backend.desired_shader_state,
-				0, &shader_available_bitmap,
-				&kbdev->pm.backend.powering_on_shader_state);
+			}
+			break;
 
-		if (kbdev->shader_available_bitmap != shader_available_bitmap)
-			KBASE_TRACE_ADD(kbdev, PM_CORES_CHANGE_AVAILABLE, NULL,
-						NULL, 0u,
-						(u32) shader_available_bitmap);
+		case KBASE_SHADERS_PEND_ON_CORESTACK_ON:
+			if (!shaders_trans && shaders_ready == backend->shaders_avail) {
+				KBASE_TRACE_ADD(kbdev,
+						PM_CORES_CHANGE_AVAILABLE,
+						NULL, NULL, 0u, (u32)shaders_ready);
+				backend->shaders_state = KBASE_SHADERS_ON_CORESTACK_ON;
+			}
+			break;
 
-		kbdev->shader_available_bitmap = shader_available_bitmap;
+		case KBASE_SHADERS_ON_CORESTACK_ON:
+			backend->shaders_avail = kbase_pm_ca_get_core_mask(kbdev);
 
-		if (kbdev->tiler_available_bitmap != tiler_available_bitmap)
-			KBASE_TRACE_ADD(kbdev, PM_CORES_CHANGE_AVAILABLE_TILER,
-						NULL, NULL, 0u,
-						(u32) tiler_available_bitmap);
+			if (!backend->shaders_desired) {
+				if (kbdev->pm.backend.protected_transition_override ||
+						!stt->configured_ticks ||
+						WARN_ON(stt->cancel_queued)) {
+					backend->shaders_state = KBASE_SHADERS_WAIT_FINISHED_CORESTACK_ON;
+				} else {
+					stt->remaining_ticks = stt->configured_ticks;
+					stt->needed = true;
 
-		kbdev->tiler_available_bitmap = tiler_available_bitmap;
+					/* The shader hysteresis timer is not
+					 * done the obvious way, which would be
+					 * to start an hrtimer when the shader
+					 * power off is requested. Instead,
+					 * use a 'tick' timer, and set the
+					 * remaining number of ticks on a power
+					 * off request.  This avoids the
+					 * latency of starting, then
+					 * immediately cancelling an hrtimer
+					 * when the shaders are re-requested
+					 * before the timeout expires.
+					 */
+					if (!hrtimer_active(&stt->timer))
+						hrtimer_start(&stt->timer,
+								stt->configured_interval,
+								HRTIMER_MODE_REL);
 
-	} else if ((l2_available_bitmap &
-			kbdev->gpu_props.props.raw_props.tiler_present) !=
-			kbdev->gpu_props.props.raw_props.tiler_present) {
-		tiler_available_bitmap = 0;
+					backend->shaders_state = KBASE_SHADERS_WAIT_OFF_CORESTACK_ON;
+				}
+			} else if (!platform_power_down_only) {
+				if (backend->shaders_avail & ~shaders_ready) {
+					backend->shaders_avail |= shaders_ready;
 
-		kbdev->tiler_available_bitmap = tiler_available_bitmap;
-	}
+					kbase_pm_invoke(kbdev, KBASE_PM_CORE_SHADER,
+							backend->shaders_avail & ~shaders_ready,
+							ACTION_PWRON);
+					backend->shaders_state = KBASE_SHADERS_PEND_ON_CORESTACK_ON;
 
-	/* State updated for slow-path waiters */
-	kbdev->pm.backend.gpu_in_desired_state = in_desired_state;
+				}
+			}
+			break;
 
-	shader_ready_bitmap = kbase_pm_get_ready_cores(kbdev,
-							KBASE_PM_CORE_SHADER);
-	shader_transitioning_bitmap = kbase_pm_get_trans_cores(kbdev,
-							KBASE_PM_CORE_SHADER);
+		case KBASE_SHADERS_WAIT_OFF_CORESTACK_ON:
+			if (WARN_ON(!hrtimer_active(&stt->timer))) {
+				stt->remaining_ticks = 0;
+				backend->shaders_state = KBASE_SHADERS_WAIT_FINISHED_CORESTACK_ON;
+			}
 
-	/* Determine whether the cores are now available (even if the set of
-	 * available cores is empty). Note that they can be available even if
-	 * we've not finished transitioning to the desired state */
-	if ((kbdev->shader_available_bitmap &
-					kbdev->pm.backend.desired_shader_state)
-				== kbdev->pm.backend.desired_shader_state &&
-		(kbdev->tiler_available_bitmap &
-					kbdev->pm.backend.desired_tiler_state)
-				== kbdev->pm.backend.desired_tiler_state) {
-		cores_are_available = true;
+			if (backend->shaders_desired) {
+				stt->remaining_ticks = 0;
+				backend->shaders_state = KBASE_SHADERS_ON_CORESTACK_ON;
+			} else if (stt->remaining_ticks == 0) {
+				backend->shaders_state = KBASE_SHADERS_WAIT_FINISHED_CORESTACK_ON;
+			}
+			break;
 
-		KBASE_TRACE_ADD(kbdev, PM_CORES_AVAILABLE, NULL, NULL, 0u,
-				(u32)(kbdev->shader_available_bitmap &
-				kbdev->pm.backend.desired_shader_state));
-		KBASE_TRACE_ADD(kbdev, PM_CORES_AVAILABLE_TILER, NULL, NULL, 0u,
-				(u32)(kbdev->tiler_available_bitmap &
-				kbdev->pm.backend.desired_tiler_state));
-	}
+		case KBASE_SHADERS_WAIT_FINISHED_CORESTACK_ON:
+			shader_poweroff_timer_queue_cancel(kbdev);
 
-	if (in_desired_state) {
-		KBASE_DEBUG_ASSERT(cores_are_available);
+			if (!platform_power_down_only)
+				kbase_pm_invoke(kbdev, KBASE_PM_CORE_SHADER,
+						shaders_ready, ACTION_PWROFF);
+
+			KBASE_TRACE_ADD(kbdev,
+					PM_CORES_CHANGE_AVAILABLE,
+					NULL, NULL, 0u, 0u);
+
+			backend->shaders_state = KBASE_SHADERS_PEND_OFF_CORESTACK_ON;
+			break;
+
+		case KBASE_SHADERS_PEND_OFF_CORESTACK_ON:
+			if ((!shaders_trans && !shaders_ready) || platform_power_down_only) {
+				if (corestack_driver_control && !platform_power_down_only)
+					kbase_pm_invoke(kbdev, KBASE_PM_CORE_STACK,
+							stacks_avail, ACTION_PWROFF);
+
+				backend->shaders_state = KBASE_SHADERS_OFF_CORESTACK_PEND_OFF;
+			}
+			break;
+
+		case KBASE_SHADERS_OFF_CORESTACK_PEND_OFF:
+			if ((!stacks_trans && !stacks_ready) || platform_power_down_only)
+				backend->shaders_state = KBASE_SHADERS_OFF_CORESTACK_OFF_TIMER_PEND_OFF;
+			break;
+
+		case KBASE_SHADERS_OFF_CORESTACK_OFF_TIMER_PEND_OFF:
+			if (!hrtimer_active(&stt->timer) && !stt->cancel_queued)
+				backend->shaders_state = KBASE_SHADERS_OFF_CORESTACK_OFF;
+			break;
+
+		case KBASE_SHADERS_RESET_WAIT:
+			/* Reset complete */
+			if (!backend->in_reset)
+				backend->shaders_state = KBASE_SHADERS_OFF_CORESTACK_OFF_TIMER_PEND_OFF;
+			break;
+		}
+	} while (backend->shaders_state != prev_state);
+}
+
+static bool kbase_pm_is_in_desired_state_nolock(struct kbase_device *kbdev)
+{
+	bool in_desired_state = true;
+
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	if (kbase_pm_is_l2_desired(kbdev) &&
+			kbdev->pm.backend.l2_state != KBASE_L2_ON)
+		in_desired_state = false;
+	else if (!kbase_pm_is_l2_desired(kbdev) &&
+			kbdev->pm.backend.l2_state != KBASE_L2_OFF)
+		in_desired_state = false;
+
+	if (kbdev->pm.backend.shaders_desired &&
+			kbdev->pm.backend.shaders_state != KBASE_SHADERS_ON_CORESTACK_ON)
+		in_desired_state = false;
+	else if (!kbdev->pm.backend.shaders_desired &&
+			kbdev->pm.backend.shaders_state != KBASE_SHADERS_OFF_CORESTACK_OFF)
+		in_desired_state = false;
+
+	return in_desired_state;
+}
+
+static bool kbase_pm_is_in_desired_state(struct kbase_device *kbdev)
+{
+	bool in_desired_state;
+	unsigned long flags;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	in_desired_state = kbase_pm_is_in_desired_state_nolock(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	return in_desired_state;
+}
+
+static bool kbase_pm_is_in_desired_state_with_l2_powered(
+		struct kbase_device *kbdev)
+{
+	bool in_desired_state = false;
+	unsigned long flags;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	if (kbase_pm_is_in_desired_state_nolock(kbdev) &&
+			(kbdev->pm.backend.l2_state == KBASE_L2_ON))
+		in_desired_state = true;
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	return in_desired_state;
+}
+
+static void kbase_pm_trace_power_state(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 #if defined(CONFIG_MALI_GATOR_SUPPORT)
-		kbase_trace_mali_pm_status(KBASE_PM_CORE_L2,
-						kbase_pm_get_ready_cores(kbdev,
-							KBASE_PM_CORE_L2));
-		kbase_trace_mali_pm_status(KBASE_PM_CORE_SHADER,
-						kbase_pm_get_ready_cores(kbdev,
-							KBASE_PM_CORE_SHADER));
-		kbase_trace_mali_pm_status(KBASE_PM_CORE_TILER,
-						kbase_pm_get_ready_cores(kbdev,
-							KBASE_PM_CORE_TILER));
-#ifdef CONFIG_MALI_CORESTACK
+	kbase_trace_mali_pm_status(KBASE_PM_CORE_L2,
+					kbase_pm_get_ready_cores(kbdev,
+						KBASE_PM_CORE_L2));
+	kbase_trace_mali_pm_status(KBASE_PM_CORE_SHADER,
+					kbase_pm_get_ready_cores(kbdev,
+						KBASE_PM_CORE_SHADER));
+	kbase_trace_mali_pm_status(KBASE_PM_CORE_TILER,
+					kbase_pm_get_ready_cores(kbdev,
+						KBASE_PM_CORE_TILER));
+	if (corestack_driver_control)
 		kbase_trace_mali_pm_status(KBASE_PM_CORE_STACK,
 						kbase_pm_get_ready_cores(kbdev,
 							KBASE_PM_CORE_STACK));
-#endif /* CONFIG_MALI_CORESTACK */
 #endif
 
-		KBASE_TLSTREAM_AUX_PM_STATE(
-				KBASE_PM_CORE_L2,
-				kbase_pm_get_ready_cores(
-					kbdev, KBASE_PM_CORE_L2));
-		KBASE_TLSTREAM_AUX_PM_STATE(
-				KBASE_PM_CORE_SHADER,
-				kbase_pm_get_ready_cores(
-					kbdev, KBASE_PM_CORE_SHADER));
-		KBASE_TLSTREAM_AUX_PM_STATE(
-				KBASE_PM_CORE_TILER,
-				kbase_pm_get_ready_cores(
-					kbdev,
-					KBASE_PM_CORE_TILER));
-#ifdef CONFIG_MALI_CORESTACK
+	KBASE_TLSTREAM_AUX_PM_STATE(
+			KBASE_PM_CORE_L2,
+			kbase_pm_get_ready_cores(
+				kbdev, KBASE_PM_CORE_L2));
+	KBASE_TLSTREAM_AUX_PM_STATE(
+			KBASE_PM_CORE_SHADER,
+			kbase_pm_get_ready_cores(
+				kbdev, KBASE_PM_CORE_SHADER));
+	KBASE_TLSTREAM_AUX_PM_STATE(
+			KBASE_PM_CORE_TILER,
+			kbase_pm_get_ready_cores(
+				kbdev,
+				KBASE_PM_CORE_TILER));
+
+	if (corestack_driver_control)
 		KBASE_TLSTREAM_AUX_PM_STATE(
 				KBASE_PM_CORE_STACK,
 				kbase_pm_get_ready_cores(
 					kbdev,
 					KBASE_PM_CORE_STACK));
-#endif /* CONFIG_MALI_CORESTACK */
+}
 
+void kbase_pm_update_state(struct kbase_device *kbdev)
+{
+	enum kbase_shader_core_state prev_shaders_state =
+			kbdev->pm.backend.shaders_state;
+
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	if (!kbdev->pm.backend.gpu_powered)
+		return; /* Do nothing if the GPU is off */
+
+	kbase_pm_l2_update_state(kbdev);
+	kbase_pm_shaders_update_state(kbdev);
+
+	/* If the shaders just turned off, re-invoke the L2 state machine, in
+	 * case it was waiting for the shaders to turn off before powering down
+	 * the L2.
+	 */
+	if (prev_shaders_state != KBASE_SHADERS_OFF_CORESTACK_OFF &&
+			kbdev->pm.backend.shaders_state == KBASE_SHADERS_OFF_CORESTACK_OFF)
+		kbase_pm_l2_update_state(kbdev);
+
+	if (kbase_pm_is_in_desired_state_nolock(kbdev)) {
 		KBASE_TRACE_ADD(kbdev, PM_DESIRED_REACHED, NULL, NULL,
-				kbdev->pm.backend.gpu_in_desired_state,
-				(u32)kbdev->pm.backend.desired_shader_state);
-		KBASE_TRACE_ADD(kbdev, PM_DESIRED_REACHED_TILER, NULL, NULL, 0u,
-				(u32)kbdev->pm.backend.desired_tiler_state);
+				true, kbdev->pm.backend.shaders_avail);
 
-		/* Wake slow-path waiters. Job scheduler does not use this. */
+		kbase_pm_trace_power_state(kbdev);
+
 		KBASE_TRACE_ADD(kbdev, PM_WAKE_WAITERS, NULL, NULL, 0u, 0);
-
 		wake_up(&kbdev->pm.backend.gpu_in_desired_state_wait);
 	}
-
-	spin_unlock(&kbdev->pm.backend.gpu_powered_lock);
-
-	kbdev->shader_ready_bitmap = shader_ready_bitmap;
-	kbdev->shader_transitioning_bitmap = shader_transitioning_bitmap;
-
-	/* The core availability policy is not allowed to keep core group 0
-	 * turned off (unless it was changing the l2 power state) */
-	if (!((shader_ready_bitmap | shader_transitioning_bitmap) &
-		kbdev->gpu_props.props.coherency_info.group[0].core_mask) &&
-		(prev_l2_available_bitmap == desired_l2_state) &&
-		!(kbase_pm_ca_get_core_mask(kbdev) &
-		kbdev->gpu_props.props.coherency_info.group[0].core_mask))
-		BUG();
-
-	/* The core availability policy is allowed to keep core group 1 off,
-	 * but all jobs specifically targeting CG1 must fail */
-	if (!((shader_ready_bitmap | shader_transitioning_bitmap) &
-		kbdev->gpu_props.props.coherency_info.group[1].core_mask) &&
-		!(kbase_pm_ca_get_core_mask(kbdev) &
-		kbdev->gpu_props.props.coherency_info.group[1].core_mask))
-		kbdev->pm.backend.cg1_disabled = true;
-	else
-		kbdev->pm.backend.cg1_disabled = false;
-
-	return cores_are_available;
 }
-KBASE_EXPORT_TEST_API(kbase_pm_check_transitions_nolock);
 
-/* Timeout for kbase_pm_check_transitions_sync when wait_event_killable has
+static enum hrtimer_restart
+shader_tick_timer_callback(struct hrtimer *timer)
+{
+	struct kbasep_pm_tick_timer_state *stt = container_of(timer,
+			struct kbasep_pm_tick_timer_state, timer);
+	struct kbase_device *kbdev = container_of(stt, struct kbase_device,
+			pm.backend.shader_tick_timer);
+	struct kbase_pm_backend_data *backend = &kbdev->pm.backend;
+	unsigned long flags;
+	enum hrtimer_restart restart = HRTIMER_NORESTART;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+
+	if (stt->remaining_ticks &&
+			backend->shaders_state == KBASE_SHADERS_WAIT_OFF_CORESTACK_ON) {
+		stt->remaining_ticks--;
+
+		/* If the remaining ticks just changed from 1 to 0, invoke the
+		 * PM state machine to power off the shader cores.
+		 */
+		if (!stt->remaining_ticks && !backend->shaders_desired)
+			kbase_pm_update_state(kbdev);
+	}
+
+	if (stt->needed) {
+		hrtimer_forward_now(timer, stt->configured_interval);
+		restart = HRTIMER_RESTART;
+	}
+
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	return restart;
+}
+
+int kbase_pm_state_machine_init(struct kbase_device *kbdev)
+{
+	struct kbasep_pm_tick_timer_state *stt = &kbdev->pm.backend.shader_tick_timer;
+
+	stt->wq = alloc_workqueue("kbase_pm_shader_poweroff", WQ_HIGHPRI | WQ_UNBOUND, 1);
+	if (!stt->wq)
+		return -ENOMEM;
+
+	INIT_WORK(&stt->work, shader_poweroff_timer_stop_callback);
+
+	stt->needed = false;
+	hrtimer_init(&stt->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	stt->timer.function = shader_tick_timer_callback;
+	stt->configured_interval = HR_TIMER_DELAY_NSEC(DEFAULT_PM_GPU_POWEROFF_TICK_NS);
+	stt->configured_ticks = DEFAULT_PM_POWEROFF_TICK_SHADER;
+
+	return 0;
+}
+
+void kbase_pm_state_machine_term(struct kbase_device *kbdev)
+{
+	hrtimer_cancel(&kbdev->pm.backend.shader_tick_timer.timer);
+	destroy_workqueue(kbdev->pm.backend.shader_tick_timer.wq);
+}
+
+void kbase_pm_reset_start_locked(struct kbase_device *kbdev)
+{
+	struct kbase_pm_backend_data *backend = &kbdev->pm.backend;
+
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	backend->in_reset = true;
+	backend->l2_state = KBASE_L2_RESET_WAIT;
+	backend->shaders_state = KBASE_SHADERS_RESET_WAIT;
+
+	/* We're in a reset, so hwcnt will have been synchronously disabled by
+	 * this function's caller as part of the reset process. We therefore
+	 * know that any call to kbase_hwcnt_context_disable_atomic, if
+	 * required to sync the hwcnt refcount with our internal state, is
+	 * guaranteed to succeed.
+	 */
+	backend->hwcnt_desired = false;
+	if (!backend->hwcnt_disabled) {
+		WARN_ON(!kbase_hwcnt_context_disable_atomic(
+			kbdev->hwcnt_gpu_ctx));
+		backend->hwcnt_disabled = true;
+	}
+
+	shader_poweroff_timer_queue_cancel(kbdev);
+}
+
+void kbase_pm_reset_complete(struct kbase_device *kbdev)
+{
+	struct kbase_pm_backend_data *backend = &kbdev->pm.backend;
+	unsigned long flags;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+
+	backend->in_reset = false;
+	kbase_pm_update_state(kbdev);
+
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+}
+
+/* Timeout for kbase_pm_wait_for_desired_state when wait_event_killable has
  * aborted due to a fatal signal. If the time spent waiting has exceeded this
  * threshold then there is most likely a hardware issue. */
 #define PM_TIMEOUT (5*HZ) /* 5s */
 
-void kbase_pm_check_transitions_sync(struct kbase_device *kbdev)
+static void kbase_pm_timed_out(struct kbase_device *kbdev)
+{
+	dev_err(kbdev->dev, "Power transition timed out unexpectedly\n");
+	dev_err(kbdev->dev, "Desired state :\n");
+	dev_err(kbdev->dev, "\tShader=%016llx\n",
+			kbdev->pm.backend.shaders_desired ? kbdev->pm.backend.shaders_avail : 0);
+	dev_err(kbdev->dev, "Current state :\n");
+	dev_err(kbdev->dev, "\tShader=%08x%08x\n",
+			kbase_reg_read(kbdev,
+				GPU_CONTROL_REG(SHADER_READY_HI)),
+			kbase_reg_read(kbdev,
+				GPU_CONTROL_REG(SHADER_READY_LO)));
+	dev_err(kbdev->dev, "\tTiler =%08x%08x\n",
+			kbase_reg_read(kbdev,
+				GPU_CONTROL_REG(TILER_READY_HI)),
+			kbase_reg_read(kbdev,
+				GPU_CONTROL_REG(TILER_READY_LO)));
+	dev_err(kbdev->dev, "\tL2    =%08x%08x\n",
+			kbase_reg_read(kbdev,
+				GPU_CONTROL_REG(L2_READY_HI)),
+			kbase_reg_read(kbdev,
+				GPU_CONTROL_REG(L2_READY_LO)));
+	dev_err(kbdev->dev, "Cores transitioning :\n");
+	dev_err(kbdev->dev, "\tShader=%08x%08x\n",
+			kbase_reg_read(kbdev, GPU_CONTROL_REG(
+					SHADER_PWRTRANS_HI)),
+			kbase_reg_read(kbdev, GPU_CONTROL_REG(
+					SHADER_PWRTRANS_LO)));
+	dev_err(kbdev->dev, "\tTiler =%08x%08x\n",
+			kbase_reg_read(kbdev, GPU_CONTROL_REG(
+					TILER_PWRTRANS_HI)),
+			kbase_reg_read(kbdev, GPU_CONTROL_REG(
+					TILER_PWRTRANS_LO)));
+	dev_err(kbdev->dev, "\tL2    =%08x%08x\n",
+			kbase_reg_read(kbdev, GPU_CONTROL_REG(
+					L2_PWRTRANS_HI)),
+			kbase_reg_read(kbdev, GPU_CONTROL_REG(
+					L2_PWRTRANS_LO)));
+
+	dev_err(kbdev->dev, "Sending reset to GPU - all running jobs will be lost\n");
+	if (kbase_prepare_to_reset_gpu(kbdev))
+		kbase_reset_gpu(kbdev);
+}
+
+void kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev)
 {
 	unsigned long flags;
 	unsigned long timeout;
-	bool cores_are_available;
-	int ret;
+	int err;
 
-	/* Force the transition to be checked and reported - the cores may be
-	 * 'available' (for job submission) but not fully powered up. */
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-
-	cores_are_available = kbase_pm_check_transitions_nolock(kbdev);
-
-	/* Don't need 'cores_are_available', because we don't return anything */
-	CSTD_UNUSED(cores_are_available);
+	kbase_pm_update_state(kbdev);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	timeout = jiffies + PM_TIMEOUT;
 
 	/* Wait for cores */
-	ret = wait_event_killable(kbdev->pm.backend.gpu_in_desired_state_wait,
-			kbdev->pm.backend.gpu_in_desired_state);
+	err = wait_event_killable(kbdev->pm.backend.gpu_in_desired_state_wait,
+			kbase_pm_is_in_desired_state_with_l2_powered(kbdev));
 
-	if (ret < 0 && time_after(jiffies, timeout)) {
-		dev_err(kbdev->dev, "Power transition timed out unexpectedly\n");
-		dev_err(kbdev->dev, "Desired state :\n");
-		dev_err(kbdev->dev, "\tShader=%016llx\n",
-				kbdev->pm.backend.desired_shader_state);
-		dev_err(kbdev->dev, "\tTiler =%016llx\n",
-				kbdev->pm.backend.desired_tiler_state);
-		dev_err(kbdev->dev, "Current state :\n");
-		dev_err(kbdev->dev, "\tShader=%08x%08x\n",
-				kbase_reg_read(kbdev,
-					GPU_CONTROL_REG(SHADER_READY_HI)),
-				kbase_reg_read(kbdev,
-					GPU_CONTROL_REG(SHADER_READY_LO)));
-		dev_err(kbdev->dev, "\tTiler =%08x%08x\n",
-				kbase_reg_read(kbdev,
-					GPU_CONTROL_REG(TILER_READY_HI)),
-				kbase_reg_read(kbdev,
-					GPU_CONTROL_REG(TILER_READY_LO)));
-		dev_err(kbdev->dev, "\tL2    =%08x%08x\n",
-				kbase_reg_read(kbdev,
-					GPU_CONTROL_REG(L2_READY_HI)),
-				kbase_reg_read(kbdev,
-					GPU_CONTROL_REG(L2_READY_LO)));
-		dev_err(kbdev->dev, "Cores transitioning :\n");
-		dev_err(kbdev->dev, "\tShader=%08x%08x\n",
-				kbase_reg_read(kbdev, GPU_CONTROL_REG(
-						SHADER_PWRTRANS_HI)),
-				kbase_reg_read(kbdev, GPU_CONTROL_REG(
-						SHADER_PWRTRANS_LO)));
-		dev_err(kbdev->dev, "\tTiler =%08x%08x\n",
-				kbase_reg_read(kbdev, GPU_CONTROL_REG(
-						TILER_PWRTRANS_HI)),
-				kbase_reg_read(kbdev, GPU_CONTROL_REG(
-						TILER_PWRTRANS_LO)));
-		dev_err(kbdev->dev, "\tL2    =%08x%08x\n",
-				kbase_reg_read(kbdev, GPU_CONTROL_REG(
-						L2_PWRTRANS_HI)),
-				kbase_reg_read(kbdev, GPU_CONTROL_REG(
-						L2_PWRTRANS_LO)));
-#if KBASE_GPU_RESET_EN
-		dev_err(kbdev->dev, "Sending reset to GPU - all running jobs will be lost\n");
-		if (kbase_prepare_to_reset_gpu(kbdev))
-			kbase_reset_gpu(kbdev);
-#endif /* KBASE_GPU_RESET_EN */
-	}
+	if (err < 0 && time_after(jiffies, timeout))
+		kbase_pm_timed_out(kbdev);
 }
-KBASE_EXPORT_TEST_API(kbase_pm_check_transitions_sync);
+
+void kbase_pm_wait_for_desired_state(struct kbase_device *kbdev)
+{
+	unsigned long flags;
+	unsigned long timeout;
+	int err;
+
+	/* Let the state machine latch the most recent desired state. */
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbase_pm_update_state(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	timeout = jiffies + PM_TIMEOUT;
+
+	/* Wait for cores */
+	err = wait_event_killable(kbdev->pm.backend.gpu_in_desired_state_wait,
+			kbase_pm_is_in_desired_state(kbdev));
+
+	if (err < 0 && time_after(jiffies, timeout))
+		kbase_pm_timed_out(kbdev);
+}
+KBASE_EXPORT_TEST_API(kbase_pm_wait_for_desired_state);
 
 void kbase_pm_enable_interrupts(struct kbase_device *kbdev)
 {
@@ -957,7 +1256,6 @@ void kbase_pm_disable_interrupts(struct kbase_device *kbdev)
 
 KBASE_EXPORT_TEST_API(kbase_pm_disable_interrupts);
 
-
 /*
  * pmu layout:
  * 0x0000: PMU TAG (RO) (0xCAFECAFE)
@@ -990,12 +1288,7 @@ void kbase_pm_clock_on(struct kbase_device *kbdev, bool is_resume)
 		kbdev->pm.backend.callback_power_resume(kbdev);
 		return;
 	} else if (kbdev->pm.backend.callback_power_on) {
-		kbdev->pm.backend.callback_power_on(kbdev);
-		/* If your platform properly keeps the GPU state you may use the
-		 * return value of the callback_power_on function to
-		 * conditionally reset the GPU on power up. Currently we are
-		 * conservative and always reset the GPU. */
-		reset_required = true;
+		reset_required = kbdev->pm.backend.callback_power_on(kbdev);
 	}
 
 	spin_lock_irqsave(&kbdev->pm.backend.gpu_powered_lock, flags);
@@ -1014,8 +1307,14 @@ void kbase_pm_clock_on(struct kbase_device *kbdev, bool is_resume)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 	mutex_unlock(&kbdev->mmu_hw_mutex);
 
-	/* Lastly, enable the interrupts */
+	/* Enable the interrupts */
 	kbase_pm_enable_interrupts(kbdev);
+
+	/* Turn on the L2 caches */
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbdev->pm.backend.l2_desired = true;
+	kbase_pm_update_state(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
 
 KBASE_EXPORT_TEST_API(kbase_pm_clock_on);
@@ -1028,7 +1327,7 @@ bool kbase_pm_clock_off(struct kbase_device *kbdev, bool is_suspend)
 	lockdep_assert_held(&kbdev->pm.lock);
 
 	/* ASSERT that the cores should now be unavailable. No lock needed. */
-	KBASE_DEBUG_ASSERT(kbdev->shader_available_bitmap == 0u);
+	WARN_ON(kbdev->pm.backend.shaders_state != KBASE_SHADERS_OFF_CORESTACK_OFF);
 
 	kbdev->poweroff_pending = true;
 
@@ -1252,14 +1551,31 @@ static void kbase_pm_hw_issues_detect(struct kbase_device *kbdev)
 	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_TLS_HASHING))
 		kbdev->hw_quirks_sc |= SC_TLS_HASH_ENABLE;
 
+	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_IDVS_GROUP_SIZE)) {
+		int default_idvs_group_size = 0xF;
+		u32 tmp;
+
+		if (of_property_read_u32(kbdev->dev->of_node,
+					  "idvs-group-size", &tmp))
+			tmp = default_idvs_group_size;
+
+		if (tmp > JM_MAX_IDVS_GROUP_SIZE) {
+			dev_err(kbdev->dev,
+				"idvs-group-size of %d is too large. Maximum value is %d",
+				tmp, JM_MAX_IDVS_GROUP_SIZE);
+			tmp = default_idvs_group_size;
+		}
+
+		kbdev->hw_quirks_jm |= tmp << JM_IDVS_GROUP_SIZE_SHIFT;
+	}
+
 	if (!kbdev->hw_quirks_jm)
 		kbdev->hw_quirks_jm = kbase_reg_read(kbdev,
 				GPU_CONTROL_REG(JM_CONFIG));
 
-#ifdef CONFIG_MALI_CORESTACK
 #define MANUAL_POWER_CONTROL ((u32)(1 << 8))
-	kbdev->hw_quirks_jm |= MANUAL_POWER_CONTROL;
-#endif /* CONFIG_MALI_CORESTACK */
+	if (corestack_driver_control)
+		kbdev->hw_quirks_jm |= MANUAL_POWER_CONTROL;
 }
 
 static void kbase_pm_hw_issues_apply(struct kbase_device *kbdev)
@@ -1411,7 +1727,6 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 {
 	unsigned long irq_flags;
 	int err;
-	bool resume_vinstr = false;
 
 	KBASE_DEBUG_ASSERT(NULL != kbdev);
 	lockdep_assert_held(&kbdev->pm.lock);
@@ -1438,15 +1753,9 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 
 	/* The cores should be made unavailable due to the reset */
 	spin_lock_irqsave(&kbdev->hwaccess_lock, irq_flags);
-	if (kbdev->shader_available_bitmap != 0u)
-			KBASE_TRACE_ADD(kbdev, PM_CORES_CHANGE_AVAILABLE, NULL,
-						NULL, 0u, (u32)0u);
-	if (kbdev->tiler_available_bitmap != 0u)
-			KBASE_TRACE_ADD(kbdev, PM_CORES_CHANGE_AVAILABLE_TILER,
-						NULL, NULL, 0u, (u32)0u);
-	kbdev->shader_available_bitmap = 0u;
-	kbdev->tiler_available_bitmap = 0u;
-	kbdev->l2_available_bitmap = 0u;
+	if (kbdev->pm.backend.shaders_state != KBASE_SHADERS_OFF_CORESTACK_OFF)
+		KBASE_TRACE_ADD(kbdev, PM_CORES_CHANGE_AVAILABLE, NULL,
+				NULL, 0u, (u32)0u);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, irq_flags);
 
 	/* Soft reset the GPU */
@@ -1457,10 +1766,7 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 		err = kbase_pm_do_reset(kbdev);
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, irq_flags);
-	if (kbdev->protected_mode)
-		resume_vinstr = true;
 	kbdev->protected_mode = false;
-
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, irq_flags);
 
 	if (err)
@@ -1484,9 +1790,7 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 	 * false when called from kbase_pm_powerup */
 	if (kbdev->pm.backend.gpu_cycle_counter_requests &&
 						(flags & PM_ENABLE_IRQS)) {
-		/* enable interrupts as the L2 may have to be powered on */
 		kbase_pm_enable_interrupts(kbdev);
-		kbase_pm_request_l2_caches(kbdev);
 
 		/* Re-enable the counters if we need to */
 		spin_lock_irqsave(
@@ -1499,10 +1803,6 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 			&kbdev->pm.backend.gpu_cycle_counter_requests_lock,
 								irq_flags);
 
-		spin_lock_irqsave(&kbdev->hwaccess_lock, irq_flags);
-		kbase_pm_release_l2_caches(kbdev);
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, irq_flags);
-
 		kbase_pm_disable_interrupts(kbdev);
 	}
 
@@ -1510,10 +1810,16 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 		kbase_pm_enable_interrupts(kbdev);
 
 exit:
-	/* If GPU is leaving protected mode resume vinstr operation. */
-	if (kbdev->vinstr_ctx && resume_vinstr)
-		kbase_vinstr_resume(kbdev->vinstr_ctx);
-
+	/* Re-enable GPU hardware counters if we're resetting from protected
+	 * mode.
+	 */
+	spin_lock_irqsave(&kbdev->hwaccess_lock, irq_flags);
+	kbdev->protected_mode_hwcnt_desired = true;
+	if (kbdev->protected_mode_hwcnt_disabled) {
+		kbase_hwcnt_context_enable(kbdev->hwcnt_gpu_ctx);
+		kbdev->protected_mode_hwcnt_disabled = false;
+	}
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, irq_flags);
 	return err;
 }
 
@@ -1527,9 +1833,8 @@ exit:
  * kbase_pm_request_gpu_cycle_counter() or
  * kbase_pm_request_gpu_cycle_counter_l2_is_on() only
  *
- * When this function is called the l2 cache must be on and the l2 cache users
- * count must have been incremented by a call to (
- * kbase_pm_request_l2_caches() or kbase_pm_request_l2_caches_l2_on() )
+ * When this function is called the l2 cache must be on - i.e., the GPU must be
+ * on.
  *
  * @kbdev:     The kbase device structure of the device
  */
@@ -1561,8 +1866,6 @@ void kbase_pm_request_gpu_cycle_counter(struct kbase_device *kbdev)
 	KBASE_DEBUG_ASSERT(kbdev->pm.backend.gpu_cycle_counter_requests <
 								INT_MAX);
 
-	kbase_pm_request_l2_caches(kbdev);
-
 	kbase_pm_request_gpu_cycle_counter_do_request(kbdev);
 }
 
@@ -1576,8 +1879,6 @@ void kbase_pm_request_gpu_cycle_counter_l2_is_on(struct kbase_device *kbdev)
 
 	KBASE_DEBUG_ASSERT(kbdev->pm.backend.gpu_cycle_counter_requests <
 								INT_MAX);
-
-	kbase_pm_request_l2_caches_l2_is_on(kbdev);
 
 	kbase_pm_request_gpu_cycle_counter_do_request(kbdev);
 }
@@ -1606,8 +1907,6 @@ void kbase_pm_release_gpu_cycle_counter_nolock(struct kbase_device *kbdev)
 	spin_unlock_irqrestore(
 			&kbdev->pm.backend.gpu_cycle_counter_requests_lock,
 									flags);
-
-	kbase_pm_release_l2_caches(kbdev);
 }
 
 void kbase_pm_release_gpu_cycle_counter(struct kbase_device *kbdev)

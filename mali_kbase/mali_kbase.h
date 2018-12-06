@@ -68,7 +68,7 @@
 #include "mali_kbase_jd_debugfs.h"
 #include "mali_kbase_gpuprops.h"
 #include "mali_kbase_jm.h"
-#include "mali_kbase_vinstr.h"
+#include "mali_kbase_ioctl.h"
 
 #include "ipa/mali_kbase_ipa.h"
 
@@ -353,22 +353,13 @@ static inline bool kbase_pm_is_suspending(struct kbase_device *kbdev)
  *
  * @kbdev: The kbase device structure for the device (must be a valid pointer)
  *
- * This takes into account the following
- *
- * - whether there is an active context reference
- *
- * - whether any of the shader cores or the tiler are needed
- *
- * It should generally be preferred against checking just
- * kbdev->pm.active_count on its own, because some code paths drop their
- * reference on this whilst still having the shader cores/tiler in use.
+ * This takes into account whether there is an active context reference.
  *
  * Return: true if the GPU is active, false otherwise
  */
 static inline bool kbase_pm_is_active(struct kbase_device *kbdev)
 {
-	return (kbdev->pm.active_count > 0 || kbdev->shader_needed_cnt ||
-			kbdev->tiler_needed_cnt);
+	return kbdev->pm.active_count > 0;
 }
 
 /**
@@ -713,6 +704,3 @@ int kbase_io_history_resize(struct kbase_io_history *h, u16 new_size);
 
 
 #endif
-
-
-

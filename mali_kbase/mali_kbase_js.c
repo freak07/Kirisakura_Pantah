@@ -2259,7 +2259,6 @@ static void js_return_worker(struct work_struct *data)
 	bool context_idle = false;
 	unsigned long flags;
 	base_jd_core_req core_req = katom->core_req;
-	enum kbase_atom_coreref_state coreref_state = katom->coreref_state;
 
 	KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTSTOP_EX(katom);
 
@@ -2349,7 +2348,7 @@ static void js_return_worker(struct work_struct *data)
 
 	kbase_js_sched_all(kbdev);
 
-	kbase_backend_complete_wq_post_sched(kbdev, core_req, coreref_state);
+	kbase_backend_complete_wq_post_sched(kbdev, core_req);
 }
 
 void kbase_js_unpull(struct kbase_context *kctx, struct kbase_jd_atom *katom)

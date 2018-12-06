@@ -128,7 +128,7 @@ void kbase_backend_release_ctx_noirq(struct kbase_device *kbdev,
 						struct kbase_context *kctx);
 
 /**
- * kbase_backend_cacheclean - Perform a cache clean if the given atom requires
+ * kbase_backend_cache_clean - Perform a cache clean if the given atom requires
  *                            one
  * @kbdev:	Device pointer
  * @katom:	Pointer to the failed atom
@@ -136,7 +136,7 @@ void kbase_backend_release_ctx_noirq(struct kbase_device *kbdev,
  * On some GPUs, the GPU cache must be cleaned following a failed atom. This
  * function performs a clean if it is required by @katom.
  */
-void kbase_backend_cacheclean(struct kbase_device *kbdev,
+void kbase_backend_cache_clean(struct kbase_device *kbdev,
 		struct kbase_jd_atom *katom);
 
 
@@ -160,14 +160,12 @@ void kbase_backend_complete_wq(struct kbase_device *kbdev,
  *                                        any scheduling has taken place.
  * @kbdev:         Device pointer
  * @core_req:      Core requirements of atom
- * @coreref_state: Coreref state of atom
  *
  * This function should only be called from kbase_jd_done_worker() or
  * js_return_worker().
  */
 void kbase_backend_complete_wq_post_sched(struct kbase_device *kbdev,
-		base_jd_core_req core_req,
-		enum kbase_atom_coreref_state coreref_state);
+		base_jd_core_req core_req);
 
 /**
  * kbase_backend_reset() - The GPU is being reset. Cancel all jobs on the GPU
@@ -277,7 +275,6 @@ void kbase_jm_wait_for_zero_jobs(struct kbase_context *kctx);
  */
 u32 kbase_backend_get_current_flush_id(struct kbase_device *kbdev);
 
-#if KBASE_GPU_RESET_EN
 /**
  * kbase_prepare_to_reset_gpu - Prepare for resetting the GPU.
  * @kbdev: Device pointer
@@ -345,8 +342,11 @@ void kbase_reset_gpu_locked(struct kbase_device *kbdev);
  * of the GPU as part of normal processing (e.g. exiting protected mode) where
  * the driver will have ensured the scheduler has been idled and all other
  * users of the GPU (e.g. instrumentation) have been suspended.
+ *
+ * Return: 0 if the reset was started successfully
+ *         -EAGAIN if another reset is currently in progress
  */
-void kbase_reset_gpu_silent(struct kbase_device *kbdev);
+int kbase_reset_gpu_silent(struct kbase_device *kbdev);
 
 /**
  * kbase_reset_gpu_active - Reports if the GPU is being reset
@@ -355,7 +355,6 @@ void kbase_reset_gpu_silent(struct kbase_device *kbdev);
  * Return: True if the GPU is in the process of being reset.
  */
 bool kbase_reset_gpu_active(struct kbase_device *kbdev);
-#endif
 
 /**
  * kbase_job_slot_hardstop - Hard-stop the specified job slot

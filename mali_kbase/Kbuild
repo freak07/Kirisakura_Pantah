@@ -21,7 +21,7 @@
 
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= "r15p0-01rel0"
+MALI_RELEASE_NAME ?= "r16p0-01rel0"
 
 # Paths required for build
 KBASE_PATH = $(src)
@@ -33,7 +33,6 @@ MALI_CUSTOMER_RELEASE ?= 1
 MALI_USE_CSF ?= 0
 MALI_UNIT_TEST ?= 0
 MALI_KERNEL_TEST_API ?= 0
-MALI_MOCK_TEST ?= 0
 MALI_COVERAGE ?= 0
 CONFIG_MALI_PLATFORM_NAME ?= "devicetree"
 
@@ -43,7 +42,6 @@ DEFINES = \
 	-DMALI_USE_CSF=$(MALI_USE_CSF) \
 	-DMALI_KERNEL_TEST_API=$(MALI_KERNEL_TEST_API) \
 	-DMALI_UNIT_TEST=$(MALI_UNIT_TEST) \
-	-DMALI_MOCK_TEST=$(MALI_MOCK_TEST) \
 	-DMALI_COVERAGE=$(MALI_COVERAGE) \
 	-DMALI_RELEASE_NAME=\"$(MALI_RELEASE_NAME)\"
 
@@ -61,7 +59,7 @@ DEFINES += -DMALI_KBASE_BUILD
 
 # Use our defines when compiling
 ccflags-y += $(DEFINES) -I$(KBASE_PATH)   -I$(KBASE_PLATFORM_PATH) -I$(UMP_PATH) -I$(srctree)/include/linux
-subdir-ccflags-y += $(DEFINES) -I$(KBASE_PATH)   -I$(KBASE_PLATFORM_PATH) -I$(OSK_PATH) -I$(UMP_PATH) -I$(srctree)/include/linux
+subdir-ccflags-y += $(DEFINES) -I$(KBASE_PATH)   -I$(KBASE_PLATFORM_PATH) -I$(UMP_PATH) -I$(srctree)/include/linux
 
 SRC := \
 	mali_kbase_device.c \
@@ -80,10 +78,15 @@ SRC := \
 	mali_kbase_pm.c \
 	mali_kbase_config.c \
 	mali_kbase_vinstr.c \
+	mali_kbase_hwcnt.c \
+	mali_kbase_hwcnt_backend_gpu.c \
+	mali_kbase_hwcnt_gpu.c \
+	mali_kbase_hwcnt_legacy.c \
+	mali_kbase_hwcnt_types.c \
+	mali_kbase_hwcnt_virtualizer.c \
 	mali_kbase_softjobs.c \
 	mali_kbase_10969_workaround.c \
 	mali_kbase_hw.c \
-	mali_kbase_utility.c \
 	mali_kbase_debug.c \
 	mali_kbase_gpu_memory_debugfs.c \
 	mali_kbase_mem_linux.c \
@@ -153,11 +156,6 @@ mali_kbase-$(CONFIG_SYNC_FILE) += \
 	mali_kbase_sync_file.o \
 	mali_kbase_sync_common.o \
 	mali_kbase_fence.o
-
-ifeq ($(MALI_MOCK_TEST),1)
-# Test functionality
-mali_kbase-y += tests/internal/src/mock/mali_kbase_pm_driver_mock.o
-endif
 
 include  $(src)/backend/gpu/Kbuild
 mali_kbase-y += $(BACKEND:.c=.o)

@@ -45,7 +45,7 @@
 #include <mali_kbase_hw.h>
 #include <mali_kbase_mmu_hw.h>
 #include <mali_kbase_hwaccess_jm.h>
-#include <mali_kbase_time.h>
+#include <mali_kbase_hwaccess_time.h>
 #include <mali_kbase_mem.h>
 
 #define KBASE_MMU_PAGE_ENTRIES 512
@@ -1404,7 +1404,6 @@ static void kbase_mmu_flush_invalidate_noretain(struct kbase_context *kctx,
 	err = kbase_mmu_hw_do_operation(kbdev,
 				&kbdev->as[kctx->as_nr],
 				vpfn, nr, op, 0);
-#if KBASE_GPU_RESET_EN
 	if (err) {
 		/* Flush failed to complete, assume the
 		 * GPU has hung and perform a reset to
@@ -1414,7 +1413,6 @@ static void kbase_mmu_flush_invalidate_noretain(struct kbase_context *kctx,
 		if (kbase_prepare_to_reset_gpu_locked(kbdev))
 			kbase_reset_gpu_locked(kbdev);
 	}
-#endif /* KBASE_GPU_RESET_EN */
 
 #ifndef CONFIG_MALI_NO_MALI
 	/*
@@ -1454,7 +1452,6 @@ static void kbase_mmu_flush_invalidate_as(struct kbase_device *kbdev,
 	err = kbase_mmu_hw_do_operation(kbdev,
 			as, vpfn, nr, op, 0);
 
-#if KBASE_GPU_RESET_EN
 	if (err) {
 		/* Flush failed to complete, assume the GPU has hung and
 		 * perform a reset to recover
@@ -1464,7 +1461,6 @@ static void kbase_mmu_flush_invalidate_as(struct kbase_device *kbdev,
 		if (kbase_prepare_to_reset_gpu(kbdev))
 			kbase_reset_gpu(kbdev);
 	}
-#endif /* KBASE_GPU_RESET_EN */
 
 	mutex_unlock(&kbdev->mmu_hw_mutex);
 	/* AS transaction end */
@@ -2054,9 +2050,7 @@ void bus_fault_worker(struct work_struct *data)
 	struct kbase_context *kctx;
 	struct kbase_device *kbdev;
 	struct kbase_fault *fault;
-#if KBASE_GPU_RESET_EN
 	bool reset_status = false;
-#endif /* KBASE_GPU_RESET_EN */
 
 	faulting_as = container_of(data, struct kbase_as, work_busfault);
 	fault = &faulting_as->bf_data;
@@ -2088,7 +2082,6 @@ void bus_fault_worker(struct work_struct *data)
 
 	}
 
-#if KBASE_GPU_RESET_EN
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245)) {
 		/* Due to H/W issue 8245 we need to reset the GPU after using UNMAPPED mode.
 		 * We start the reset before switching to UNMAPPED to ensure that unrelated jobs
@@ -2097,7 +2090,6 @@ void bus_fault_worker(struct work_struct *data)
 		dev_err(kbdev->dev, "GPU bus error occurred. For this GPU version we now soft-reset as part of bus error recovery\n");
 		reset_status = kbase_prepare_to_reset_gpu(kbdev);
 	}
-#endif /* KBASE_GPU_RESET_EN */
 	/* NOTE: If GPU already powered off for suspend, we don't need to switch to unmapped */
 	if (!kbase_pm_context_active_handle_suspend(kbdev, KBASE_PM_SUSPEND_HANDLER_DONT_REACTIVATE)) {
 		unsigned long flags;
@@ -2122,10 +2114,8 @@ void bus_fault_worker(struct work_struct *data)
 		kbase_pm_context_idle(kbdev);
 	}
 
-#if KBASE_GPU_RESET_EN
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245) && reset_status)
 		kbase_reset_gpu(kbdev);
-#endif /* KBASE_GPU_RESET_EN */
 
 	kbasep_js_runpool_release_ctx(kbdev, kctx);
 
@@ -2336,9 +2326,7 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 	struct kbase_device *kbdev;
 	struct kbasep_js_device_data *js_devdata;
 
-#if KBASE_GPU_RESET_EN
 	bool reset_status = false;
-#endif
 
 	as_no = as->number;
 	kbdev = kctx->kbdev;
@@ -2375,11 +2363,9 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 	if ((kbdev->hwcnt.kctx) && (kbdev->hwcnt.kctx->as_nr == as_no) &&
 			(kbdev->hwcnt.backend.state ==
 						KBASE_INSTR_STATE_DUMPING)) {
-		unsigned int num_core_groups = kbdev->gpu_props.num_core_groups;
-
 		if ((fault->addr >= kbdev->hwcnt.addr) &&
 				(fault->addr < (kbdev->hwcnt.addr +
-						(num_core_groups * 2048))))
+					kbdev->hwcnt.addr_bytes)))
 			kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_FAULT;
 	}
 
@@ -2394,7 +2380,6 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 	kbase_backend_jm_kill_jobs_from_kctx(kctx);
 	/* AS transaction begin */
 	mutex_lock(&kbdev->mmu_hw_mutex);
-#if KBASE_GPU_RESET_EN
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245)) {
 		/* Due to H/W issue 8245 we need to reset the GPU after using UNMAPPED mode.
 		 * We start the reset before switching to UNMAPPED to ensure that unrelated jobs
@@ -2403,7 +2388,6 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 		dev_err(kbdev->dev, "Unhandled page fault. For this GPU version we now soft-reset the GPU as part of page fault recovery.");
 		reset_status = kbase_prepare_to_reset_gpu(kbdev);
 	}
-#endif /* KBASE_GPU_RESET_EN */
 	/* switch to UNMAPPED mode, will abort all jobs and stop any hw counter dumping */
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	kbase_mmu_disable(kctx);
@@ -2417,10 +2401,8 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 	kbase_mmu_hw_enable_fault(kbdev, as,
 			KBASE_MMU_FAULT_TYPE_PAGE_UNEXPECTED);
 
-#if KBASE_GPU_RESET_EN
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245) && reset_status)
 		kbase_reset_gpu(kbdev);
-#endif /* KBASE_GPU_RESET_EN */
 }
 
 void kbasep_as_do_poke(struct work_struct *work)
@@ -2608,7 +2590,6 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
 					KBASE_MMU_FAULT_TYPE_PAGE_UNEXPECTED);
 		}
 
-#if KBASE_GPU_RESET_EN
 		if (kbase_as_has_bus_fault(as) &&
 				kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245)) {
 			bool reset_status;
@@ -2622,7 +2603,6 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
 			if (reset_status)
 				kbase_reset_gpu_locked(kbdev);
 		}
-#endif /* KBASE_GPU_RESET_EN */
 
 		return;
 	}

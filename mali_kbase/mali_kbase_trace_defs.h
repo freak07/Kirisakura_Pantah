@@ -172,8 +172,6 @@ int dummy_array[] = {
 	KBASE_TRACE_CODE_MAKE_CODE(JS_JOB_DONE_TRY_RUN_NEXT_JOB),
 	/* gpu_addr==value to write into JS_HEAD */
 	KBASE_TRACE_CODE_MAKE_CODE(JS_JOB_DONE_RETRY_NEEDED),
-	/* kctx is the one being evicted, info_val == kctx to put in  */
-	KBASE_TRACE_CODE_MAKE_CODE(JS_FAST_START_EVICTS_CTX),
 	KBASE_TRACE_CODE_MAKE_CODE(JS_AFFINITY_SUBMIT_TO_BLOCKED),
 	/* info_val == lower 32 bits of affinity */
 	KBASE_TRACE_CODE_MAKE_CODE(JS_AFFINITY_CURRENT),

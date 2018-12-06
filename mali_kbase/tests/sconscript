@@ -1,5 +1,5 @@
 #
-# (C) COPYRIGHT 2010-2011, 2013, 2017 ARM Limited. All rights reserved.
+# (C) COPYRIGHT 2010-2011, 2013, 2017-2018 ARM Limited. All rights reserved.
 #
 # This program is free software and is provided to you under the terms of the
 # GNU General Public License version 2 as published by the Free Software
@@ -39,6 +39,5 @@ if kutf_env['debug'] == '1':
 		SConscript('kutf_test_runner/sconscript')
 
 if env['unit'] == '1':
-	SConscript('mali_kutf_ipa_test/sconscript')
 	SConscript('mali_kutf_ipa_unit_test/sconscript')
 	SConscript('mali_kutf_vinstr_test/sconscript')

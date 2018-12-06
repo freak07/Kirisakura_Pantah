@@ -50,6 +50,31 @@ void kbase_reg_write(struct kbase_device *kbdev, u32 offset, u32 value);
  */
 u32 kbase_reg_read(struct kbase_device *kbdev, u32 offset);
 
+/**
+ * kbase_gpu_start_cache_clean - Start a cache clean
+ * @kbdev: Kbase device
+ *
+ * Issue a cache clean and invalidate command to hardware. This function will
+ * take hwaccess_lock.
+ */
+void kbase_gpu_start_cache_clean(struct kbase_device *kbdev);
+
+/**
+ * kbase_gpu_start_cache_clean_nolock - Start a cache clean
+ * @kbdev: Kbase device
+ *
+ * Issue a cache clean and invalidate command to hardware. hwaccess_lock
+ * must be held by the caller.
+ */
+void kbase_gpu_start_cache_clean_nolock(struct kbase_device *kbdev);
+
+/**
+ * kbase_gpu_wait_cache_clean - Wait for cache cleaning to finish
+ * @kbdev: Kbase device
+ *
+ * This function will take hwaccess_lock, and may sleep.
+ */
+void kbase_gpu_wait_cache_clean(struct kbase_device *kbdev);
 
 /**
  * kbase_gpu_interrupt - GPU interrupt handler

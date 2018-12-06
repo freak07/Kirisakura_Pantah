@@ -222,7 +222,7 @@ int kbase_device_init(struct kbase_device * const kbdev)
 	if (err)
 		goto term_as;
 
-	mutex_init(&kbdev->cacheclean_lock);
+	init_waitqueue_head(&kbdev->cache_clean_wait);
 
 	kbase_debug_assert_register_hook(&kbasep_trace_hook_wrapper, kbdev);
 

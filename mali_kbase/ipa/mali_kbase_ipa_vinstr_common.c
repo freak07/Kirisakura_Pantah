@@ -44,7 +44,7 @@ static inline u32 kbase_ipa_read_hwcnt(
 	struct kbase_ipa_model_vinstr_data *model_data,
 	u32 offset)
 {
-	u8 *p = model_data->vinstr_buffer;
+	u8 *p = (u8 *)model_data->dump_buf.dump_buf;
 
 	return *(u32 *)&p[offset];
 }
@@ -118,125 +118,69 @@ s64 kbase_ipa_single_counter(
 	return counter_value * (s64) coeff;
 }
 
-#ifndef CONFIG_MALI_NO_MALI
-/**
- * kbase_ipa_gpu_active - Inform IPA that GPU is now active
- * @model_data: Pointer to model data
- *
- * This function may cause vinstr to become active.
- */
-static void kbase_ipa_gpu_active(struct kbase_ipa_model_vinstr_data *model_data)
-{
-	struct kbase_device *kbdev = model_data->kbdev;
-
-	lockdep_assert_held(&kbdev->pm.lock);
-
-	if (!kbdev->ipa.vinstr_active) {
-		kbdev->ipa.vinstr_active = true;
-		kbase_vinstr_resume_client(model_data->vinstr_cli);
-	}
-}
-
-/**
- * kbase_ipa_gpu_idle - Inform IPA that GPU is now idle
- * @model_data: Pointer to model data
- *
- * This function may cause vinstr to become idle.
- */
-static void kbase_ipa_gpu_idle(struct kbase_ipa_model_vinstr_data *model_data)
-{
-	struct kbase_device *kbdev = model_data->kbdev;
-
-	lockdep_assert_held(&kbdev->pm.lock);
-
-	if (kbdev->ipa.vinstr_active) {
-		kbase_vinstr_suspend_client(model_data->vinstr_cli);
-		kbdev->ipa.vinstr_active = false;
-	}
-}
-#endif
-
 int kbase_ipa_attach_vinstr(struct kbase_ipa_model_vinstr_data *model_data)
 {
+	int errcode;
 	struct kbase_device *kbdev = model_data->kbdev;
-	struct kbase_ioctl_hwcnt_reader_setup setup;
-	size_t dump_size;
+	struct kbase_hwcnt_virtualizer *hvirt = kbdev->hwcnt_gpu_virt;
+	struct kbase_hwcnt_enable_map enable_map;
+	const struct kbase_hwcnt_metadata *metadata =
+		kbase_hwcnt_virtualizer_metadata(hvirt);
 
-	dump_size = kbase_vinstr_dump_size(kbdev);
-	model_data->vinstr_buffer = kzalloc(dump_size, GFP_KERNEL);
-	if (!model_data->vinstr_buffer) {
+	if (!metadata)
+		return -1;
+
+	errcode = kbase_hwcnt_enable_map_alloc(metadata, &enable_map);
+	if (errcode) {
+		dev_err(kbdev->dev, "Failed to allocate IPA enable map");
+		return errcode;
+	}
+
+	kbase_hwcnt_enable_map_enable_all(&enable_map);
+
+	errcode = kbase_hwcnt_virtualizer_client_create(
+		hvirt, &enable_map, &model_data->hvirt_cli);
+	kbase_hwcnt_enable_map_free(&enable_map);
+	if (errcode) {
+		dev_err(kbdev->dev, "Failed to register IPA with virtualizer");
+		model_data->hvirt_cli = NULL;
+		return errcode;
+	}
+
+	errcode = kbase_hwcnt_dump_buffer_alloc(
+		metadata, &model_data->dump_buf);
+	if (errcode) {
 		dev_err(kbdev->dev, "Failed to allocate IPA dump buffer");
-		return -1;
+		kbase_hwcnt_virtualizer_client_destroy(model_data->hvirt_cli);
+		model_data->hvirt_cli = NULL;
+		return errcode;
 	}
-
-	setup.jm_bm = ~0u;
-	setup.shader_bm = ~0u;
-	setup.tiler_bm = ~0u;
-	setup.mmu_l2_bm = ~0u;
-	model_data->vinstr_cli = kbase_vinstr_hwcnt_kernel_setup(kbdev->vinstr_ctx,
-			&setup, model_data->vinstr_buffer);
-	if (!model_data->vinstr_cli) {
-		dev_err(kbdev->dev, "Failed to register IPA with vinstr core");
-		kfree(model_data->vinstr_buffer);
-		model_data->vinstr_buffer = NULL;
-		return -1;
-	}
-
-	kbase_vinstr_hwc_clear(model_data->vinstr_cli);
-
-#ifndef CONFIG_MALI_NO_MALI
-	kbdev->ipa.gpu_active_callback = kbase_ipa_gpu_active;
-	kbdev->ipa.gpu_idle_callback = kbase_ipa_gpu_idle;
-	kbdev->ipa.model_data = model_data;
-	kbdev->ipa.vinstr_active = false;
-	/* Suspend vinstr, to ensure that the GPU is powered off until there is
-	 * something to execute.
-	 */
-	kbase_vinstr_suspend_client(model_data->vinstr_cli);
-#else
-	kbdev->ipa.gpu_active_callback = NULL;
-	kbdev->ipa.gpu_idle_callback = NULL;
-	kbdev->ipa.vinstr_active = true;
-#endif
 
 	return 0;
 }
 
 void kbase_ipa_detach_vinstr(struct kbase_ipa_model_vinstr_data *model_data)
 {
-	struct kbase_device *kbdev = model_data->kbdev;
-
-	kbdev->ipa.gpu_active_callback = NULL;
-	kbdev->ipa.gpu_idle_callback = NULL;
-	kbdev->ipa.model_data = NULL;
-	kbdev->ipa.vinstr_active = false;
-
-	if (model_data->vinstr_cli)
-		kbase_vinstr_detach_client(model_data->vinstr_cli);
-
-	model_data->vinstr_cli = NULL;
-	kfree(model_data->vinstr_buffer);
-	model_data->vinstr_buffer = NULL;
+	if (model_data->hvirt_cli) {
+		kbase_hwcnt_virtualizer_client_destroy(model_data->hvirt_cli);
+		kbase_hwcnt_dump_buffer_free(&model_data->dump_buf);
+		model_data->hvirt_cli = NULL;
+	}
 }
 
 int kbase_ipa_vinstr_dynamic_coeff(struct kbase_ipa_model *model, u32 *coeffp)
 {
 	struct kbase_ipa_model_vinstr_data *model_data =
 			(struct kbase_ipa_model_vinstr_data *)model->model_data;
-	struct kbase_device *kbdev = model_data->kbdev;
 	s64 energy = 0;
 	size_t i;
 	u64 coeff = 0, coeff_mul = 0;
+	u64 start_ts_ns, end_ts_ns;
 	u32 active_cycles;
 	int err = 0;
 
-	if (!kbdev->ipa.vinstr_active) {
-		err = -ENODATA;
-		goto err0; /* GPU powered off - no counters to collect */
-	}
-
-	err = kbase_vinstr_hwc_dump(model_data->vinstr_cli,
-				    BASE_HWCNT_READER_EVENT_MANUAL);
+	err = kbase_hwcnt_virtualizer_client_dump(model_data->hvirt_cli,
+		&start_ts_ns, &end_ts_ns, &model_data->dump_buf);
 	if (err)
 		goto err0;
 

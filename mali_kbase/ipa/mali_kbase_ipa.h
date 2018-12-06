@@ -40,7 +40,7 @@ struct devfreq;
 struct kbase_ipa_model {
 	struct kbase_device *kbdev;
 	void *model_data;
-	struct kbase_ipa_model_ops *ops;
+	const struct kbase_ipa_model_ops *ops;
 	struct list_head params;
 	bool missing_dt_node_warning;
 };
@@ -154,6 +154,25 @@ void kbase_ipa_term(struct kbase_device *kbdev);
 int kbase_ipa_model_recalculate(struct kbase_ipa_model *model);
 
 /**
+ * kbase_ipa_model_ops_find - Lookup an IPA model using its name
+ * @kbdev:      pointer to kbase device
+ * @name:       name of model to lookup
+ *
+ * Return: Pointer to model's 'ops' structure, or NULL if the lookup failed.
+ */
+const struct kbase_ipa_model_ops *kbase_ipa_model_ops_find(struct kbase_device *kbdev,
+							   const char *name);
+
+/**
+ * kbase_ipa_model_name_from_id - Find the best model for a given GPU ID
+ * @gpu_id:     GPU ID of GPU the model will be used for
+ *
+ * Return: The name of the appropriate counter-based model, or the name of the
+ *         fallback model if no counter model exists.
+ */
+const char *kbase_ipa_model_name_from_id(u32 gpu_id);
+
+/**
  * kbase_ipa_init_model - Initilaize the particular IPA model
  * @kbdev:      pointer to kbase device
  * @ops:        pointer to object containing model specific methods.
@@ -164,7 +183,7 @@ int kbase_ipa_model_recalculate(struct kbase_ipa_model *model);
  * Return: pointer to kbase_ipa_model on success, NULL on error
  */
 struct kbase_ipa_model *kbase_ipa_init_model(struct kbase_device *kbdev,
-					     struct kbase_ipa_model_ops *ops);
+					     const struct kbase_ipa_model_ops *ops);
 /**
  * kbase_ipa_term_model - Terminate the particular IPA model
  * @model:      pointer to the IPA model object, already initialized
@@ -183,10 +202,12 @@ void kbase_ipa_term_model(struct kbase_ipa_model *model);
  */
 void kbase_ipa_protection_mode_switch_event(struct kbase_device *kbdev);
 
-extern struct kbase_ipa_model_ops kbase_g71_ipa_model_ops;
-extern struct kbase_ipa_model_ops kbase_g72_ipa_model_ops;
-extern struct kbase_ipa_model_ops kbase_tnox_ipa_model_ops;
-extern struct kbase_ipa_model_ops kbase_tgox_r1_ipa_model_ops;
+extern const struct kbase_ipa_model_ops kbase_g71_ipa_model_ops;
+extern const struct kbase_ipa_model_ops kbase_g72_ipa_model_ops;
+extern const struct kbase_ipa_model_ops kbase_g76_ipa_model_ops;
+extern const struct kbase_ipa_model_ops kbase_g52_ipa_model_ops;
+extern const struct kbase_ipa_model_ops kbase_g52_r1_ipa_model_ops;
+extern const struct kbase_ipa_model_ops kbase_g51_ipa_model_ops;
 
 /**
  * kbase_get_real_power() - get the real power consumption of the GPU

@@ -25,6 +25,9 @@
 #include "mali_kbase_mem_linux.h"
 #include "mali_kbase_gator_api.h"
 #include "mali_kbase_gator_hwcnt_names.h"
+#include "mali_kbase_hwcnt_types.h"
+#include "mali_kbase_hwcnt_gpu.h"
+#include "mali_kbase_hwcnt_virtualizer.h"
 
 #define MALI_MAX_CORES_PER_GROUP		4
 #define MALI_MAX_NUM_BLOCKS_PER_GROUP	8
@@ -33,8 +36,9 @@
 
 struct kbase_gator_hwcnt_handles {
 	struct kbase_device *kbdev;
-	struct kbase_vinstr_client *vinstr_cli;
-	void *vinstr_buffer;
+	struct kbase_hwcnt_virtualizer_client *hvcli;
+	struct kbase_hwcnt_enable_map enable_map;
+	struct kbase_hwcnt_dump_buffer dump_buf;
 	struct work_struct dump_work;
 	int dump_complete;
 	spinlock_t dump_lock;
@@ -173,8 +177,10 @@ KBASE_EXPORT_SYMBOL(kbase_gator_hwcnt_term_names);
 
 struct kbase_gator_hwcnt_handles *kbase_gator_hwcnt_init(struct kbase_gator_hwcnt_info *in_out_info)
 {
+	int errcode;
 	struct kbase_gator_hwcnt_handles *hand;
-	struct kbase_ioctl_hwcnt_reader_setup setup;
+	const struct kbase_hwcnt_metadata *metadata;
+	struct kbase_hwcnt_physical_enable_map phys_map;
 	uint32_t dump_size = 0, i = 0;
 
 	if (!in_out_info)
@@ -192,11 +198,20 @@ struct kbase_gator_hwcnt_handles *kbase_gator_hwcnt_init(struct kbase_gator_hwcn
 	if (!hand->kbdev)
 		goto free_hand;
 
-	dump_size = kbase_vinstr_dump_size(hand->kbdev);
-	hand->vinstr_buffer = kzalloc(dump_size, GFP_KERNEL);
-	if (!hand->vinstr_buffer)
+	metadata = kbase_hwcnt_virtualizer_metadata(
+		hand->kbdev->hwcnt_gpu_virt);
+	if (!metadata)
 		goto release_device;
-	in_out_info->kernel_dump_buffer = hand->vinstr_buffer;
+
+	errcode = kbase_hwcnt_enable_map_alloc(metadata, &hand->enable_map);
+	if (errcode)
+		goto release_device;
+
+	errcode = kbase_hwcnt_dump_buffer_alloc(metadata, &hand->dump_buf);
+	if (errcode)
+		goto free_enable_map;
+
+	in_out_info->kernel_dump_buffer = hand->dump_buf.dump_buf;
 
 	in_out_info->nr_cores = hand->kbdev->gpu_props.num_cores;
 	in_out_info->nr_core_groups = hand->kbdev->gpu_props.num_core_groups;
@@ -213,7 +228,7 @@ struct kbase_gator_hwcnt_handles *kbase_gator_hwcnt_init(struct kbase_gator_hwcn
 			in_out_info->nr_core_groups, GFP_KERNEL);
 
 		if (!in_out_info->hwc_layout)
-			goto free_vinstr_buffer;
+			goto free_dump_buf;
 
 		dump_size = in_out_info->nr_core_groups *
 			MALI_MAX_NUM_BLOCKS_PER_GROUP *
@@ -256,7 +271,7 @@ struct kbase_gator_hwcnt_handles *kbase_gator_hwcnt_init(struct kbase_gator_hwcn
 		in_out_info->hwc_layout = kmalloc(sizeof(enum hwc_type) * (2 + nr_sc_bits + nr_l2), GFP_KERNEL);
 
 		if (!in_out_info->hwc_layout)
-			goto free_vinstr_buffer;
+			goto free_dump_buf;
 
 		dump_size = (2 + nr_sc_bits + nr_l2) * MALI_COUNTERS_PER_BLOCK * MALI_BYTES_PER_COUNTER;
 
@@ -275,17 +290,23 @@ struct kbase_gator_hwcnt_handles *kbase_gator_hwcnt_init(struct kbase_gator_hwcn
 		}
 	}
 
+	/* Calculated dump size must be the same as real dump size */
+	if (WARN_ON(dump_size != metadata->dump_buf_bytes))
+		goto free_layout;
+
 	in_out_info->nr_hwc_blocks = i;
 	in_out_info->size = dump_size;
 
-	setup.jm_bm = in_out_info->bitmask[0];
-	setup.tiler_bm = in_out_info->bitmask[1];
-	setup.shader_bm = in_out_info->bitmask[2];
-	setup.mmu_l2_bm = in_out_info->bitmask[3];
-	hand->vinstr_cli = kbase_vinstr_hwcnt_kernel_setup(hand->kbdev->vinstr_ctx,
-			&setup, hand->vinstr_buffer);
-	if (!hand->vinstr_cli) {
-		dev_err(hand->kbdev->dev, "Failed to register gator with vinstr core");
+	phys_map.jm_bm = in_out_info->bitmask[JM_BLOCK];
+	phys_map.tiler_bm = in_out_info->bitmask[TILER_BLOCK];
+	phys_map.shader_bm = in_out_info->bitmask[SHADER_BLOCK];
+	phys_map.mmu_l2_bm = in_out_info->bitmask[MMU_L2_BLOCK];
+	kbase_hwcnt_gpu_enable_map_from_physical(&hand->enable_map, &phys_map);
+	errcode = kbase_hwcnt_virtualizer_client_create(
+		hand->kbdev->hwcnt_gpu_virt, &hand->enable_map, &hand->hvcli);
+	if (errcode) {
+		dev_err(hand->kbdev->dev,
+			"Failed to register gator with hwcnt virtualizer core");
 		goto free_layout;
 	}
 
@@ -293,13 +314,12 @@ struct kbase_gator_hwcnt_handles *kbase_gator_hwcnt_init(struct kbase_gator_hwcn
 
 free_layout:
 	kfree(in_out_info->hwc_layout);
-
-free_vinstr_buffer:
-	kfree(hand->vinstr_buffer);
-
+free_dump_buf:
+	kbase_hwcnt_dump_buffer_free(&hand->dump_buf);
+free_enable_map:
+	kbase_hwcnt_enable_map_free(&hand->enable_map);
 release_device:
 	kbase_release_device(hand->kbdev);
-
 free_hand:
 	kfree(hand);
 	return NULL;
@@ -313,8 +333,9 @@ void kbase_gator_hwcnt_term(struct kbase_gator_hwcnt_info *in_out_info, struct k
 
 	if (opaque_handles) {
 		cancel_work_sync(&opaque_handles->dump_work);
-		kbase_vinstr_detach_client(opaque_handles->vinstr_cli);
-		kfree(opaque_handles->vinstr_buffer);
+		kbase_hwcnt_virtualizer_client_destroy(opaque_handles->hvcli);
+		kbase_hwcnt_dump_buffer_free(&opaque_handles->dump_buf);
+		kbase_hwcnt_enable_map_free(&opaque_handles->enable_map);
 		kbase_release_device(opaque_handles->kbdev);
 		kfree(opaque_handles);
 	}
@@ -323,11 +344,21 @@ KBASE_EXPORT_SYMBOL(kbase_gator_hwcnt_term);
 
 static void dump_worker(struct work_struct *work)
 {
+	int errcode;
+	u64 ts_start_ns;
+	u64 ts_end_ns;
 	struct kbase_gator_hwcnt_handles *hand;
 
 	hand = container_of(work, struct kbase_gator_hwcnt_handles, dump_work);
-	if (!kbase_vinstr_hwc_dump(hand->vinstr_cli,
-			BASE_HWCNT_READER_EVENT_MANUAL)) {
+	errcode = kbase_hwcnt_virtualizer_client_dump(
+		hand->hvcli, &ts_start_ns, &ts_end_ns, &hand->dump_buf);
+	if (!errcode) {
+		/* Patch the header to hide other client's counter choices */
+		kbase_hwcnt_gpu_patch_dump_headers(
+			&hand->dump_buf, &hand->enable_map);
+		/* Zero all non-enabled counters (currently undefined values) */
+		kbase_hwcnt_dump_buffer_zero_non_enabled(
+			&hand->dump_buf, &hand->enable_map);
 		spin_lock_bh(&hand->dump_lock);
 		hand->dump_complete = 1;
 		spin_unlock_bh(&hand->dump_lock);

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2017 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -190,9 +190,8 @@ static int kbasep_jd_debugfs_atoms_show(struct seq_file *sfile, void *data)
 		kbasep_jd_debugfs_atom_deps(deps, atom);
 
 		seq_printf(sfile,
-				"%3u, %8x, %2u, %2u, %c%3u %c%3u, %20lld, ",
+				"%3u, %8x, %2u, %c%3u %c%3u, %20lld, ",
 				i, atom->core_req, atom->status,
-				atom->coreref_state,
 				deps[0].type, deps[0].id,
 				deps[1].type, deps[1].id,
 				start_timestamp);

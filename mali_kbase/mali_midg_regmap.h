@@ -217,7 +217,7 @@
 #define JOB_IRQ_THROTTLE        0x014	/* cycles to delay delivering an interrupt externally. The JOB_IRQ_STATUS is NOT affected by this, just the delivery of the interrupt.  */
 
 /* JOB IRQ flags */
-#define JOB_IRQ_GLOBAL_IF       (1 << 18)   /* Global interface interrupt received */
+#define JOB_IRQ_GLOBAL_IF       (1 << 31)   /* Global interface interrupt received */
 
 #define JOB_SLOT0               0x800	/* Configuration registers for job slot 0 */
 #define JOB_SLOT1               0x880	/* Configuration registers for job slot 1 */
@@ -381,14 +381,14 @@
 /*
  * Begin TRANSCFG register values
  */
-#define AS_TRANSCFG_PTW_MEMATTR_MASK (3 << 24)
-#define AS_TRANSCFG_PTW_MEMATTR_NON_CACHEABLE (1 << 24)
-#define AS_TRANSCFG_PTW_MEMATTR_WRITE_BACK (2 << 24)
+#define AS_TRANSCFG_PTW_MEMATTR_MASK (3ull << 24)
+#define AS_TRANSCFG_PTW_MEMATTR_NON_CACHEABLE (1ull << 24)
+#define AS_TRANSCFG_PTW_MEMATTR_WRITE_BACK (2ull << 24)
 
-#define AS_TRANSCFG_PTW_SH_MASK ((3 << 28))
-#define AS_TRANSCFG_PTW_SH_OS (2 << 28)
-#define AS_TRANSCFG_PTW_SH_IS (3 << 28)
-
+#define AS_TRANSCFG_PTW_SH_MASK ((3ull << 28))
+#define AS_TRANSCFG_PTW_SH_OS (2ull << 28)
+#define AS_TRANSCFG_PTW_SH_IS (3ull << 28)
+#define AS_TRANSCFG_R_ALLOCATE (1ull << 30)
 /*
  * Begin Command Values
  */

@@ -1129,8 +1129,9 @@ static int kbase_jit_allocate_process(struct kbase_jd_atom *katom)
 		reg = kctx->jit_alloc[info->id];
 		new_addr = reg->start_pfn << PAGE_SHIFT;
 		*ptr = new_addr;
-		KBASE_TLSTREAM_TL_ATTRIB_ATOM_JIT(
-				katom, info->gpu_alloc_addr, new_addr);
+		KBASE_TLSTREAM_TL_ATTRIB_ATOM_JIT(katom,
+			info->gpu_alloc_addr,
+			new_addr, info->va_pages);
 		kbase_vunmap(kctx, &mapping);
 	}
 

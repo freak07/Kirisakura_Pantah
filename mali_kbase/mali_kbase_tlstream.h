@@ -141,7 +141,7 @@ void __kbase_tlstream_tl_attrib_atom_priority(void *atom, u32 prio);
 void __kbase_tlstream_tl_attrib_atom_state(void *atom, u32 state);
 void __kbase_tlstream_tl_attrib_atom_prioritized(void *atom);
 void __kbase_tlstream_tl_attrib_atom_jit(
-		void *atom, u64 edit_addr, u64 new_addr);
+		void *atom, u64 edit_addr, u64 new_addr, u64 va_pages);
 void __kbase_tlstream_tl_attrib_atom_jitallocinfo(
 		void *atom, u64 va_pages, u64 commit_pages, u64 extent,
 		u32 jit_id, u32 bin_id, u32 max_allocations, u32 flags,
@@ -163,6 +163,9 @@ void __kbase_tlstream_aux_protected_enter_start(void *gpu);
 void __kbase_tlstream_aux_protected_enter_end(void *gpu);
 void __kbase_tlstream_aux_protected_leave_start(void *gpu);
 void __kbase_tlstream_aux_protected_leave_end(void *gpu);
+void __kbase_tlstream_aux_jit_stats(u32 ctx_nr, u32 bin_id,
+		u32 max_allocations, u32 allocations,
+		u32 va_pages_nr, u32 ph_pages_nr);
 
 #define TLSTREAM_ENABLED (1 << 31)
 
@@ -472,9 +475,11 @@ extern atomic_t kbase_tlstream_enabled;
  * @atom:       atom identifier
  * @edit_addr:  address edited by jit
  * @new_addr:   address placed into the edited location
+ * @va_pages:   maximum number of pages this jit can allocate
  */
-#define KBASE_TLSTREAM_TL_ATTRIB_ATOM_JIT(atom, edit_addr, new_addr) \
-	__TRACE_IF_ENABLED_JD(tl_attrib_atom_jit, atom, edit_addr, new_addr)
+#define KBASE_TLSTREAM_TL_ATTRIB_ATOM_JIT(atom, edit_addr, new_addr, va_pages) \
+	__TRACE_IF_ENABLED_JD(tl_attrib_atom_jit, atom, edit_addr, \
+		new_addr, va_pages)
 
 /**
  * Information about the JIT allocation atom.
@@ -652,5 +657,24 @@ extern atomic_t kbase_tlstream_enabled;
 #define KBASE_TLSTREAM_AUX_PROTECTED_LEAVE_END(gpu) \
 	__TRACE_IF_ENABLED_LATENCY(aux_protected_leave_end, gpu)
 
+/**
+ * KBASE_TLSTREAM_AUX_JIT_STATS - JIT allocations per bin statistics
+ *
+ * @ctx_nr:      kernel context number
+ * @bid:         JIT bin id
+ * @max_allocs:  maximum allocations allowed in this bin.
+ *               UINT_MAX is a special value. It denotes that
+ *               the parameter was not changed since the last time.
+ * @allocs:      number of active allocations in this bin
+ * @va_pages:    number of virtual pages allocated in this bin
+ * @ph_pages:    number of physical pages allocated in this bin
+ *
+ * Function emits a timeline message indicating the JIT statistics
+ * for a given bin have chaned.
+ */
+#define KBASE_TLSTREAM_AUX_JIT_STATS(ctx_nr, bid, max_allocs, allocs, va_pages, ph_pages) \
+	__TRACE_IF_ENABLED(aux_jit_stats, ctx_nr, bid, \
+			max_allocs, allocs, \
+			va_pages, ph_pages)
 #endif /* _KBASE_TLSTREAM_H */
 

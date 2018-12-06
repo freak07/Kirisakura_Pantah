@@ -364,7 +364,7 @@ static void *debug_job_fault_start(struct seq_file *m, loff_t *pos)
 		 * job done but we delayed it. Now we should clean cache
 		 * earlier. Then the GPU memory dump should be correct.
 		 */
-		kbase_backend_cacheclean(kbdev, event->katom);
+		kbase_backend_cache_clean(kbdev, event->katom);
 	} else
 		return NULL;
 

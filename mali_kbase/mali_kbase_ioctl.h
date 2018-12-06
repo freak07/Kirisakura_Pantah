@@ -64,9 +64,11 @@ extern "C" {
  * - Added BASE_MEM_GPU_VA_SAME_4GB_PAGE under base_mem_alloc_flags
  * 11.12:
  * - Removed ioctl: KBASE_IOCTL_GET_PROFILING_CONTROLS
+ * 11.13:
+ * - New ioctl: KBASE_IOCTL_MEM_EXEC_INIT
  */
 #define BASE_UK_VERSION_MAJOR 11
-#define BASE_UK_VERSION_MINOR 12
+#define BASE_UK_VERSION_MINOR 13
 
 /**
  * struct kbase_ioctl_version_check - Check version compatibility with kernel
@@ -673,6 +675,19 @@ union kbase_ioctl_cinstr_gwt_dump {
 	_IOWR(KBASE_IOCTL_TYPE, 35, union kbase_ioctl_cinstr_gwt_dump)
 
 
+/**
+ * struct kbase_ioctl_mem_exec_init - Initialise the EXEC_VA memory zone
+ *
+ * @va_pages: Number of VA pages to reserve for EXEC_VA
+ */
+struct kbase_ioctl_mem_exec_init {
+	__u64 va_pages;
+};
+
+#define KBASE_IOCTL_MEM_EXEC_INIT \
+	_IOW(KBASE_IOCTL_TYPE, 38, struct kbase_ioctl_mem_exec_init)
+
+
 /***************
  * test ioctls *
  ***************/
@@ -746,6 +761,21 @@ union kbase_ioctl_cs_event_memory_read {
 };
 
 #endif
+
+/* Customer extension range */
+#define KBASE_IOCTL_EXTRA_TYPE (KBASE_IOCTL_TYPE + 2)
+
+/* If the integration needs extra ioctl add them there
+ * like this:
+ *
+ * struct my_ioctl_args {
+ *  ....
+ * }
+ *
+ * #define KBASE_IOCTL_MY_IOCTL \
+ *         _IOWR(KBASE_IOCTL_EXTRA_TYPE, 0, struct my_ioctl_args)
+ */
+
 
 /**********************************
  * Definitions for GPU properties *

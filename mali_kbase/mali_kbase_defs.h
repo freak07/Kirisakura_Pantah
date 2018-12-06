@@ -40,6 +40,7 @@
 #include <mali_kbase_instr_defs.h>
 #include <mali_kbase_pm.h>
 #include <mali_kbase_gpuprops_types.h>
+#include <mali_kbase_hwcnt_backend_gpu.h>
 #include <protected_mode_switcher.h>
 
 
@@ -143,8 +144,6 @@
 #define BASE_MAX_NR_AS              16
 
 /* mmu */
-#define MIDGARD_MMU_VA_BITS 48
-
 #define MIDGARD_MMU_LEVEL(x) (x)
 
 #define MIDGARD_MMU_TOPLEVEL    MIDGARD_MMU_LEVEL(0)
@@ -425,8 +424,8 @@ enum kbase_atom_gpu_rb_state {
  * @KBASE_ATOM_ENTER_PROTECTED_CHECK:  Starting state. Check if there are any atoms
  *                      currently submitted to GPU and protected mode transition is
  *                      not already in progress.
- * @KBASE_ATOM_ENTER_PROTECTED_VINSTR: Wait for vinstr to suspend before entry into
- *                      protected mode.
+ * @KBASE_ATOM_ENTER_PROTECTED_HWCNT: Wait for hardware counter context to
+ *                      become disabled before entry into protected mode.
  * @KBASE_ATOM_ENTER_PROTECTED_IDLE_L2: Wait for the L2 to become idle in preparation
  *                      for the coherency change. L2 shall be powered down and GPU shall
  *                      come out of fully coherent mode before entering protected mode.
@@ -442,7 +441,7 @@ enum kbase_atom_enter_protected_state {
 	 * NOTE: The integer value of this must match KBASE_ATOM_EXIT_PROTECTED_CHECK.
 	 */
 	KBASE_ATOM_ENTER_PROTECTED_CHECK = 0,
-	KBASE_ATOM_ENTER_PROTECTED_VINSTR,
+	KBASE_ATOM_ENTER_PROTECTED_HWCNT,
 	KBASE_ATOM_ENTER_PROTECTED_IDLE_L2,
 	KBASE_ATOM_ENTER_PROTECTED_SET_COHERENCY,
 	KBASE_ATOM_ENTER_PROTECTED_FINISHED,
@@ -513,8 +512,6 @@ struct kbase_ext_res {
  * @jc:                    GPU address of the job-chain.
  * @softjob_data:          Copy of data read from the user space buffer that @jc
  *                         points to.
- * @coreref_state:         state of the atom with respect to retention of shader
- *                         cores for affinity & power management.
  * @fence:                 Stores either an input or output sync fence, depending
  *                         on soft-job type
  * @sync_waiter:           Pointer to the sync fence waiter structure passed to the
@@ -607,7 +604,6 @@ struct kbase_jd_atom {
 	u32 device_nr;
 	u64 jc;
 	void *softjob_data;
-	enum kbase_atom_coreref_state coreref_state;
 #if defined(CONFIG_SYNC)
 	struct sync_fence *fence;
 	struct sync_fence_waiter sync_waiter;
@@ -1073,15 +1069,6 @@ struct kbase_pm_device_data {
 	/* Time in milliseconds between each dvfs sample */
 	u32 dvfs_period;
 
-	/* Period of GPU poweroff timer */
-	ktime_t gpu_poweroff_time;
-
-	/* Number of ticks of GPU poweroff timer before shader is powered off */
-	int poweroff_shader_ticks;
-
-	/* Number of ticks of GPU poweroff timer before GPU is powered off */
-	int poweroff_gpu_ticks;
-
 	struct kbase_pm_backend_data backend;
 };
 
@@ -1254,34 +1241,19 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  *                         configuration/properties of GPU HW device in use.
  * @hw_issues_mask:        List of SW workarounds for HW issues
  * @hw_features_mask:      List of available HW features.
- * @shader_needed_cnt:     Count for the 64 shader cores, incremented when
- *                         shaders are requested for use and decremented later
- *                         when they are no longer required.
- * @tiler_needed_cnt:      Count for the Tiler block shader cores, incremented
- *                         when Tiler is requested for use and decremented
- *                         later when the Tiler is no longer required.
  * @disjoint_event:        struct for keeping track of the disjoint information,
  *                         that whether the GPU is in a disjoint state and the
  *                         number of disjoint events that have occurred on GPU.
- * @l2_users_count:        Refcount for tracking users of the l2 cache, e.g.
- *                         when using hardware counter instrumentation.
- * @shader_available_bitmap: Bitmap of shader cores that are currently available,
- *                         powered up and the power policy is happy for jobs
- *                         to be submitted to these cores. These are updated
- *                         by the power management code. The job scheduler
- *                         should avoid submitting new jobs to any cores
- *                         that are not marked as available.
- * @tiler_available_bitmap: Bitmap of tiler units that are currently available.
- * @l2_available_bitmap:    Bitmap of the currently available Level 2 caches.
- * @stack_available_bitmap: Bitmap of the currently available Core stacks.
- * @shader_ready_bitmap:    Bitmap of shader cores that are ready (powered on)
- * @shader_transitioning_bitmap: Bitmap of shader cores that are currently changing
- *                         power state.
  * @nr_hw_address_spaces:  Number of address spaces actually available in the
  *                         GPU, remains constant after driver initialisation.
  * @nr_user_address_spaces: Number of address spaces available to user contexts
  * @hwcnt:                  Structure used for instrumentation and HW counters
  *                         dumping
+ * @hwcnt_gpu_iface:       Backend interface for GPU hardware counter access.
+ * @hwcnt_gpu_ctx:         Context for GPU hardware counter access.
+ *                         @hwaccess_lock must be held when calling
+ *                         kbase_hwcnt_context_enable() with @hwcnt_gpu_ctx.
+ * @hwcnt_gpu_virt:        Virtualizer for GPU hardware counters.
  * @vinstr_ctx:            vinstr context created per device
  * @trace_lock:            Lock to serialize the access to trace buffer.
  * @trace_first_out:       Index/offset in the trace buffer at which the first
@@ -1294,8 +1266,14 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  * @reset_timeout_ms:      Number of milliseconds to wait for the soft stop to
  *                         complete for the GPU jobs before proceeding with the
  *                         GPU reset.
- * @cacheclean_lock:       Lock to serialize the clean & invalidation of GPU caches,
- *                         between Job Manager backend & Instrumentation code.
+ * @cache_clean_in_progress: Set when a cache clean has been started, and
+ *                         cleared when it has finished. This prevents multiple
+ *                         cache cleans being done simultaneously.
+ * @cache_clean_queued:    Set if a cache clean is invoked while another is in
+ *                         progress. If this happens, another cache clean needs
+ *                         to be triggered immediately after completion of the
+ *                         current one.
+ * @cache_clean_wait:      Signalled when a cache clean has finished.
  * @platform_context:      Platform specific private data to be accessed by
  *                         platform specific config files only.
  * @kctx_list:             List of kbase_contexts created for the device, including
@@ -1398,6 +1376,13 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  * @protected_mode:        set to TRUE when GPU is put into protected mode
  * @protected_mode_transition: set to TRUE when GPU is transitioning into or
  *                         out of protected mode.
+ * @protected_mode_hwcnt_desired: True if we want GPU hardware counters to be
+ *                         enabled. Counters must be disabled before transition
+ *                         into protected mode.
+ * @protected_mode_hwcnt_disabled: True if GPU hardware counters are not
+ *                         enabled.
+ * @protected_mode_hwcnt_disable_work: Work item to disable GPU hardware
+ *                         counters, used if atomic disable is not possible.
  * @protected_mode_support: set to true if protected mode is supported.
  * @buslogger:              Pointer to the structure required for interfacing
  *                          with the bus logger module to set the size of buffer
@@ -1471,23 +1456,10 @@ struct kbase_device {
 	unsigned long hw_issues_mask[(BASE_HW_ISSUE_END + BITS_PER_LONG - 1) / BITS_PER_LONG];
 	unsigned long hw_features_mask[(BASE_HW_FEATURE_END + BITS_PER_LONG - 1) / BITS_PER_LONG];
 
-	u32 tiler_needed_cnt;
-	u32 shader_needed_cnt;
-
 	struct {
 		atomic_t count;
 		atomic_t state;
 	} disjoint_event;
-
-	u32 l2_users_count;
-
-	u64 shader_available_bitmap;
-	u64 tiler_available_bitmap;
-	u64 l2_available_bitmap;
-	u64 stack_available_bitmap;
-
-	u64 shader_ready_bitmap;
-	u64 shader_transitioning_bitmap;
 
 	s8 nr_hw_address_spaces;
 	s8 nr_user_address_spaces;
@@ -1498,10 +1470,14 @@ struct kbase_device {
 
 		struct kbase_context *kctx;
 		u64 addr;
+		u64 addr_bytes;
 
 		struct kbase_instr_backend backend;
 	} hwcnt;
 
+	struct kbase_hwcnt_backend_interface hwcnt_gpu_iface;
+	struct kbase_hwcnt_context *hwcnt_gpu_ctx;
+	struct kbase_hwcnt_virtualizer *hwcnt_gpu_virt;
 	struct kbase_vinstr_context *vinstr_ctx;
 
 #if KBASE_TRACE_ENABLE
@@ -1513,7 +1489,9 @@ struct kbase_device {
 
 	u32 reset_timeout_ms;
 
-	struct mutex cacheclean_lock;
+	bool cache_clean_in_progress;
+	bool cache_clean_queued;
+	wait_queue_head_t cache_clean_wait;
 
 	void *platform_context;
 
@@ -1548,26 +1526,8 @@ struct kbase_device {
 		 * the difference between last_metrics and the current values.
 		 */
 		struct kbasep_pm_metrics last_metrics;
-
-		/*
-		 * gpu_active_callback - Inform IPA that GPU is now active
-		 * @model_data: Pointer to model data
-		 */
-		void (*gpu_active_callback)(
-				struct kbase_ipa_model_vinstr_data *model_data);
-
-		/*
-		 * gpu_idle_callback - Inform IPA that GPU is now idle
-		 * @model_data: Pointer to model data
-		 */
-		void (*gpu_idle_callback)(
-				struct kbase_ipa_model_vinstr_data *model_data);
-
 		/* Model data to pass to ipa_gpu_active/idle() */
 		struct kbase_ipa_model_vinstr_data *model_data;
-
-		/* true if IPA is currently using vinstr */
-		bool vinstr_active;
 
 		/* true if use of fallback model has been forced by the User */
 		bool force_fallback_model;
@@ -1641,6 +1601,12 @@ struct kbase_device {
 	bool protected_mode;
 
 	bool protected_mode_transition;
+
+	bool protected_mode_hwcnt_desired;
+
+	bool protected_mode_hwcnt_disabled;
+
+	struct work_struct protected_mode_hwcnt_disable_work;
 
 	bool protected_mode_support;
 
@@ -1824,6 +1790,9 @@ struct kbase_sub_alloc {
  *                        having the same value for GPU & CPU virtual address.
  * @reg_rbtree_custom:    RB tree of the memory regions allocated from the CUSTOM_VA
  *                        zone of the GPU virtual address space.
+ * @reg_rbtree_exec:      RB tree of the memory regions allocated from the EXEC_VA
+ *                        zone of the GPU virtual address space. Used for GPU-executable
+ *                        allocations which don't need the SAME_VA property.
  * @cookies:              Bitmask containing of BITS_PER_LONG bits, used mainly for
  *                        SAME_VA allocations to defer the reservation of memory region
  *                        (from the GPU virtual address space) from base_mem_alloc
@@ -1896,6 +1865,10 @@ struct kbase_sub_alloc {
  *                        pages used for GPU allocations, done for the context,
  *                        to the memory consumed by the process.
  * @same_va_end:          End address of the SAME_VA zone (in 4KB page units)
+ * @exec_va_start:        Start address of the EXEC_VA zone (in 4KB page units)
+ *                        or U64_MAX if the EXEC_VA zone is uninitialized.
+ * @gpu_va_end:           End address of the GPU va space (in 4KB page units)
+ * @jit_va:               Indicates if a JIT_VA zone has been created.
  * @timeline:             Object tracking the number of atoms currently in flight for
  *                        the context and thread group id of the process, i.e. @tgid.
  * @mem_profile_data:     Buffer containing the profiling information provided by
@@ -1930,9 +1903,11 @@ struct kbase_sub_alloc {
  * @slots_pullable:       Bitmask of slots, indicating the slots for which the
  *                        context has pullable atoms in the runnable tree.
  * @work:                 Work structure used for deferred ASID assignment.
- * @vinstr_cli:           Pointer to the legacy userspace vinstr client, there can
- *                        be only such client per kbase context.
- * @vinstr_cli_lock:      Lock used for the vinstr ioctl calls made for @vinstr_cli.
+ * @legacy_hwcnt_cli:     Pointer to the legacy userspace hardware counters
+ *                        client, there can be only such client per kbase
+ *                        context.
+ * @legacy_hwcnt_lock:    Lock used to prevent concurrent access to
+ *                        @legacy_hwcnt_cli.
  * @completed_jobs:       List containing completed atoms for which base_jd_event is
  *                        to be posted.
  * @work_count:           Number of work items, corresponding to atoms, currently
@@ -2017,6 +1992,7 @@ struct kbase_context {
 	struct mutex            reg_lock;
 	struct rb_root reg_rbtree_same;
 	struct rb_root reg_rbtree_custom;
+	struct rb_root reg_rbtree_exec;
 
 
 	unsigned long    cookies;
@@ -2060,6 +2036,9 @@ struct kbase_context {
 	spinlock_t         mm_update_lock;
 	struct mm_struct __rcu *process_mm;
 	u64 same_va_end;
+	u64 exec_va_start;
+	u64 gpu_va_end;
+	bool jit_va;
 
 #ifdef CONFIG_DEBUG_FS
 	char *mem_profile_data;
@@ -2087,8 +2066,8 @@ struct kbase_context {
 
 	struct work_struct work;
 
-	struct kbase_vinstr_client *vinstr_cli;
-	struct mutex vinstr_cli_lock;
+	struct kbase_hwcnt_legacy_client *legacy_hwcnt_cli;
+	struct mutex legacy_hwcnt_lock;
 
 	struct list_head completed_jobs;
 	atomic_t work_count;

@@ -163,7 +163,7 @@ void kbase_pm_enable_interrupts(struct kbase_device *kbdev);
  * kbase_pm_disable_interrupts - Disable interrupts on the device.
  *
  * This prevents delivery of Power Management interrupts to the CPU so that
- * kbase_pm_check_transitions_nolock() will not be called from the IRQ handler
+ * kbase_pm_update_state() will not be called from the IRQ handler
  * until kbase_pm_enable_interrupts() or kbase_pm_clock_on() is called.
  *
  * Interrupts are also disabled after a call to kbase_pm_clock_off().
@@ -206,58 +206,38 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags);
  */
 void kbase_pm_reset_done(struct kbase_device *kbdev);
 
-
 /**
- * kbase_pm_check_transitions_nolock - Check if there are any power transitions
- *                                     to make, and if so start them.
+ * kbase_pm_wait_for_desired_state - Wait for the desired power state to be
+ *                                   reached
  *
- * This function will check the desired_xx_state members of
- * struct kbase_pm_device_data and the actual status of the hardware to see if
- * any power transitions can be made at this time to make the hardware state
- * closer to the state desired by the power policy.
- *
- * The return value can be used to check whether all the desired cores are
- * available, and so whether it's worth submitting a job (e.g. from a Power
- * Management IRQ).
- *
- * Note that this still returns true when desired_xx_state has no
- * cores. That is: of the no cores desired, none were *un*available. In
- * this case, the caller may still need to try submitting jobs. This is because
- * the Core Availability Policy might have taken us to an intermediate state
- * where no cores are powered, before powering on more cores (e.g. for core
- * rotation)
- *
- * The caller must hold kbase_device.pm.power_change_lock
- *
- * @kbdev: The kbase device structure for the device (must be a valid pointer)
- *
- * Return:      non-zero when all desired cores are available. That is,
- *              it's worthwhile for the caller to submit a job.
- *              false otherwise
- */
-bool kbase_pm_check_transitions_nolock(struct kbase_device *kbdev);
-
-/**
- * kbase_pm_check_transitions_sync - Synchronous and locking variant of
- *                                   kbase_pm_check_transitions_nolock()
- *
- * On returning, the desired state at the time of the call will have been met.
- *
- * There is nothing to stop the core being switched off by calls to
- * kbase_pm_release_cores() or kbase_pm_unrequest_cores(). Therefore, the
- * caller must have already made a call to
- * kbase_pm_request_cores()/kbase_pm_request_cores_sync() previously.
+ * Wait for the L2 and shader power state machines to reach the states
+ * corresponding to the values of 'l2_desired' and 'shaders_desired'.
  *
  * The usual use-case for this is to ensure cores are 'READY' after performing
  * a GPU Reset.
  *
- * Unlike kbase_pm_check_transitions_nolock(), the caller must not hold
- * kbase_device.pm.power_change_lock, because this function will take that
- * lock itself.
+ * Unlike kbase_pm_update_state(), the caller must not hold hwaccess_lock,
+ * because this function will take that lock itself.
  *
  * @kbdev: The kbase device structure for the device (must be a valid pointer)
  */
-void kbase_pm_check_transitions_sync(struct kbase_device *kbdev);
+void kbase_pm_wait_for_desired_state(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_wait_for_l2_powered - Wait for the L2 cache to be powered on
+ *
+ * Wait for the L2 to be powered on, and for the L2 and shader state machines to
+ * stabilise by reaching the states corresponding to the values of 'l2_desired'
+ * and 'shaders_desired'.
+ *
+ * kbdev->pm.active_count must be non-zero when calling this function.
+ *
+ * Unlike kbase_pm_update_state(), the caller must not hold hwaccess_lock,
+ * because this function will take that lock itself.
+ *
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ */
+void kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev);
 
 /**
  * kbase_pm_update_cores_state_nolock - Variant of kbase_pm_update_cores_state()
@@ -267,6 +247,25 @@ void kbase_pm_check_transitions_sync(struct kbase_device *kbdev);
  * @kbdev: The kbase device structure for the device (must be a valid pointer)
  */
 void kbase_pm_update_cores_state_nolock(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_update_state - Update the L2 and shader power state machines
+ * @kbdev: Device pointer
+ */
+void kbase_pm_update_state(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_state_machine_init - Initialize the state machines, primarily the
+ *                               shader poweroff timer
+ * @kbdev: Device pointer
+ */
+int kbase_pm_state_machine_init(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_state_machine_term - Clean up the PM state machines' data
+ * @kbdev: Device pointer
+ */
+void kbase_pm_state_machine_term(struct kbase_device *kbdev);
 
 /**
  * kbase_pm_update_cores_state - Update the desired state of shader cores from
@@ -281,24 +280,6 @@ void kbase_pm_update_cores_state_nolock(struct kbase_device *kbdev);
  * @kbdev: The kbase device structure for the device (must be a valid pointer)
  */
 void kbase_pm_update_cores_state(struct kbase_device *kbdev);
-
-/**
- * kbase_pm_cancel_deferred_poweroff - Cancel any pending requests to power off
- *                                     the GPU and/or shader cores.
- *
- * This should be called by any functions which directly power off the GPU.
- *
- * @kbdev: The kbase device structure for the device (must be a valid pointer)
- */
-void kbase_pm_cancel_deferred_poweroff(struct kbase_device *kbdev);
-
-/**
- * kbasep_pm_init_core_use_bitmaps - Initialise data tracking the required
- *                                   and used cores.
- *
- * @kbdev: The kbase device structure for the device (must be a valid pointer)
- */
-void kbasep_pm_init_core_use_bitmaps(struct kbase_device *kbdev);
 
 /**
  * kbasep_pm_metrics_init - Initialize the metrics gathering framework.
@@ -576,5 +557,68 @@ void kbase_pm_cache_snoop_disable(struct kbase_device *kbdev);
  */
 void kbase_devfreq_set_core_mask(struct kbase_device *kbdev, u64 core_mask);
 #endif
+
+/**
+ * kbase_pm_reset_start_locked - Signal that GPU reset has started
+ * @kbdev: Device pointer
+ *
+ * Normal power management operation will be suspended until the reset has
+ * completed.
+ *
+ * Caller must hold hwaccess_lock.
+ */
+void kbase_pm_reset_start_locked(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_reset_complete - Signal that GPU reset has completed
+ * @kbdev: Device pointer
+ *
+ * Normal power management operation will be resumed. The power manager will
+ * re-evaluate what cores are needed and power on or off as required.
+ */
+void kbase_pm_reset_complete(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_protected_override_enable - Enable the protected mode override
+ * @kbdev: Device pointer
+ *
+ * When the protected mode override is enabled, all shader cores are requested
+ * to power down, and the L2 power state can be controlled by
+ * kbase_pm_protected_l2_override().
+ *
+ * Caller must hold hwaccess_lock.
+ */
+void kbase_pm_protected_override_enable(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_protected_override_disable - Disable the protected mode override
+ * @kbdev: Device pointer
+ *
+ * Caller must hold hwaccess_lock.
+ */
+void kbase_pm_protected_override_disable(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_protected_l2_override - Control the protected mode L2 override
+ * @kbdev: Device pointer
+ * @override: true to enable the override, false to disable
+ *
+ * When the driver is transitioning in or out of protected mode, the L2 cache is
+ * forced to power off. This can be overridden to force the L2 cache to power
+ * on. This is required to change coherency settings on some GPUs.
+ */
+void kbase_pm_protected_l2_override(struct kbase_device *kbdev, bool override);
+
+/* If true, the driver should explicitly control corestack power management,
+ * instead of relying on the Power Domain Controller.
+ */
+extern bool corestack_driver_control;
+
+/* If true, disable powering-down of individual cores, and just power-down at
+ * the top-level using platform-specific code.
+ * If false, use the expected behaviour of controlling the individual cores
+ * from within the driver.
+ */
+extern bool platform_power_down_only;
 
 #endif /* _KBASE_BACKEND_PM_INTERNAL_H_ */

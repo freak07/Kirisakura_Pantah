@@ -283,8 +283,11 @@ static int kbase_devfreq_init_core_mask_table(struct kbase_device *kbdev)
 			real_freq = opp_freq;
 		if (of_property_read_u64(node, "opp-core-mask", &core_mask))
 			core_mask = shader_present;
-		if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_11056) &&
-				core_mask != shader_present) {
+		if (core_mask != shader_present &&
+				(kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_11056) ||
+				 corestack_driver_control ||
+				 platform_power_down_only)) {
+
 			dev_warn(kbdev->dev, "Ignoring OPP %llu - Dynamic Core Scaling not supported on this GPU\n",
 					opp_freq);
 			continue;

@@ -21,7 +21,6 @@ bob_kernel_module {
         "mali_kbase",
         "kutf",
     ],
-    install_group: "IG_tests",
     enabled: false,
     base_build_kutf: {
         enabled: true,

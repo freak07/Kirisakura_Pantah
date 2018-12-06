@@ -31,11 +31,13 @@
 
 #include <mali_kbase_pm.h>
 #include <mali_kbase_hwaccess_jm.h>
+#include <mali_kbase_hwcnt_context.h>
 #include <backend/gpu/mali_kbase_js_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <backend/gpu/mali_kbase_jm_internal.h>
 
 static void kbase_pm_gpu_poweroff_wait_wq(struct work_struct *data);
+static void kbase_pm_hwcnt_disable_worker(struct work_struct *data);
 
 int kbase_pm_runtime_init(struct kbase_device *kbdev)
 {
@@ -112,7 +114,7 @@ void kbase_pm_register_access_disable(struct kbase_device *kbdev)
 	kbdev->pm.backend.gpu_powered = false;
 }
 
-int kbase_hwaccess_pm_init(struct kbase_device *kbdev)
+int kbase_hwaccess_pm_early_init(struct kbase_device *kbdev)
 {
 	int ret = 0;
 
@@ -128,21 +130,18 @@ int kbase_hwaccess_pm_init(struct kbase_device *kbdev)
 	INIT_WORK(&kbdev->pm.backend.gpu_poweroff_wait_work,
 			kbase_pm_gpu_poweroff_wait_wq);
 
+	kbdev->pm.backend.ca_cores_enabled = ~0ull;
 	kbdev->pm.backend.gpu_powered = false;
 	kbdev->pm.suspending = false;
 #ifdef CONFIG_MALI_DEBUG
 	kbdev->pm.backend.driver_ready_for_irqs = false;
 #endif /* CONFIG_MALI_DEBUG */
-	kbdev->pm.backend.gpu_in_desired_state = true;
 	init_waitqueue_head(&kbdev->pm.backend.gpu_in_desired_state_wait);
 
 	/* Initialise the metrics subsystem */
 	ret = kbasep_pm_metrics_init(kbdev);
 	if (ret)
 		return ret;
-
-	init_waitqueue_head(&kbdev->pm.backend.l2_powered_wait);
-	kbdev->pm.backend.l2_powered = 0;
 
 	init_waitqueue_head(&kbdev->pm.backend.reset_done_wait);
 	kbdev->pm.backend.reset_done = false;
@@ -161,13 +160,31 @@ int kbase_hwaccess_pm_init(struct kbase_device *kbdev)
 	if (kbase_pm_policy_init(kbdev) != 0)
 		goto pm_policy_fail;
 
+	if (kbase_pm_state_machine_init(kbdev) != 0)
+		goto pm_state_machine_fail;
+
 	return 0;
 
+pm_state_machine_fail:
+	kbase_pm_policy_term(kbdev);
 pm_policy_fail:
 	kbase_pm_ca_term(kbdev);
 workq_fail:
 	kbasep_pm_metrics_term(kbdev);
 	return -EINVAL;
+}
+
+int kbase_hwaccess_pm_late_init(struct kbase_device *kbdev)
+{
+	KBASE_DEBUG_ASSERT(kbdev != NULL);
+
+	kbdev->pm.backend.hwcnt_desired = false;
+	kbdev->pm.backend.hwcnt_disabled = true;
+	INIT_WORK(&kbdev->pm.backend.hwcnt_disable_work,
+		kbase_pm_hwcnt_disable_worker);
+	kbase_hwcnt_context_disable(kbdev->hwcnt_gpu_ctx);
+
+	return 0;
 }
 
 void kbase_pm_do_poweron(struct kbase_device *kbdev, bool is_resume)
@@ -177,6 +194,17 @@ void kbase_pm_do_poweron(struct kbase_device *kbdev, bool is_resume)
 	/* Turn clocks and interrupts on - no-op if we haven't done a previous
 	 * kbase_pm_clock_off() */
 	kbase_pm_clock_on(kbdev, is_resume);
+
+	if (!is_resume) {
+		unsigned long flags;
+
+		/* Force update of L2 state - if we have abandoned a power off
+		 * then this may be required to power the L2 back on.
+		 */
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbase_pm_update_state(kbdev);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	}
 
 	/* Update core status as required by the policy */
 	kbase_pm_update_cores_state(kbdev);
@@ -194,36 +222,24 @@ static void kbase_pm_gpu_poweroff_wait_wq(struct work_struct *data)
 	struct kbasep_js_device_data *js_devdata = &kbdev->js_data;
 	unsigned long flags;
 
-#if !PLATFORM_POWER_DOWN_ONLY
-	/* Wait for power transitions to complete. We do this with no locks held
-	 * so that we don't deadlock with any pending workqueues */
-	kbase_pm_check_transitions_sync(kbdev);
-#endif /* !PLATFORM_POWER_DOWN_ONLY */
+	if (!platform_power_down_only)
+		/* Wait for power transitions to complete. We do this with no locks held
+		 * so that we don't deadlock with any pending workqueues.
+		 */
+		kbase_pm_wait_for_desired_state(kbdev);
 
 	mutex_lock(&js_devdata->runpool_mutex);
 	mutex_lock(&kbdev->pm.lock);
 
-#if PLATFORM_POWER_DOWN_ONLY
-	if (kbdev->pm.backend.gpu_powered) {
-		if (kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_L2)) {
-			/* If L2 cache is powered then we must flush it before
-			 * we power off the GPU. Normally this would have been
-			 * handled when the L2 was powered off. */
-			kbase_gpu_cacheclean(kbdev);
-		}
-	}
-#endif /* PLATFORM_POWER_DOWN_ONLY */
-
 	if (!backend->poweron_required) {
-#if !PLATFORM_POWER_DOWN_ONLY
-		unsigned long flags;
+		if (!platform_power_down_only) {
+			unsigned long flags;
 
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		WARN_ON(kbdev->l2_available_bitmap ||
-				kbdev->shader_available_bitmap ||
-				kbdev->tiler_available_bitmap);
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-#endif /* !PLATFORM_POWER_DOWN_ONLY */
+			spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+			WARN_ON(backend->shaders_state != KBASE_SHADERS_OFF_CORESTACK_OFF ||
+					backend->l2_state != KBASE_L2_OFF);
+			spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+		}
 
 		/* Disable interrupts and turn the clock off */
 		if (!kbase_pm_clock_off(kbdev, backend->poweroff_is_suspend)) {
@@ -256,6 +272,8 @@ static void kbase_pm_gpu_poweroff_wait_wq(struct work_struct *data)
 	backend->poweroff_wait_in_progress = false;
 	if (backend->poweron_required) {
 		backend->poweron_required = false;
+		kbdev->pm.backend.l2_desired = true;
+		kbase_pm_update_state(kbdev);
 		kbase_pm_update_cores_state_nolock(kbdev);
 		kbase_backend_slot_update(kbdev);
 	}
@@ -267,6 +285,45 @@ static void kbase_pm_gpu_poweroff_wait_wq(struct work_struct *data)
 	wake_up(&kbdev->pm.backend.poweroff_wait);
 }
 
+static void kbase_pm_hwcnt_disable_worker(struct work_struct *data)
+{
+	struct kbase_device *kbdev = container_of(data, struct kbase_device,
+			pm.backend.hwcnt_disable_work);
+	struct kbase_pm_device_data *pm = &kbdev->pm;
+	struct kbase_pm_backend_data *backend = &pm->backend;
+	unsigned long flags;
+
+	bool do_disable;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	do_disable = !backend->hwcnt_desired && !backend->hwcnt_disabled;
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	if (!do_disable)
+		return;
+
+	kbase_hwcnt_context_disable(kbdev->hwcnt_gpu_ctx);
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	do_disable = !backend->hwcnt_desired && !backend->hwcnt_disabled;
+
+	if (do_disable) {
+		/* PM state did not change while we were doing the disable,
+		 * so commit the work we just performed and continue the state
+		 * machine.
+		 */
+		backend->hwcnt_disabled = true;
+		kbase_pm_update_state(kbdev);
+	} else {
+		/* PM state was updated while we were doing the disable,
+		 * so we need to undo the disable we just performed.
+		 */
+		kbase_hwcnt_context_enable(kbdev->hwcnt_gpu_ctx);
+	}
+
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+}
+
 void kbase_pm_do_poweroff(struct kbase_device *kbdev, bool is_suspend)
 {
 	unsigned long flags;
@@ -274,29 +331,36 @@ void kbase_pm_do_poweroff(struct kbase_device *kbdev, bool is_suspend)
 	lockdep_assert_held(&kbdev->pm.lock);
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	if (!kbdev->pm.backend.poweroff_wait_in_progress) {
-		/* Force all cores off */
-		kbdev->pm.backend.desired_shader_state = 0;
-		kbdev->pm.backend.desired_tiler_state = 0;
 
-		/* Force all cores to be unavailable, in the situation where
-		 * transitions are in progress for some cores but not others,
-		 * and kbase_pm_check_transitions_nolock can not immediately
-		 * power off the cores */
-		kbdev->shader_available_bitmap = 0;
-		kbdev->tiler_available_bitmap = 0;
-		kbdev->l2_available_bitmap = 0;
-
-		kbdev->pm.backend.poweroff_wait_in_progress = true;
-		kbdev->pm.backend.poweroff_is_suspend = is_suspend;
-
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		/*Kick off wq here. Callers will have to wait*/
-		queue_work(kbdev->pm.backend.gpu_poweroff_wait_wq,
-				&kbdev->pm.backend.gpu_poweroff_wait_work);
+	spin_lock(&kbdev->pm.backend.gpu_powered_lock);
+	if (!kbdev->pm.backend.gpu_powered) {
+		spin_unlock(&kbdev->pm.backend.gpu_powered_lock);
+		goto unlock_hwaccess;
 	} else {
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+		spin_unlock(&kbdev->pm.backend.gpu_powered_lock);
 	}
+
+	if (kbdev->pm.backend.poweroff_wait_in_progress)
+		goto unlock_hwaccess;
+
+	/* Force all cores off */
+	kbdev->pm.backend.shaders_desired = false;
+	kbdev->pm.backend.l2_desired = false;
+
+	kbdev->pm.backend.poweroff_wait_in_progress = true;
+	kbdev->pm.backend.poweroff_is_suspend = is_suspend;
+	kbdev->pm.backend.invoke_poweroff_wait_wq_when_l2_off = true;
+
+	/* l2_desired being false should cause the state machine to
+	 * start powering off the L2. When it actually is powered off,
+	 * the interrupt handler will call kbase_pm_l2_update_state()
+	 * again, which will trigger the kbase_pm_gpu_poweroff_wait_wq.
+	 * Callers of this function will need to wait on poweroff_wait.
+	 */
+	kbase_pm_update_state(kbdev);
+
+unlock_hwaccess:
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
 
 static bool is_poweroff_in_progress(struct kbase_device *kbdev)
@@ -341,8 +405,6 @@ int kbase_hwaccess_pm_powerup(struct kbase_device *kbdev,
 		return ret;
 	}
 
-	kbasep_pm_init_core_use_bitmaps(kbdev);
-
 	kbdev->pm.debug_core_mask_all = kbdev->pm.debug_core_mask[0] =
 			kbdev->pm.debug_core_mask[1] =
 			kbdev->pm.debug_core_mask[2] =
@@ -385,20 +447,20 @@ void kbase_hwaccess_pm_halt(struct kbase_device *kbdev)
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 
 	mutex_lock(&kbdev->pm.lock);
-	kbase_pm_cancel_deferred_poweroff(kbdev);
 	kbase_pm_do_poweroff(kbdev, false);
 	mutex_unlock(&kbdev->pm.lock);
 }
 
 KBASE_EXPORT_TEST_API(kbase_hwaccess_pm_halt);
 
-void kbase_hwaccess_pm_term(struct kbase_device *kbdev)
+void kbase_hwaccess_pm_early_term(struct kbase_device *kbdev)
 {
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	KBASE_DEBUG_ASSERT(kbdev->pm.active_count == 0);
 	KBASE_DEBUG_ASSERT(kbdev->pm.backend.gpu_cycle_counter_requests == 0);
 
 	/* Free any resources the policy allocated */
+	kbase_pm_state_machine_term(kbdev);
 	kbase_pm_policy_term(kbdev);
 	kbase_pm_ca_term(kbdev);
 
@@ -408,16 +470,29 @@ void kbase_hwaccess_pm_term(struct kbase_device *kbdev)
 	destroy_workqueue(kbdev->pm.backend.gpu_poweroff_wait_wq);
 }
 
+void kbase_hwaccess_pm_late_term(struct kbase_device *kbdev)
+{
+	KBASE_DEBUG_ASSERT(kbdev != NULL);
+
+	cancel_work_sync(&kbdev->pm.backend.hwcnt_disable_work);
+
+	if (kbdev->pm.backend.hwcnt_disabled) {
+		unsigned long flags;
+
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbase_hwcnt_context_enable(kbdev->hwcnt_gpu_ctx);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	}
+}
+
 void kbase_pm_power_changed(struct kbase_device *kbdev)
 {
-	bool cores_are_available;
 	unsigned long flags;
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	cores_are_available = kbase_pm_check_transitions_nolock(kbdev);
+	kbase_pm_update_state(kbdev);
 
-	if (cores_are_available)
-		kbase_backend_slot_update(kbdev);
+	kbase_backend_slot_update(kbdev);
 
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
@@ -455,7 +530,6 @@ void kbase_hwaccess_pm_suspend(struct kbase_device *kbdev)
 	mutex_lock(&js_devdata->runpool_mutex);
 	mutex_lock(&kbdev->pm.lock);
 
-	kbase_pm_cancel_deferred_poweroff(kbdev);
 	kbase_pm_do_poweroff(kbdev, true);
 
 	kbase_backend_timer_suspend(kbdev);

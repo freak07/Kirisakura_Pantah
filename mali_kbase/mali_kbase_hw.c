@@ -74,11 +74,11 @@ void kbase_hw_set_features_mask(struct kbase_device *kbdev)
 		case GPU_ID2_PRODUCT_TNAX:
 			features = base_hw_features_tNAx;
 			break;
+		case GPU_ID2_PRODUCT_TBEX:
+			features = base_hw_features_tBEx;
+			break;
 		case GPU_ID2_PRODUCT_TULX:
 			features = base_hw_features_tULx;
-			break;
-		case GPU_ID2_PRODUCT_TDUX:
-			features = base_hw_features_tDUx;
 			break;
 		case GPU_ID2_PRODUCT_TBOX:
 			features = base_hw_features_tBOx;
@@ -213,12 +213,12 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tNAx_r0p0},
 		  {U32_MAX, NULL} } },
 
-		{GPU_ID2_PRODUCT_TULX,
-		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tULx_r0p0},
+		{GPU_ID2_PRODUCT_TBEX,
+		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tBEx_r0p0},
 		  {U32_MAX, NULL} } },
 
-		{GPU_ID2_PRODUCT_TDUX,
-		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tDUx_r0p0},
+		{GPU_ID2_PRODUCT_TULX,
+		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tULx_r0p0},
 		  {U32_MAX, NULL} } },
 
 		{GPU_ID2_PRODUCT_TBOX,
@@ -250,10 +250,8 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 	if (product != NULL) {
 		/* Found a matching product. */
 		const u32 version = gpu_id & GPU_ID2_VERSION;
-#if !MALI_CUSTOMER_RELEASE
 		u32 fallback_version = 0;
 		const enum base_hw_issue *fallback_issues = NULL;
-#endif
 		size_t v;
 
 		/* Stop when we reach the end of the map. */
@@ -265,25 +263,34 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 				break;
 			}
 
-#if !MALI_CUSTOMER_RELEASE
 			/* Check whether this is a candidate for most recent
 				known version not later than the actual
 				version. */
 			if ((version > product->map[v].version) &&
 				(product->map[v].version >= fallback_version)) {
-				fallback_version = product->map[v].version;
-				fallback_issues = product->map[v].issues;
-			}
+#if MALI_CUSTOMER_RELEASE
+				/* Match on version's major and minor fields */
+				if (((version ^ product->map[v].version) >>
+					GPU_ID2_VERSION_MINOR_SHIFT) == 0)
 #endif
+				{
+					fallback_version = product->map[v].version;
+					fallback_issues = product->map[v].issues;
+				}
+			}
 		}
 
-#if !MALI_CUSTOMER_RELEASE
 		if ((issues == NULL) && (fallback_issues != NULL)) {
 			/* Fall back to the issue set of the most recent known
 				version not later than the actual version. */
 			issues = fallback_issues;
 
+#if MALI_CUSTOMER_RELEASE
+			dev_warn(kbdev->dev,
+				"GPU hardware issue table may need updating:\n"
+#else
 			dev_info(kbdev->dev,
+#endif
 				"r%dp%d status %d is unknown; treating as r%dp%d status %d",
 				(gpu_id & GPU_ID2_VERSION_MAJOR) >>
 					GPU_ID2_VERSION_MAJOR_SHIFT,
@@ -305,7 +312,6 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 			kbase_gpuprops_update_core_props_gpu_id(
 				&kbdev->gpu_props.props);
 		}
-#endif
 	}
 	return issues;
 }
@@ -467,11 +473,11 @@ int kbase_hw_set_issues_mask(struct kbase_device *kbdev)
 			case GPU_ID2_PRODUCT_TNAX:
 				issues = base_hw_issues_model_tNAx;
 				break;
+			case GPU_ID2_PRODUCT_TBEX:
+				issues = base_hw_issues_model_tBEx;
+				break;
 			case GPU_ID2_PRODUCT_TULX:
 				issues = base_hw_issues_model_tULx;
-				break;
-			case GPU_ID2_PRODUCT_TDUX:
-				issues = base_hw_issues_model_tDUx;
 				break;
 			case GPU_ID2_PRODUCT_TBOX:
 				issues = base_hw_issues_model_tBOx;

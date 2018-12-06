@@ -268,8 +268,9 @@ static int kbase_simple_power_model_init(struct kbase_ipa_model *model)
 							  (void *) model_data,
 							  "mali-simple-power-model-temp-poll");
 	if (IS_ERR(model_data->poll_temperature_thread)) {
+		err = PTR_ERR(model_data->poll_temperature_thread);
 		kfree(model_data);
-		return PTR_ERR(model_data->poll_temperature_thread);
+		return err;
 	}
 
 	err = add_params(model);

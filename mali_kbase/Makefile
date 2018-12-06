@@ -25,10 +25,6 @@ KDIR ?= /lib/modules/$(shell uname -r)/build
 BUSLOG_PATH_RELATIVE = $(CURDIR)/../../../..
 KBASE_PATH_RELATIVE = $(CURDIR)
 
-ifeq ($(MALI_UNIT_TEST), 1)
-	EXTRA_SYMBOLS += $(KBASE_PATH_RELATIVE)/tests/internal/src/kernel_assert_module/linux/Module.symvers
-endif
-
 ifeq ($(CONFIG_MALI_FPGA_BUS_LOGGER),y)
 #Add bus logger symbols
 EXTRA_SYMBOLS += $(BUSLOG_PATH_RELATIVE)/drivers/base/bus_logger/Module.symvers

@@ -38,14 +38,12 @@ BACKEND += \
 	backend/gpu/mali_kbase_pm_ca.c \
 	backend/gpu/mali_kbase_pm_always_on.c \
 	backend/gpu/mali_kbase_pm_coarse_demand.c \
-	backend/gpu/mali_kbase_pm_demand.c \
 	backend/gpu/mali_kbase_pm_policy.c \
 	backend/gpu/mali_kbase_time.c
 
 ifeq ($(MALI_CUSTOMER_RELEASE),0)
 BACKEND += \
-	backend/gpu/mali_kbase_pm_demand_always_powered.c \
-	backend/gpu/mali_kbase_pm_fast_start.c
+	backend/gpu/mali_kbase_pm_always_on_demand.c
 endif
 
 ifeq ($(CONFIG_MALI_DEVFREQ),y)

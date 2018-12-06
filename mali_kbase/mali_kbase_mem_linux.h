@@ -303,22 +303,6 @@ void *kbase_vmap(struct kbase_context *kctx, u64 gpu_addr, size_t size,
  */
 void kbase_vunmap(struct kbase_context *kctx, struct kbase_vmap_struct *map);
 
-/** @brief Allocate memory from kernel space and map it onto the GPU
- *
- * @param kctx   The context used for the allocation/mapping
- * @param size   The size of the allocation in bytes
- * @param handle An opaque structure used to contain the state needed to free the memory
- * @return the VA for kernel space and GPU MMU
- */
-void *kbase_va_alloc(struct kbase_context *kctx, u32 size, struct kbase_hwc_dma_mapping *handle);
-
-/** @brief Free/unmap memory allocated by kbase_va_alloc
- *
- * @param kctx   The context used for the allocation/mapping
- * @param handle An opaque structure returned by the kbase_va_alloc function.
- */
-void kbase_va_free(struct kbase_context *kctx, struct kbase_hwc_dma_mapping *handle);
-
 extern const struct vm_operations_struct kbase_vm_ops;
 
 /**

@@ -114,8 +114,8 @@
 #define GPU_ID2_PRODUCT_TEGX              GPU_ID2_MODEL_MAKE(8, 3)
 #define GPU_ID2_PRODUCT_TTRX              GPU_ID2_MODEL_MAKE(9, 0)
 #define GPU_ID2_PRODUCT_TNAX              GPU_ID2_MODEL_MAKE(9, 1)
+#define GPU_ID2_PRODUCT_TBEX              GPU_ID2_MODEL_MAKE(9, 2)
 #define GPU_ID2_PRODUCT_TULX              GPU_ID2_MODEL_MAKE(10, 0)
-#define GPU_ID2_PRODUCT_TDUX              GPU_ID2_MODEL_MAKE(10, 1)
 #define GPU_ID2_PRODUCT_TIDX              GPU_ID2_MODEL_MAKE(10, 3)
 #define GPU_ID2_PRODUCT_TVAX              GPU_ID2_MODEL_MAKE(10, 4)
 

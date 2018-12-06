@@ -149,7 +149,7 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 
 	kctx->id = atomic_add_return(1, &(kbdev->ctx_num)) - 1;
 
-	mutex_init(&kctx->vinstr_cli_lock);
+	mutex_init(&kctx->legacy_hwcnt_lock);
 
 	kbase_timer_setup(&kctx->soft_job_timeout,
 			  kbasep_soft_job_timeout_worker);
@@ -324,9 +324,6 @@ int kbase_context_set_create_flags(struct kbase_context *kctx, u32 flags)
 	/* Translate the flags */
 	if ((flags & BASE_CONTEXT_SYSTEM_MONITOR_SUBMIT_DISABLED) == 0)
 		kbase_ctx_flag_clear(kctx, KCTX_SUBMIT_DISABLED);
-
-	/* Latch the initial attributes into the Job Scheduler */
-	kbasep_js_ctx_attr_set_initial_attrs(kctx->kbdev, kctx);
 
 	spin_unlock_irqrestore(&kctx->kbdev->hwaccess_lock, irq_flags);
 	mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);

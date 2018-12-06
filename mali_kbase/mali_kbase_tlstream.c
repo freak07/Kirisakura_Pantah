@@ -170,7 +170,8 @@ enum tl_msg_id_aux {
 	KBASE_AUX_PROTECTED_ENTER_START,
 	KBASE_AUX_PROTECTED_ENTER_END,
 	KBASE_AUX_PROTECTED_LEAVE_START,
-	KBASE_AUX_PROTECTED_LEAVE_END
+	KBASE_AUX_PROTECTED_LEAVE_END,
+	KBASE_AUX_JIT_STATS,
 };
 
 /*****************************************************************************/
@@ -448,8 +449,8 @@ static const struct tp_desc tp_desc_obj[] = {
 		KBASE_TL_ATTRIB_ATOM_JIT,
 		__stringify(KBASE_TL_ATTRIB_ATOM_JIT),
 		"jit done for atom",
-		"@pLL",
-		"atom,edit_addr,new_addr"
+		"@pLLL",
+		"atom,edit_addr,new_addr,va_pages"
 	},
 	{
 		KBASE_TL_ATTRIB_ATOM_JITALLOCINFO,
@@ -573,6 +574,13 @@ static const struct tp_desc tp_desc_aux[] = {
 		"leave protected mode end",
 		"@p",
 		"gpu"
+	},
+	{
+		KBASE_AUX_JIT_STATS,
+		__stringify(KBASE_AUX_JIT_STATS),
+		"per-bin JIT statistics",
+		"@IIIIII",
+		"ctx_nr,bid,max_allocs,allocs,va_pages,ph_pages"
 	}
 };
 
@@ -2165,12 +2173,12 @@ void __kbase_tlstream_tl_attrib_atom_prioritized(void *atom)
 }
 
 void __kbase_tlstream_tl_attrib_atom_jit(
-		void *atom, u64 edit_addr, u64 new_addr)
+		void *atom, u64 edit_addr, u64 new_addr, u64 va_pages)
 {
 	const u32     msg_id = KBASE_TL_ATTRIB_ATOM_JIT;
 	const size_t  msg_size =
 		sizeof(msg_id) + sizeof(u64) + sizeof(atom)
-		+ sizeof(edit_addr) + sizeof(new_addr);
+		+ sizeof(edit_addr) + sizeof(new_addr) + sizeof(va_pages);
 	unsigned long flags;
 	char          *buffer;
 	size_t        pos = 0;
@@ -2188,6 +2196,9 @@ void __kbase_tlstream_tl_attrib_atom_jit(
 			buffer, pos, &edit_addr, sizeof(edit_addr));
 	pos = kbasep_tlstream_write_bytes(
 			buffer, pos, &new_addr, sizeof(new_addr));
+	pos = kbasep_tlstream_write_bytes(
+		buffer, pos, &va_pages, sizeof(va_pages));
+
 	KBASE_DEBUG_ASSERT(msg_size == pos);
 
 	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_OBJ, flags);
@@ -2620,6 +2631,43 @@ void __kbase_tlstream_aux_protected_leave_end(void *gpu)
 	pos = kbasep_tlstream_write_timestamp(buffer, pos);
 	pos = kbasep_tlstream_write_bytes(
 			buffer, pos, &gpu, sizeof(gpu));
+	KBASE_DEBUG_ASSERT(msg_size == pos);
+
+	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_AUX, flags);
+}
+
+void __kbase_tlstream_aux_jit_stats(u32 ctx_nr, u32 bid,
+		u32 max_allocs, u32 allocs,
+		u32 va_pages, u32 ph_pages)
+{
+	const u32     msg_id = KBASE_AUX_JIT_STATS;
+	const size_t  msg_size = sizeof(msg_id) + sizeof(u64) +
+		sizeof(ctx_nr) + sizeof(bid) +
+		sizeof(max_allocs) + sizeof(allocs) +
+		sizeof(va_pages) + sizeof(ph_pages);
+	unsigned long flags;
+	char          *buffer;
+	size_t        pos = 0;
+
+	buffer = kbasep_tlstream_msgbuf_acquire(
+			TL_STREAM_TYPE_AUX,
+			msg_size, &flags);
+	KBASE_DEBUG_ASSERT(buffer);
+
+	pos = kbasep_tlstream_write_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_tlstream_write_timestamp(buffer, pos);
+	pos = kbasep_tlstream_write_bytes(
+		buffer, pos, &ctx_nr, sizeof(ctx_nr));
+	pos = kbasep_tlstream_write_bytes(
+		buffer, pos, &bid, sizeof(bid));
+	pos = kbasep_tlstream_write_bytes(
+		buffer, pos, &max_allocs, sizeof(max_allocs));
+	pos = kbasep_tlstream_write_bytes(
+		buffer, pos, &allocs, sizeof(allocs));
+	pos = kbasep_tlstream_write_bytes(
+		buffer, pos, &va_pages, sizeof(va_pages));
+	pos = kbasep_tlstream_write_bytes(
+		buffer, pos, &ph_pages, sizeof(ph_pages));
 	KBASE_DEBUG_ASSERT(msg_size == pos);
 
 	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_AUX, flags);

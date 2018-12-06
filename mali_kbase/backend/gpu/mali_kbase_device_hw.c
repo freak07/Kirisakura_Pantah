@@ -29,6 +29,7 @@
 #include <backend/gpu/mali_kbase_pm_internal.h>
 
 #include <backend/gpu/mali_kbase_device_internal.h>
+#include <mali_kbase_config_defaults.h>
 
 #if !defined(CONFIG_MALI_NO_MALI)
 
@@ -220,6 +221,84 @@ static void kbase_report_gpu_fault(struct kbase_device *kbdev, int multiple)
 		dev_warn(kbdev->dev, "There were multiple GPU faults - some have not been reported\n");
 }
 
+void kbase_gpu_start_cache_clean_nolock(struct kbase_device *kbdev)
+{
+	u32 irq_mask;
+
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	if (kbdev->cache_clean_in_progress) {
+		/* If this is called while another clean is in progress, we
+		 * can't rely on the current one to flush any new changes in
+		 * the cache. Instead, trigger another cache clean immediately
+		 * after this one finishes.
+		 */
+		kbdev->cache_clean_queued = true;
+		return;
+	}
+
+	/* Enable interrupt */
+	irq_mask = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK));
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK),
+				irq_mask | CLEAN_CACHES_COMPLETED);
+
+	KBASE_TRACE_ADD(kbdev, CORE_GPU_CLEAN_INV_CACHES, NULL, NULL, 0u, 0);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND),
+					GPU_COMMAND_CLEAN_INV_CACHES);
+
+	kbdev->cache_clean_in_progress = true;
+}
+
+void kbase_gpu_start_cache_clean(struct kbase_device *kbdev)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbase_gpu_start_cache_clean_nolock(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+}
+
+static void kbase_clean_caches_done(struct kbase_device *kbdev)
+{
+	u32 irq_mask;
+	unsigned long flags;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+
+	if (kbdev->cache_clean_queued) {
+		kbdev->cache_clean_queued = false;
+
+		KBASE_TRACE_ADD(kbdev, CORE_GPU_CLEAN_INV_CACHES, NULL, NULL, 0u, 0);
+		kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND),
+				GPU_COMMAND_CLEAN_INV_CACHES);
+	} else {
+		/* Disable interrupt */
+		irq_mask = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK));
+		kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK),
+				irq_mask & ~CLEAN_CACHES_COMPLETED);
+
+		kbdev->cache_clean_in_progress = false;
+
+		wake_up(&kbdev->cache_clean_wait);
+	}
+
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+}
+
+void kbase_gpu_wait_cache_clean(struct kbase_device *kbdev)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	while (kbdev->cache_clean_in_progress) {
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+		wait_event_interruptible(kbdev->cache_clean_wait,
+				!kbdev->cache_clean_in_progress);
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	}
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+}
+
 void kbase_gpu_interrupt(struct kbase_device *kbdev, u32 val)
 {
 	KBASE_TRACE_ADD(kbdev, CORE_GPU_IRQ, NULL, NULL, 0u, val);
@@ -232,18 +311,29 @@ void kbase_gpu_interrupt(struct kbase_device *kbdev, u32 val)
 	if (val & PRFCNT_SAMPLE_COMPLETED)
 		kbase_instr_hwcnt_sample_done(kbdev);
 
-	if (val & CLEAN_CACHES_COMPLETED)
-		kbase_clean_caches_done(kbdev);
-
 	KBASE_TRACE_ADD(kbdev, CORE_GPU_IRQ_CLEAR, NULL, NULL, 0u, val);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_CLEAR), val);
 
-	/* kbase_pm_check_transitions must be called after the IRQ has been
-	 * cleared. This is because it might trigger further power transitions
-	 * and we don't want to miss the interrupt raised to notify us that
-	 * these further transitions have finished.
+	/* kbase_pm_check_transitions (called by kbase_pm_power_changed) must
+	 * be called after the IRQ has been cleared. This is because it might
+	 * trigger further power transitions and we don't want to miss the
+	 * interrupt raised to notify us that these further transitions have
+	 * finished. The same applies to kbase_clean_caches_done() - if another
+	 * clean was queued, it might trigger another clean, which might
+	 * generate another interrupt which shouldn't be missed.
 	 */
-	if (val & POWER_CHANGED_ALL)
+
+	if (val & CLEAN_CACHES_COMPLETED)
+		kbase_clean_caches_done(kbdev);
+
+	/* When 'platform_power_down_only' is enabled, the L2 cache is not
+	 * powered down, but flushed before the GPU power down (which is done
+	 * by the platform code). So the L2 state machine requests a cache
+	 * flush. And when that flush completes, the L2 state machine needs to
+	 * be re-invoked to proceed with the GPU power down.
+	 */
+	if (val & POWER_CHANGED_ALL ||
+			(platform_power_down_only && (val & CLEAN_CACHES_COMPLETED)))
 		kbase_pm_power_changed(kbdev);
 
 	KBASE_TRACE_ADD(kbdev, CORE_GPU_IRQ_DONE, NULL, NULL, 0u, val);

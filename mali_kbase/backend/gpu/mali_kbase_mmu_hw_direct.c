@@ -242,16 +242,20 @@ void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
 void kbase_mmu_hw_configure(struct kbase_device *kbdev, struct kbase_as *as)
 {
 	struct kbase_mmu_setup *current_setup = &as->current_setup;
-	u32 transcfg = 0;
+	u64 transcfg = 0;
 
 	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_AARCH64_MMU)) {
-		transcfg = current_setup->transcfg & 0xFFFFFFFFUL;
+		transcfg = current_setup->transcfg;
 
 		/* Set flag AS_TRANSCFG_PTW_MEMATTR_WRITE_BACK */
 		/* Clear PTW_MEMATTR bits */
 		transcfg &= ~AS_TRANSCFG_PTW_MEMATTR_MASK;
 		/* Enable correct PTW_MEMATTR bits */
 		transcfg |= AS_TRANSCFG_PTW_MEMATTR_WRITE_BACK;
+		/* Ensure page-tables reads use read-allocate cache-policy in
+		 * the L2
+		 */
+		transcfg |= AS_TRANSCFG_R_ALLOCATE;
 
 		if (kbdev->system_coherency == COHERENCY_ACE) {
 			/* Set flag AS_TRANSCFG_PTW_SH_OS (outer shareable) */
@@ -264,7 +268,7 @@ void kbase_mmu_hw_configure(struct kbase_device *kbdev, struct kbase_as *as)
 		kbase_reg_write(kbdev, MMU_AS_REG(as->number, AS_TRANSCFG_LO),
 				transcfg);
 		kbase_reg_write(kbdev, MMU_AS_REG(as->number, AS_TRANSCFG_HI),
-				(current_setup->transcfg >> 32) & 0xFFFFFFFFUL);
+				(transcfg >> 32) & 0xFFFFFFFFUL);
 	} else {
 		if (kbdev->system_coherency == COHERENCY_ACE)
 			current_setup->transtab |= AS_TRANSTAB_LPAE_SHARE_OUTER;

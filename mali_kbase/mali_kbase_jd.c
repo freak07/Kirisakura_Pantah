@@ -804,7 +804,6 @@ bool jd_submit_atom(struct kbase_context *kctx, const struct base_jd_atom_v2 *us
 	katom->extres = NULL;
 	katom->device_nr = user_atom->device_nr;
 	katom->jc = user_atom->jc;
-	katom->coreref_state = KBASE_ATOM_COREREF_STATE_NO_CORES_REQUESTED;
 	katom->core_req = user_atom->core_req;
 	katom->atom_flags = 0;
 	katom->retry_count = 0;
@@ -1219,7 +1218,6 @@ void kbase_jd_done_worker(struct work_struct *data)
 	struct kbasep_js_atom_retained_state katom_retained_state;
 	bool context_idle;
 	base_jd_core_req core_req = katom->core_req;
-	enum kbase_atom_coreref_state coreref_state = katom->coreref_state;
 
 	/* Soft jobs should never reach this function */
 	KBASE_DEBUG_ASSERT((katom->core_req & BASE_JD_REQ_SOFT_JOB) == 0);
@@ -1365,7 +1363,7 @@ void kbase_jd_done_worker(struct work_struct *data)
 		mutex_unlock(&jctx->lock);
 	}
 
-	kbase_backend_complete_wq_post_sched(kbdev, core_req, coreref_state);
+	kbase_backend_complete_wq_post_sched(kbdev, core_req);
 
 	if (context_idle)
 		kbase_pm_context_idle(kbdev);

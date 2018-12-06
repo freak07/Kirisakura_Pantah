@@ -79,21 +79,28 @@ static struct rb_root *kbase_gpu_va_to_rbtree(struct kbase_context *kctx,
 {
 	struct rb_root *rbtree = NULL;
 
+	/* The gpu_pfn can only be greater than the starting pfn of the EXEC_VA
+	 * zone if this has been initialized.
+	 */
+	if (gpu_pfn >= kctx->exec_va_start)
+		rbtree = &kctx->reg_rbtree_exec;
+	else {
+		u64 same_va_end;
+
 #ifdef CONFIG_64BIT
-	if (kbase_ctx_flag(kctx, KCTX_COMPAT)) {
+		if (kbase_ctx_flag(kctx, KCTX_COMPAT))
 #endif /* CONFIG_64BIT */
-		if (gpu_pfn >= KBASE_REG_ZONE_CUSTOM_VA_BASE)
-			rbtree = &kctx->reg_rbtree_custom;
-		else
-			rbtree = &kctx->reg_rbtree_same;
+			same_va_end = KBASE_REG_ZONE_CUSTOM_VA_BASE;
 #ifdef CONFIG_64BIT
-	} else {
-		if (gpu_pfn >= kctx->same_va_end)
+		else
+			same_va_end = kctx->same_va_end;
+#endif /* CONFIG_64BIT */
+
+		if (gpu_pfn >= same_va_end)
 			rbtree = &kctx->reg_rbtree_custom;
 		else
 			rbtree = &kctx->reg_rbtree_same;
 	}
-#endif /* CONFIG_64BIT */
 
 	return rbtree;
 }
@@ -224,7 +231,6 @@ struct kbase_va_region *kbase_find_region_base_address(
 			rbnode = rbnode->rb_right;
 		else
 			return reg;
-
 	}
 
 	return NULL;
@@ -615,11 +621,15 @@ static void kbase_region_tracker_ds_init(struct kbase_context *kctx,
 	kctx->reg_rbtree_same = RB_ROOT;
 	kbase_region_tracker_insert(same_va_reg);
 
-	/* Although custom_va_reg doesn't always exist,
+	/* Although custom_va_reg and exec_va_reg don't always exist,
 	 * initialize unconditionally because of the mem_view debugfs
-	 * implementation which relies on this being empty.
+	 * implementation which relies on them being empty.
+	 *
+	 * The difference between the two is that the EXEC_VA region
+	 * is never initialized at this stage.
 	 */
 	kctx->reg_rbtree_custom = RB_ROOT;
+	kctx->reg_rbtree_exec = RB_ROOT;
 
 	if (custom_va_reg)
 		kbase_region_tracker_insert(custom_va_reg);
@@ -644,6 +654,7 @@ void kbase_region_tracker_term(struct kbase_context *kctx)
 {
 	kbase_region_tracker_erase_rbtree(&kctx->reg_rbtree_same);
 	kbase_region_tracker_erase_rbtree(&kctx->reg_rbtree_custom);
+	kbase_region_tracker_erase_rbtree(&kctx->reg_rbtree_exec);
 }
 
 void kbase_region_tracker_term_rbtree(struct rb_root *rbtree)
@@ -657,9 +668,6 @@ static size_t kbase_get_same_va_bits(struct kbase_context *kctx)
 			(size_t) kctx->kbdev->gpu_props.mmu.va_bits);
 }
 
-/**
- * Initialize the region tracker data structure.
- */
 int kbase_region_tracker_init(struct kbase_context *kctx)
 {
 	struct kbase_va_region *same_va_reg;
@@ -709,12 +717,17 @@ int kbase_region_tracker_init(struct kbase_context *kctx)
 			goto fail_free_same_va;
 		}
 #ifdef CONFIG_64BIT
+	} else {
+		custom_va_size = 0;
 	}
 #endif
 
 	kbase_region_tracker_ds_init(kctx, same_va_reg, custom_va_reg);
 
 	kctx->same_va_end = same_va_pages + 1;
+	kctx->gpu_va_end = kctx->same_va_end + custom_va_size;
+	kctx->exec_va_start = U64_MAX;
+	kctx->jit_va = false;
 
 
 	kbase_gpu_vm_unlock(kctx);
@@ -735,11 +748,12 @@ static int kbase_region_tracker_init_jit_64(struct kbase_context *kctx,
 	struct kbase_va_region *custom_va_reg;
 	u64 same_va_bits = kbase_get_same_va_bits(kctx);
 	u64 total_va_size;
-	int err;
 
 	total_va_size = (1ULL << (same_va_bits - PAGE_SHIFT)) - 1;
 
-	kbase_gpu_vm_lock(kctx);
+	/* First verify that a JIT_VA zone has not been created already. */
+	if (kctx->jit_va)
+		return -EINVAL;
 
 	/*
 	 * Modify the same VA free region after creation. Be careful to ensure
@@ -748,23 +762,11 @@ static int kbase_region_tracker_init_jit_64(struct kbase_context *kctx,
 	 */
 	same_va = kbase_region_tracker_find_region_base_address(kctx,
 			PAGE_SIZE);
-	if (!same_va) {
-		err = -ENOMEM;
-		goto fail_unlock;
-	}
+	if (!same_va)
+		return -ENOMEM;
 
-	/* The region flag or region size has changed since creation so bail. */
-	if ((!(same_va->flags & KBASE_REG_FREE)) ||
-			(same_va->nr_pages != total_va_size)) {
-		err = -ENOMEM;
-		goto fail_unlock;
-	}
-
-	if (same_va->nr_pages < jit_va_pages ||
-			kctx->same_va_end < jit_va_pages) {
-		err = -ENOMEM;
-		goto fail_unlock;
-	}
+	if (same_va->nr_pages < jit_va_pages || kctx->same_va_end < jit_va_pages)
+		return -ENOMEM;
 
 	/* It's safe to adjust the same VA zone now */
 	same_va->nr_pages -= jit_va_pages;
@@ -779,44 +781,121 @@ static int kbase_region_tracker_init_jit_64(struct kbase_context *kctx,
 				jit_va_pages,
 				KBASE_REG_ZONE_CUSTOM_VA);
 
-	if (!custom_va_reg) {
-		/*
-		 * The context will be destroyed if we fail here so no point
-		 * reverting the change we made to same_va.
-		 */
-		err = -ENOMEM;
-		goto fail_unlock;
-	}
+	/*
+	 * The context will be destroyed if we fail here so no point
+	 * reverting the change we made to same_va.
+	 */
+	if (!custom_va_reg)
+		return -ENOMEM;
 
 	kbase_region_tracker_insert(custom_va_reg);
-
-	kbase_gpu_vm_unlock(kctx);
 	return 0;
-
-fail_unlock:
-	kbase_gpu_vm_unlock(kctx);
-	return err;
 }
 #endif
 
 int kbase_region_tracker_init_jit(struct kbase_context *kctx, u64 jit_va_pages,
 		u8 max_allocations, u8 trim_level)
 {
+	int err = 0;
+
 	if (trim_level > 100)
 		return -EINVAL;
 
-	kctx->jit_max_allocations = max_allocations;
-	kctx->trim_level = trim_level;
+	kbase_gpu_vm_lock(kctx);
 
 #ifdef CONFIG_64BIT
 	if (!kbase_ctx_flag(kctx, KCTX_COMPAT))
-		return kbase_region_tracker_init_jit_64(kctx, jit_va_pages);
+		err = kbase_region_tracker_init_jit_64(kctx, jit_va_pages);
 #endif
 	/*
 	 * Nothing to do for 32-bit clients, JIT uses the existing
 	 * custom VA zone.
 	 */
-	return 0;
+
+	if (!err) {
+		kctx->jit_max_allocations = max_allocations;
+		kctx->trim_level = trim_level;
+		kctx->jit_va = true;
+	}
+
+	kbase_gpu_vm_unlock(kctx);
+
+	return err;
+}
+
+int kbase_region_tracker_init_exec(struct kbase_context *kctx, u64 exec_va_pages)
+{
+	struct kbase_va_region *shrinking_va_reg;
+	struct kbase_va_region *exec_va_reg;
+	u64 exec_va_start, exec_va_base_addr;
+	int err;
+
+	/* The EXEC_VA zone shall be created by making space at the end of the
+	 * address space. Firstly, verify that the number of EXEC_VA pages
+	 * requested by the client is reasonable and then make sure that it is
+	 * not greater than the address space itself before calculating the base
+	 * address of the new zone.
+	 */
+	if (exec_va_pages == 0 || exec_va_pages > KBASE_REG_ZONE_EXEC_VA_MAX_PAGES)
+		return -EINVAL;
+
+	kbase_gpu_vm_lock(kctx);
+
+	/* First verify that a JIT_VA zone has not been created already. */
+	if (kctx->jit_va) {
+		err = -EPERM;
+		goto exit_unlock;
+	}
+
+	if (exec_va_pages > kctx->gpu_va_end) {
+		err = -ENOMEM;
+		goto exit_unlock;
+	}
+
+	exec_va_start = kctx->gpu_va_end - exec_va_pages;
+	exec_va_base_addr = exec_va_start << PAGE_SHIFT;
+
+	shrinking_va_reg = kbase_region_tracker_find_region_enclosing_address(kctx,
+			exec_va_base_addr);
+	if (!shrinking_va_reg) {
+		err = -ENOMEM;
+		goto exit_unlock;
+	}
+
+	/* Make sure that the EXEC_VA region is still uninitialized */
+	if ((shrinking_va_reg->flags & KBASE_REG_ZONE_MASK) ==
+			KBASE_REG_ZONE_EXEC_VA) {
+		err = -EPERM;
+		goto exit_unlock;
+	}
+
+	if (shrinking_va_reg->nr_pages <= exec_va_pages) {
+		err = -ENOMEM;
+		goto exit_unlock;
+	}
+
+	exec_va_reg = kbase_alloc_free_region(&kctx->reg_rbtree_exec,
+			exec_va_start,
+			exec_va_pages,
+			KBASE_REG_ZONE_EXEC_VA);
+	if (!exec_va_reg) {
+		err = -ENOMEM;
+		goto exit_unlock;
+	}
+
+	shrinking_va_reg->nr_pages -= exec_va_pages;
+#ifdef CONFIG_64BIT
+	if (!kbase_ctx_flag(kctx, KCTX_COMPAT))
+		kctx->same_va_end -= exec_va_pages;
+#endif
+	kctx->exec_va_start = exec_va_start;
+
+	kbase_region_tracker_insert(exec_va_reg);
+	err = 0;
+
+exit_unlock:
+	kbase_gpu_vm_unlock(kctx);
+	return err;
 }
 
 
@@ -937,6 +1016,10 @@ static struct kbase_context *kbase_reg_flags_to_kctx(
 	case KBASE_REG_ZONE_SAME_VA:
 		kctx = container_of(rbtree, struct kbase_context,
 				reg_rbtree_same);
+		break;
+	case KBASE_REG_ZONE_EXEC_VA:
+		kctx = container_of(rbtree, struct kbase_context,
+				reg_rbtree_exec);
 		break;
 	default:
 		WARN(1, "Unknown zone in region: flags=0x%lx\n", reg->flags);
@@ -2917,6 +3000,30 @@ update_failed_unlocked:
 	return ret;
 }
 
+static void trace_jit_stats(struct kbase_context *kctx,
+		u32 bin_id, u32 max_allocations)
+{
+	const u32 alloc_count =
+		kctx->jit_current_allocations_per_bin[bin_id];
+
+	struct kbase_va_region *walker;
+	u32 va_pages = 0;
+	u32 ph_pages = 0;
+
+	mutex_lock(&kctx->jit_evict_lock);
+	list_for_each_entry(walker, &kctx->jit_active_head, jit_node) {
+		if (walker->jit_bin_id != bin_id)
+			continue;
+
+		va_pages += walker->nr_pages;
+		ph_pages += walker->gpu_alloc->nents;
+	}
+	mutex_unlock(&kctx->jit_evict_lock);
+
+	KBASE_TLSTREAM_AUX_JIT_STATS(kctx->id, bin_id, max_allocations,
+		alloc_count, va_pages, ph_pages);
+}
+
 struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 		struct base_jit_alloc_info *info)
 {
@@ -3069,6 +3176,8 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 	kctx->jit_current_allocations++;
 	kctx->jit_current_allocations_per_bin[info->bin_id]++;
 
+	trace_jit_stats(kctx, info->bin_id, info->max_allocations);
+
 	reg->jit_usage_id = info->usage_id;
 	reg->jit_bin_id = info->bin_id;
 
@@ -3111,6 +3220,8 @@ void kbase_jit_free(struct kbase_context *kctx, struct kbase_va_region *reg)
 
 	kctx->jit_current_allocations--;
 	kctx->jit_current_allocations_per_bin[reg->jit_bin_id]--;
+
+	trace_jit_stats(kctx, reg->jit_bin_id, UINT_MAX);
 
 	kbase_mem_evictable_mark_reclaim(reg->gpu_alloc);
 
@@ -3223,6 +3334,17 @@ void kbase_jit_term(struct kbase_context *kctx)
 	 * (i.e. everything in jit_destroy_head).
 	 */
 	cancel_work_sync(&kctx->jit_work);
+}
+
+bool kbase_has_exec_va_zone(struct kbase_context *kctx)
+{
+	bool has_exec_va_zone;
+
+	kbase_gpu_vm_lock(kctx);
+	has_exec_va_zone = (kctx->exec_va_start != U64_MAX);
+	kbase_gpu_vm_unlock(kctx);
+
+	return has_exec_va_zone;
 }
 
 static int kbase_jd_user_buf_map(struct kbase_context *kctx,
