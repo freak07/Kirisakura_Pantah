@@ -134,4 +134,13 @@ int kbase_hwcnt_accumulator_dump(
 	u64 *ts_end_ns,
 	struct kbase_hwcnt_dump_buffer *dump_buf);
 
+/**
+ * kbase_hwcnt_accumulator_timestamp_ns() - Get the current accumulator backend
+ *                                          timestamp.
+ * @accum: Non-NULL pointer to the hardware counter accumulator.
+ *
+ * Return: Accumulator backend timestamp in nanoseconds.
+ */
+u64 kbase_hwcnt_accumulator_timestamp_ns(struct kbase_hwcnt_accumulator *accum);
+
 #endif /* _KBASE_HWCNT_ACCUMULATOR_H_ */

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -32,9 +32,6 @@
 #include <linux/dma-mapping.h>
 #include <mali_kbase.h>
 #include <mali_midg_regmap.h>
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-#include <mali_kbase_gator.h>
-#endif
 #include <mali_kbase_tlstream.h>
 #include <mali_kbase_instr_defs.h>
 #include <mali_kbase_debug.h>
@@ -230,7 +227,7 @@ static void kbase_gpu_mmu_handle_write_fault(struct kbase_context *kctx,
 	/* Find region and check if it should be writable. */
 	region = kbase_region_tracker_find_region_enclosing_address(kctx,
 			fault->addr);
-	if (!region || region->flags & KBASE_REG_FREE) {
+	if (kbase_is_region_invalid_or_free(region)) {
 		kbase_gpu_vm_unlock(kctx);
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
 				"Memory is not mapped on the GPU",
@@ -358,13 +355,20 @@ static bool page_fault_try_alloc(struct kbase_context *kctx,
 	bool alloc_failed = false;
 	size_t pages_still_required;
 
+	if (WARN_ON(region->gpu_alloc->group_id >=
+		MEMORY_GROUP_MANAGER_NR_GROUPS)) {
+		/* Do not try to grow the memory pool */
+		*pages_to_grow = 0;
+		return false;
+	}
+
 #ifdef CONFIG_MALI_2MB_ALLOC
 	if (new_pages >= (SZ_2M / SZ_4K)) {
-		root_pool = &kctx->lp_mem_pool;
+		root_pool = &kctx->mem_pools.large[region->gpu_alloc->group_id];
 		*grow_2mb_pool = true;
 	} else {
 #endif
-		root_pool = &kctx->mem_pool;
+		root_pool = &kctx->mem_pools.small[region->gpu_alloc->group_id];
 		*grow_2mb_pool = false;
 #ifdef CONFIG_MALI_2MB_ALLOC
 	}
@@ -637,7 +641,7 @@ page_fault_retry:
 
 	region = kbase_region_tracker_find_region_enclosing_address(kctx,
 			fault->addr);
-	if (!region || region->flags & KBASE_REG_FREE) {
+	if (kbase_is_region_invalid_or_free(region)) {
 		kbase_gpu_vm_unlock(kctx);
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
 				"Memory is not mapped on the GPU", fault);
@@ -648,6 +652,13 @@ page_fault_retry:
 		kbase_gpu_vm_unlock(kctx);
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
 				"DMA-BUF is not mapped on the GPU", fault);
+		goto fault_done;
+	}
+
+	if (region->gpu_alloc->group_id >= MEMORY_GROUP_MANAGER_NR_GROUPS) {
+		kbase_gpu_vm_unlock(kctx);
+		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
+				"Bad physical memory group ID", fault);
 		goto fault_done;
 	}
 
@@ -763,10 +774,7 @@ page_fault_retry:
 					"Page table update failure", fault);
 			goto fault_done;
 		}
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-		kbase_trace_mali_page_fault_insert_pages(as_no, new_pages);
-#endif
-		KBASE_TLSTREAM_AUX_PAGEFAULT(kctx->id, (u64)new_pages);
+		KBASE_TLSTREAM_AUX_PAGEFAULT(kbdev, kctx->id, as_no, (u64)new_pages);
 
 		/* AS transaction begin */
 		mutex_lock(&kbdev->mmu_hw_mutex);
@@ -831,15 +839,24 @@ page_fault_retry:
 #ifdef CONFIG_MALI_2MB_ALLOC
 			if (grow_2mb_pool) {
 				/* Round page requirement up to nearest 2 MB */
+				struct kbase_mem_pool *const lp_mem_pool =
+					&kctx->mem_pools.large[
+					region->gpu_alloc->group_id];
+
 				pages_to_grow = (pages_to_grow +
-					((1 << kctx->lp_mem_pool.order) - 1))
-						>> kctx->lp_mem_pool.order;
-				ret = kbase_mem_pool_grow(&kctx->lp_mem_pool,
-						pages_to_grow);
+					((1 << lp_mem_pool->order) - 1))
+						>> lp_mem_pool->order;
+
+				ret = kbase_mem_pool_grow(lp_mem_pool,
+					pages_to_grow);
 			} else {
 #endif
-				ret = kbase_mem_pool_grow(&kctx->mem_pool,
-						pages_to_grow);
+				struct kbase_mem_pool *const mem_pool =
+					&kctx->mem_pools.small[
+					region->gpu_alloc->group_id];
+
+				ret = kbase_mem_pool_grow(mem_pool,
+					pages_to_grow);
 #ifdef CONFIG_MALI_2MB_ALLOC
 			}
 #endif
@@ -873,7 +890,8 @@ static phys_addr_t kbase_mmu_alloc_pgd(struct kbase_device *kbdev,
 	int i;
 	struct page *p;
 
-	p = kbase_mem_pool_alloc(&kbdev->mem_pool);
+	p = kbase_mem_pool_alloc(
+		&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT]);
 	if (!p)
 		return 0;
 
@@ -888,15 +906,16 @@ static phys_addr_t kbase_mmu_alloc_pgd(struct kbase_device *kbdev,
 	if (mmut->kctx) {
 		int new_page_count;
 
-		new_page_count = kbase_atomic_add_pages(1,
-				&mmut->kctx->used_pages);
+		new_page_count = atomic_add_return(1,
+			&mmut->kctx->used_pages);
 		KBASE_TLSTREAM_AUX_PAGESALLOC(
-				mmut->kctx->id,
-				(u64)new_page_count);
+			kbdev,
+			mmut->kctx->id,
+			(u64)new_page_count);
 		kbase_process_page_usage_inc(mmut->kctx, 1);
 	}
 
-	kbase_atomic_add_pages(1, &kbdev->memdev.used_pages);
+	atomic_add(1, &kbdev->memdev.used_pages);
 
 	for (i = 0; i < KBASE_MMU_PAGE_ENTRIES; i++)
 		kbdev->mmu_mode->entry_invalidate(&page[i]);
@@ -907,7 +926,8 @@ static phys_addr_t kbase_mmu_alloc_pgd(struct kbase_device *kbdev,
 	return page_to_phys(p);
 
 alloc_free:
-	kbase_mem_pool_free(&kbdev->mem_pool, p, false);
+	kbase_mem_pool_free(&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT], p,
+		false);
 
 	return 0;
 }
@@ -1129,8 +1149,10 @@ int kbase_mmu_insert_single_page(struct kbase_context *kctx, u64 vpfn,
 			 * the page walk to succeed
 			 */
 			mutex_unlock(&kctx->mmu.mmu_lock);
-			err = kbase_mem_pool_grow(&kctx->kbdev->mem_pool,
-					MIDGARD_MMU_BOTTOMLEVEL);
+			err = kbase_mem_pool_grow(
+				&kctx->kbdev->mem_pools.small[
+					BASE_MEM_GROUP_DEFAULT],
+				MIDGARD_MMU_BOTTOMLEVEL);
 			mutex_lock(&kctx->mmu.mmu_lock);
 		} while (!err);
 		if (err) {
@@ -1205,16 +1227,17 @@ static inline void cleanup_empty_pte(struct kbase_device *kbdev,
 
 	tmp_pgd = kbdev->mmu_mode->pte_to_phy_addr(*pte);
 	tmp_p = phys_to_page(tmp_pgd);
-	kbase_mem_pool_free(&kbdev->mem_pool, tmp_p, false);
+	kbase_mem_pool_free(&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT],
+		tmp_p, false);
 
 	/* If the MMU tables belong to a context then we accounted the memory
 	 * usage to that context, so decrement here.
 	 */
 	if (mmut->kctx) {
 		kbase_process_page_usage_dec(mmut->kctx, 1);
-		kbase_atomic_sub_pages(1, &mmut->kctx->used_pages);
+		atomic_sub(1, &mmut->kctx->used_pages);
 	}
-	kbase_atomic_sub_pages(1, &kbdev->memdev.used_pages);
+	atomic_sub(1, &kbdev->memdev.used_pages);
 }
 
 int kbase_mmu_insert_pages_no_flush(struct kbase_device *kbdev,
@@ -1273,8 +1296,9 @@ int kbase_mmu_insert_pages_no_flush(struct kbase_device *kbdev,
 			 * the page walk to succeed
 			 */
 			mutex_unlock(&mmut->mmu_lock);
-			err = kbase_mem_pool_grow(&kbdev->mem_pool,
-					cur_level);
+			err = kbase_mem_pool_grow(
+				&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT],
+				cur_level);
 			mutex_lock(&mmut->mmu_lock);
 		} while (!err);
 
@@ -1756,8 +1780,10 @@ static int kbase_mmu_update_pages_no_flush(struct kbase_context *kctx, u64 vpfn,
 			 * the page walk to succeed
 			 */
 			mutex_unlock(&kctx->mmu.mmu_lock);
-			err = kbase_mem_pool_grow(&kctx->kbdev->mem_pool,
-					MIDGARD_MMU_BOTTOMLEVEL);
+			err = kbase_mem_pool_grow(
+				&kctx->kbdev->mem_pools.small[
+					BASE_MEM_GROUP_DEFAULT],
+				MIDGARD_MMU_BOTTOMLEVEL);
 			mutex_lock(&kctx->mmu.mmu_lock);
 		} while (!err);
 		if (err) {
@@ -1846,15 +1872,18 @@ static void mmu_teardown_level(struct kbase_device *kbdev,
 	}
 
 	p = pfn_to_page(PFN_DOWN(pgd));
-	kbase_mem_pool_free(&kbdev->mem_pool, p, true);
-	kbase_atomic_sub_pages(1, &kbdev->memdev.used_pages);
+
+	kbase_mem_pool_free(&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT],
+		p, true);
+
+	atomic_sub(1, &kbdev->memdev.used_pages);
 
 	/* If MMU tables belong to a context then pages will have been accounted
 	 * against it, so we must decrement the usage counts here.
 	 */
 	if (mmut->kctx) {
 		kbase_process_page_usage_dec(mmut->kctx, 1);
-		kbase_atomic_sub_pages(1, &mmut->kctx->used_pages);
+		atomic_sub(1, &mmut->kctx->used_pages);
 	}
 }
 
@@ -1878,8 +1907,9 @@ int kbase_mmu_init(struct kbase_device *kbdev, struct kbase_mmu_table *mmut,
 	while (!mmut->pgd) {
 		int err;
 
-		err = kbase_mem_pool_grow(&kbdev->mem_pool,
-				MIDGARD_MMU_BOTTOMLEVEL);
+		err = kbase_mem_pool_grow(
+			&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT],
+			MIDGARD_MMU_BOTTOMLEVEL);
 		if (err) {
 			kbase_mmu_term(kbdev, mmut);
 			return -ENOMEM;
@@ -1902,7 +1932,7 @@ void kbase_mmu_term(struct kbase_device *kbdev, struct kbase_mmu_table *mmut)
 		mutex_unlock(&mmut->mmu_lock);
 
 		if (mmut->kctx)
-			KBASE_TLSTREAM_AUX_PAGESALLOC(mmut->kctx->id, 0);
+			KBASE_TLSTREAM_AUX_PAGESALLOC(kbdev, mmut->kctx->id, 0);
 	}
 
 	kfree(mmut->mmu_teardown_pages);

@@ -1,5 +1,5 @@
 #
-# (C) COPYRIGHT 2010-2011, 2013, 2017-2018 ARM Limited. All rights reserved.
+# (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
 #
 # This program is free software and is provided to you under the terms of the
 # GNU General Public License version 2 as published by the Free Software
@@ -19,25 +19,17 @@
 #
 #
 
-Import ('env')
+# linux build system bootstrap for out-of-tree module
 
-kutf_env = env.Clone()
-kutf_env.Append(CPPPATH = '#kernel/drivers/gpu/arm/midgard/tests/include')
-Export('kutf_env')
+# default to building for the host
+ARCH ?= $(shell uname -m)
 
-if Glob('internal/sconscript'):
-	SConscript('internal/sconscript')
+ifeq ($(KDIR),)
+$(error Must specify KDIR to point to the kernel to target))
+endif
 
-if kutf_env['debug'] == '1':
-	SConscript('kutf/sconscript')
-	SConscript('mali_kutf_irq_test/sconscript')
+all:
+	$(MAKE) ARCH=$(ARCH) -C $(KDIR) M=$(CURDIR) EXTRA_CFLAGS="-I$(CURDIR)/../../../include" modules CONFIG_MALI_MEMORY_GROUP_MANAGER=m
 
-	if Glob('kutf_test/sconscript'):
-		SConscript('kutf_test/sconscript')
-
-	if Glob('kutf_test_runner/sconscript'):
-		SConscript('kutf_test_runner/sconscript')
-
-if env['unit'] == '1':
-	SConscript('mali_kutf_ipa_unit_test/sconscript')
-	SConscript('mali_kutf_vinstr_test/sconscript')
+clean:
+	$(MAKE) ARCH=$(ARCH) -C $(KDIR) M=$(CURDIR) clean

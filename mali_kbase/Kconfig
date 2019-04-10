@@ -106,6 +106,20 @@ config MALI_CORESTACK
 
 	  If unsure, say N.
 
+config MALI_PLATFORM_POWER_DOWN_ONLY
+	bool "Support disabling the power down of individual cores"
+	depends on MALI_MIDGARD && MALI_EXPERT
+	default n
+	help
+	  Enabling this feature will let the driver avoid power down of the
+	  shader cores, the tiler, and the L2 cache.
+	  The entire GPU would be powered down at once through the platform
+	  specific code.
+	  This may be required for certain platform configurations only.
+	  This also limits the available power policies.
+
+	  If unsure, say N.
+
 config MALI_DEBUG
 	bool "Debug build"
 	depends on MALI_MIDGARD && MALI_EXPERT
@@ -181,6 +195,16 @@ config MALI_PWRSOFT_765
 
 	  If using kernel >= v4.10 then say N, otherwise if devfreq cooling
 	  changes have been backported say Y to avoid compilation errors.
+
+config MALI_MEMORY_FULLY_BACKED
+	bool "Memory fully physically-backed"
+	depends on MALI_MIDGARD && MALI_EXPERT
+	default n
+	help
+	  This option enables full physical backing of all virtual
+	  memory allocations in the kernel. Notice that this build
+	  option only affects allocations of grow-on-GPU-page-fault
+	  memory.
 
 # Instrumentation options.
 

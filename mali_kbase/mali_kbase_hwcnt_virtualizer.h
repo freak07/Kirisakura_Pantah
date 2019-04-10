@@ -40,14 +40,20 @@ struct kbase_hwcnt_dump_buffer;
 
 /**
  * kbase_hwcnt_virtualizer_init - Initialise a hardware counter virtualizer.
- * @hctx:      Non-NULL pointer to the hardware counter context to virtualize.
- * @out_hvirt: Non-NULL pointer to where the pointer to the created virtualizer
- *             will be stored on success.
+ * @hctx:              Non-NULL pointer to the hardware counter context to
+ *                     virtualize.
+ * @dump_threshold_ns: Minimum threshold period for dumps between different
+ *                     clients where a new accumulator dump will not be
+ *                     performed, and instead accumulated values will be used.
+ *                     If 0, rate limiting will be disabled.
+ * @out_hvirt:         Non-NULL pointer to where the pointer to the created
+ *                     virtualizer will be stored on success.
  *
  * Return: 0 on success, else error code.
  */
 int kbase_hwcnt_virtualizer_init(
 	struct kbase_hwcnt_context *hctx,
+	u64 dump_threshold_ns,
 	struct kbase_hwcnt_virtualizer **out_hvirt);
 
 /**

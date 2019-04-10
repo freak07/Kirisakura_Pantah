@@ -156,7 +156,7 @@ kbase_devfreq_target(struct device *dev, unsigned long *target_freq, u32 flags)
 	kbdev->current_freq = freq;
 	kbdev->current_core_mask = core_mask;
 
-	KBASE_TLSTREAM_AUX_DEVFREQ_TARGET((u64)nominal_freq);
+	KBASE_TLSTREAM_AUX_DEVFREQ_TARGET(kbdev, (u64)nominal_freq);
 
 	return err;
 }

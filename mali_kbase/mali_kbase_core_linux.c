@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -40,6 +40,7 @@
 #include "mali_kbase_debug_mem_view.h"
 #include "mali_kbase_mem.h"
 #include "mali_kbase_mem_pool_debugfs.h"
+#include "mali_kbase_debugfs_helper.h"
 #if !MALI_CUSTOMER_RELEASE
 #include "mali_kbase_regs_dump_debugfs.h"
 #endif /* !MALI_CUSTOMER_RELEASE */
@@ -93,6 +94,8 @@
 #else
 #include <linux/opp.h>
 #endif
+
+#include <linux/pm_runtime.h>
 
 #include <mali_kbase_tlstream.h>
 
@@ -443,7 +446,7 @@ static int kbase_open(struct inode *inode, struct file *filp)
 
 	kbase_debug_job_fault_context_init(kctx);
 
-	kbase_mem_pool_debugfs_init(kctx->kctx_dentry, &kctx->mem_pool, &kctx->lp_mem_pool);
+	kbase_mem_pool_debugfs_init(kctx->kctx_dentry, kctx);
 
 	kbase_jit_debugfs_init(kctx);
 #endif /* CONFIG_DEBUG_FS */
@@ -459,6 +462,7 @@ static int kbase_open(struct inode *inode, struct file *filp)
 			element->kctx = kctx;
 			list_add(&element->link, &kbdev->kctx_list);
 			KBASE_TLSTREAM_TL_NEW_CTX(
+					kbdev,
 					element->kctx,
 					element->kctx->id,
 					(u32)(element->kctx->tgid));
@@ -482,7 +486,7 @@ static int kbase_release(struct inode *inode, struct file *filp)
 	struct kbasep_kctx_list_element *element, *tmp;
 	bool found_element = false;
 
-	KBASE_TLSTREAM_TL_DEL_CTX(kctx);
+	KBASE_TLSTREAM_TL_DEL_CTX(kbdev, kctx);
 
 #ifdef CONFIG_DEBUG_FS
 	kbasep_mem_profile_debugfs_remove(kctx);
@@ -823,12 +827,12 @@ static int kbase_api_get_context_id(struct kbase_context *kctx,
 static int kbase_api_tlstream_acquire(struct kbase_context *kctx,
 		struct kbase_ioctl_tlstream_acquire *acquire)
 {
-	return kbase_tlstream_acquire(kctx, acquire->flags);
+	return kbase_tlstream_acquire(kctx->kbdev, acquire->flags);
 }
 
 static int kbase_api_tlstream_flush(struct kbase_context *kctx)
 {
-	kbase_tlstream_flush_streams();
+	kbase_tlstream_flush_streams(kctx->kbdev->timeline);
 
 	return 0;
 }
@@ -1055,6 +1059,7 @@ static int kbase_api_tlstream_test(struct kbase_context *kctx,
 		struct kbase_ioctl_tlstream_test *test)
 {
 	kbase_tlstream_test(
+			kctx->kbdev,
 			test->tpw_count,
 			test->msg_delay,
 			test->msg_count,
@@ -1066,7 +1071,7 @@ static int kbase_api_tlstream_test(struct kbase_context *kctx,
 static int kbase_api_tlstream_stats(struct kbase_context *kctx,
 		struct kbase_ioctl_tlstream_stats *stats)
 {
-	kbase_tlstream_stats(
+	kbase_tlstream_stats(kctx->kbdev->timeline,
 			&stats->bytes_collected,
 			&stats->bytes_generated);
 
@@ -2620,41 +2625,33 @@ static DEVICE_ATTR(reset_timeout, S_IRUGO | S_IWUSR, show_reset_timeout,
 		set_reset_timeout);
 
 
-
 static ssize_t show_mem_pool_size(struct device *dev,
 		struct device_attribute *attr, char * const buf)
 {
-	struct kbase_device *kbdev;
-	ssize_t ret;
+	struct kbase_device *const kbdev = to_kbase_device(dev);
 
-	kbdev = to_kbase_device(dev);
 	if (!kbdev)
 		return -ENODEV;
 
-	ret = scnprintf(buf, PAGE_SIZE, "%zu\n",
-			kbase_mem_pool_size(&kbdev->mem_pool));
-
-	return ret;
+	return kbase_debugfs_helper_get_attr_to_string(buf, PAGE_SIZE,
+		kbdev->mem_pools.small, MEMORY_GROUP_MANAGER_NR_GROUPS,
+		kbase_mem_pool_debugfs_size);
 }
 
 static ssize_t set_mem_pool_size(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
-	struct kbase_device *kbdev;
-	size_t new_size;
+	struct kbase_device *const kbdev = to_kbase_device(dev);
 	int err;
 
-	kbdev = to_kbase_device(dev);
 	if (!kbdev)
 		return -ENODEV;
 
-	err = kstrtoul(buf, 0, (unsigned long *)&new_size);
-	if (err)
-		return err;
+	err = kbase_debugfs_helper_set_attr_from_string(buf,
+		kbdev->mem_pools.small, MEMORY_GROUP_MANAGER_NR_GROUPS,
+		kbase_mem_pool_debugfs_trim);
 
-	kbase_mem_pool_trim(&kbdev->mem_pool, new_size);
-
-	return count;
+	return err ? err : count;
 }
 
 static DEVICE_ATTR(mem_pool_size, S_IRUGO | S_IWUSR, show_mem_pool_size,
@@ -2663,37 +2660,30 @@ static DEVICE_ATTR(mem_pool_size, S_IRUGO | S_IWUSR, show_mem_pool_size,
 static ssize_t show_mem_pool_max_size(struct device *dev,
 		struct device_attribute *attr, char * const buf)
 {
-	struct kbase_device *kbdev;
-	ssize_t ret;
+	struct kbase_device *const kbdev = to_kbase_device(dev);
 
-	kbdev = to_kbase_device(dev);
 	if (!kbdev)
 		return -ENODEV;
 
-	ret = scnprintf(buf, PAGE_SIZE, "%zu\n",
-			kbase_mem_pool_max_size(&kbdev->mem_pool));
-
-	return ret;
+	return kbase_debugfs_helper_get_attr_to_string(buf, PAGE_SIZE,
+		kbdev->mem_pools.small, MEMORY_GROUP_MANAGER_NR_GROUPS,
+		kbase_mem_pool_debugfs_max_size);
 }
 
 static ssize_t set_mem_pool_max_size(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
-	struct kbase_device *kbdev;
-	size_t new_max_size;
+	struct kbase_device *const kbdev = to_kbase_device(dev);
 	int err;
 
-	kbdev = to_kbase_device(dev);
 	if (!kbdev)
 		return -ENODEV;
 
-	err = kstrtoul(buf, 0, (unsigned long *)&new_max_size);
-	if (err)
-		return -EINVAL;
+	err = kbase_debugfs_helper_set_attr_from_string(buf,
+		kbdev->mem_pools.small, MEMORY_GROUP_MANAGER_NR_GROUPS,
+		kbase_mem_pool_debugfs_set_max_size);
 
-	kbase_mem_pool_set_max_size(&kbdev->mem_pool, new_max_size);
-
-	return count;
+	return err ? err : count;
 }
 
 static DEVICE_ATTR(mem_pool_max_size, S_IRUGO | S_IWUSR, show_mem_pool_max_size,
@@ -2712,13 +2702,14 @@ static DEVICE_ATTR(mem_pool_max_size, S_IRUGO | S_IWUSR, show_mem_pool_max_size,
 static ssize_t show_lp_mem_pool_size(struct device *dev,
 		struct device_attribute *attr, char * const buf)
 {
-	struct kbase_device *kbdev;
+	struct kbase_device *const kbdev = to_kbase_device(dev);
 
-	kbdev = to_kbase_device(dev);
 	if (!kbdev)
 		return -ENODEV;
 
-	return scnprintf(buf, PAGE_SIZE, "%zu\n", kbase_mem_pool_size(&kbdev->lp_mem_pool));
+	return kbase_debugfs_helper_get_attr_to_string(buf, PAGE_SIZE,
+		kbdev->mem_pools.large, MEMORY_GROUP_MANAGER_NR_GROUPS,
+		kbase_mem_pool_debugfs_size);
 }
 
 /**
@@ -2736,21 +2727,17 @@ static ssize_t show_lp_mem_pool_size(struct device *dev,
 static ssize_t set_lp_mem_pool_size(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
-	struct kbase_device *kbdev;
-	unsigned long new_size;
+	struct kbase_device *const kbdev = to_kbase_device(dev);
 	int err;
 
-	kbdev = to_kbase_device(dev);
 	if (!kbdev)
 		return -ENODEV;
 
-	err = kstrtoul(buf, 0, &new_size);
-	if (err)
-		return err;
+	err = kbase_debugfs_helper_set_attr_from_string(buf,
+		kbdev->mem_pools.large, MEMORY_GROUP_MANAGER_NR_GROUPS,
+		kbase_mem_pool_debugfs_trim);
 
-	kbase_mem_pool_trim(&kbdev->lp_mem_pool, new_size);
-
-	return count;
+	return err ? err : count;
 }
 
 static DEVICE_ATTR(lp_mem_pool_size, S_IRUGO | S_IWUSR, show_lp_mem_pool_size,
@@ -2769,13 +2756,14 @@ static DEVICE_ATTR(lp_mem_pool_size, S_IRUGO | S_IWUSR, show_lp_mem_pool_size,
 static ssize_t show_lp_mem_pool_max_size(struct device *dev,
 		struct device_attribute *attr, char * const buf)
 {
-	struct kbase_device *kbdev;
+	struct kbase_device *const kbdev = to_kbase_device(dev);
 
-	kbdev = to_kbase_device(dev);
 	if (!kbdev)
 		return -ENODEV;
 
-	return scnprintf(buf, PAGE_SIZE, "%zu\n", kbase_mem_pool_max_size(&kbdev->lp_mem_pool));
+	return kbase_debugfs_helper_get_attr_to_string(buf, PAGE_SIZE,
+		kbdev->mem_pools.large, MEMORY_GROUP_MANAGER_NR_GROUPS,
+		kbase_mem_pool_debugfs_max_size);
 }
 
 /**
@@ -2792,21 +2780,17 @@ static ssize_t show_lp_mem_pool_max_size(struct device *dev,
 static ssize_t set_lp_mem_pool_max_size(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
-	struct kbase_device *kbdev;
-	unsigned long new_max_size;
+	struct kbase_device *const kbdev = to_kbase_device(dev);
 	int err;
 
-	kbdev = to_kbase_device(dev);
 	if (!kbdev)
 		return -ENODEV;
 
-	err = kstrtoul(buf, 0, &new_max_size);
-	if (err)
-		return -EINVAL;
+	err = kbase_debugfs_helper_set_attr_from_string(buf,
+		kbdev->mem_pools.large, MEMORY_GROUP_MANAGER_NR_GROUPS,
+		kbase_mem_pool_debugfs_set_max_size);
 
-	kbase_mem_pool_set_max_size(&kbdev->lp_mem_pool, new_max_size);
-
-	return count;
+	return err ? err : count;
 }
 
 static DEVICE_ATTR(lp_mem_pool_max_size, S_IRUGO | S_IWUSR, show_lp_mem_pool_max_size,
@@ -3395,6 +3379,45 @@ static const struct file_operations fops_protected_debug_mode = {
 	.llseek = default_llseek,
 };
 
+static int kbase_device_debugfs_mem_pool_max_size_show(struct seq_file *sfile,
+	void *data)
+{
+	CSTD_UNUSED(data);
+	return kbase_debugfs_helper_seq_read(sfile,
+		MEMORY_GROUP_MANAGER_NR_GROUPS,
+		kbase_mem_pool_config_debugfs_max_size);
+}
+
+static ssize_t kbase_device_debugfs_mem_pool_max_size_write(struct file *file,
+		const char __user *ubuf, size_t count, loff_t *ppos)
+{
+	int err = 0;
+
+	CSTD_UNUSED(ppos);
+	err = kbase_debugfs_helper_seq_write(file, ubuf, count,
+		MEMORY_GROUP_MANAGER_NR_GROUPS,
+		kbase_mem_pool_config_debugfs_set_max_size);
+
+	return err ? err : count;
+}
+
+static int kbase_device_debugfs_mem_pool_max_size_open(struct inode *in,
+	struct file *file)
+{
+	return single_open(file, kbase_device_debugfs_mem_pool_max_size_show,
+		in->i_private);
+}
+
+static const struct file_operations
+	kbase_device_debugfs_mem_pool_max_size_fops = {
+	.owner = THIS_MODULE,
+	.open = kbase_device_debugfs_mem_pool_max_size_open,
+	.read = seq_read,
+	.write = kbase_device_debugfs_mem_pool_max_size_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
 static int kbase_device_debugfs_init(struct kbase_device *kbdev)
 {
 	struct dentry *debugfs_ctx_defaults_directory;
@@ -3451,9 +3474,15 @@ static int kbase_device_debugfs_init(struct kbase_device *kbdev)
 			debugfs_ctx_defaults_directory,
 			&kbdev->infinite_cache_active_default);
 
-	debugfs_create_size_t("mem_pool_max_size", 0644,
+	debugfs_create_file("mem_pool_max_size", 0644,
 			debugfs_ctx_defaults_directory,
-			&kbdev->mem_pool_max_size_default);
+			&kbdev->mem_pool_defaults.small,
+			&kbase_device_debugfs_mem_pool_max_size_fops);
+
+	debugfs_create_file("lp_mem_pool_max_size", 0644,
+			debugfs_ctx_defaults_directory,
+			&kbdev->mem_pool_defaults.large,
+			&kbase_device_debugfs_mem_pool_max_size_fops);
 
 	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_PROTECTED_DEBUG_MODE)) {
 		debugfs_create_file("protected_debug_mode", S_IRUGO,
@@ -3686,7 +3715,7 @@ static int kbase_platform_device_remove(struct platform_device *pdev)
 	}
 
 	if (kbdev->inited_subsys & inited_tlstream) {
-		kbase_tlstream_term();
+		kbase_tlstream_term(kbdev->timeline);
 		kbdev->inited_subsys &= ~inited_tlstream;
 	}
 
@@ -3834,6 +3863,7 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 
 	scnprintf(kbdev->devname, DEVNAME_SIZE, "%s%d", kbase_drv_name,
 			kbase_dev_nr);
+	kbdev->id = kbase_dev_nr;
 
 	kbase_disjoint_init(kbdev);
 
@@ -3899,7 +3929,8 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	}
 	kbdev->inited_subsys |= inited_js;
 
-	err = kbase_tlstream_init();
+	atomic_set(&kbdev->timeline_is_enabled, 0);
+	err = kbase_tlstream_init(&kbdev->timeline, &kbdev->timeline_is_enabled);
 	if (err) {
 		dev_err(kbdev->dev, "Timeline stream initialization failed\n");
 		kbase_platform_device_remove(pdev);
@@ -3930,7 +3961,9 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	kbdev->inited_subsys |= inited_hwcnt_gpu_ctx;
 
 	err = kbase_hwcnt_virtualizer_init(
-		kbdev->hwcnt_gpu_ctx, &kbdev->hwcnt_gpu_virt);
+		kbdev->hwcnt_gpu_ctx,
+		KBASE_HWCNT_GPU_VIRTUALIZER_DUMP_THRESHOLD_NS,
+		&kbdev->hwcnt_gpu_virt);
 	if (err) {
 		dev_err(kbdev->dev,
 			"GPU hwcnt virtualizer initialization failed\n");
@@ -4195,6 +4228,10 @@ static int kbase_device_runtime_idle(struct device *dev)
 	if (kbdev->pm.backend.callback_power_runtime_idle)
 		return kbdev->pm.backend.callback_power_runtime_idle(kbdev);
 
+	/* Just need to update the device's last busy mark. Kernel will respect
+	 * the autosuspend delay and so won't suspend the device immediately.
+	 */
+	pm_runtime_mark_last_busy(kbdev->dev);
 	return 0;
 }
 #endif /* KBASE_PM_RUNTIME */
@@ -4281,51 +4318,30 @@ MODULE_VERSION(MALI_RELEASE_NAME " (UK version " \
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(mali_job_slots_event);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mali_pm_status);
-EXPORT_TRACEPOINT_SYMBOL_GPL(mali_pm_power_on);
-EXPORT_TRACEPOINT_SYMBOL_GPL(mali_pm_power_off);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mali_page_fault_insert_pages);
-EXPORT_TRACEPOINT_SYMBOL_GPL(mali_mmu_as_in_use);
-EXPORT_TRACEPOINT_SYMBOL_GPL(mali_mmu_as_released);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mali_total_alloc_pages_change);
 
-void kbase_trace_mali_pm_status(u32 event, u64 value)
+void kbase_trace_mali_pm_status(u32 dev_id, u32 event, u64 value)
 {
-	trace_mali_pm_status(event, value);
+	trace_mali_pm_status(dev_id, event, value);
 }
 
-void kbase_trace_mali_pm_power_off(u32 event, u64 value)
+void kbase_trace_mali_job_slots_event(u32 dev_id, u32 event, const struct kbase_context *kctx, u8 atom_id)
 {
-	trace_mali_pm_power_off(event, value);
+	trace_mali_job_slots_event(dev_id, event,
+		(kctx != NULL ? kctx->tgid : 0),
+		(kctx != NULL ? kctx->pid : 0),
+		atom_id);
 }
 
-void kbase_trace_mali_pm_power_on(u32 event, u64 value)
+void kbase_trace_mali_page_fault_insert_pages(u32 dev_id, int event, u32 value)
 {
-	trace_mali_pm_power_on(event, value);
+	trace_mali_page_fault_insert_pages(dev_id, event, value);
 }
 
-void kbase_trace_mali_job_slots_event(u32 event, const struct kbase_context *kctx, u8 atom_id)
+void kbase_trace_mali_total_alloc_pages_change(u32 dev_id, long long int event)
 {
-	trace_mali_job_slots_event(event, (kctx != NULL ? kctx->tgid : 0), (kctx != NULL ? kctx->pid : 0), atom_id);
-}
-
-void kbase_trace_mali_page_fault_insert_pages(int event, u32 value)
-{
-	trace_mali_page_fault_insert_pages(event, value);
-}
-
-void kbase_trace_mali_mmu_as_in_use(int event)
-{
-	trace_mali_mmu_as_in_use(event);
-}
-
-void kbase_trace_mali_mmu_as_released(int event)
-{
-	trace_mali_mmu_as_released(event);
-}
-
-void kbase_trace_mali_total_alloc_pages_change(long long int event)
-{
-	trace_mali_total_alloc_pages_change(event);
+	trace_mali_total_alloc_pages_change(dev_id, event);
 }
 #endif /* CONFIG_MALI_GATOR_SUPPORT */
 #ifdef CONFIG_MALI_SYSTEM_TRACE

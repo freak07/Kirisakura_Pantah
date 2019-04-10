@@ -33,17 +33,24 @@
 
 /**
  * struct kbase_hwcnt_virtualizer - Hardware counter virtualizer structure.
- * @hctx:         Hardware counter context being virtualized.
- * @metadata:     Hardware counter metadata.
- * @lock:         Lock acquired at all entrypoints, to protect mutable state.
- * @client_count: Current number of virtualizer clients.
- * @clients:      List of virtualizer clients.
- * @accum:        Hardware counter accumulator. NULL if no clients.
- * @scratch_map:  Enable map used as scratch space during counter changes.
- * @scratch_buf:  Dump buffer used as scratch space during dumps.
+ * @hctx:              Hardware counter context being virtualized.
+ * @dump_threshold_ns: Minimum threshold period for dumps between different
+ *                     clients where a new accumulator dump will not be
+ *                     performed, and instead accumulated values will be used.
+ *                     If 0, rate limiting is disabled.
+ * @metadata:          Hardware counter metadata.
+ * @lock:              Lock acquired at all entrypoints, to protect mutable
+ *                     state.
+ * @client_count:      Current number of virtualizer clients.
+ * @clients:           List of virtualizer clients.
+ * @accum:             Hardware counter accumulator. NULL if no clients.
+ * @scratch_map:       Enable map used as scratch space during counter changes.
+ * @scratch_buf:       Dump buffer used as scratch space during dumps.
+ * @ts_last_dump_ns:   End time of most recent dump across all clients.
  */
 struct kbase_hwcnt_virtualizer {
 	struct kbase_hwcnt_context *hctx;
+	u64 dump_threshold_ns;
 	const struct kbase_hwcnt_metadata *metadata;
 	struct mutex lock;
 	size_t client_count;
@@ -51,6 +58,7 @@ struct kbase_hwcnt_virtualizer {
 	struct kbase_hwcnt_accumulator *accum;
 	struct kbase_hwcnt_enable_map scratch_map;
 	struct kbase_hwcnt_dump_buffer scratch_buf;
+	u64 ts_last_dump_ns;
 };
 
 /**
@@ -287,6 +295,9 @@ static int kbasep_hwcnt_virtualizer_client_add(
 	hvcli->has_accum = false;
 	hvcli->ts_start_ns = ts_end_ns;
 
+	/* Store the most recent dump time for rate limiting */
+	hvirt->ts_last_dump_ns = ts_end_ns;
+
 	return 0;
 error:
 	hvirt->client_count -= 1;
@@ -336,6 +347,9 @@ static void kbasep_hwcnt_virtualizer_client_remove(
 			list_for_each_entry(pos, &hvirt->clients, node)
 				kbasep_hwcnt_virtualizer_client_accumulate(
 					pos, &hvirt->scratch_buf);
+
+		/* Store the most recent dump time for rate limiting */
+		hvirt->ts_last_dump_ns = ts_end_ns;
 	}
 	WARN_ON(errcode);
 }
@@ -421,6 +435,9 @@ static int kbasep_hwcnt_virtualizer_client_set_counters(
 	*ts_start_ns = hvcli->ts_start_ns;
 	hvcli->ts_start_ns = *ts_end_ns;
 
+	/* Store the most recent dump time for rate limiting */
+	hvirt->ts_last_dump_ns = *ts_end_ns;
+
 	return errcode;
 }
 
@@ -464,6 +481,9 @@ int kbase_hwcnt_virtualizer_client_set_counters(
 			/* Fix up the timestamps */
 			*ts_start_ns = hvcli->ts_start_ns;
 			hvcli->ts_start_ns = *ts_end_ns;
+
+			/* Store the most recent dump time for rate limiting */
+			hvirt->ts_last_dump_ns = *ts_end_ns;
 		}
 	} else {
 		/* Otherwise, do the full virtualize */
@@ -539,7 +559,84 @@ static int kbasep_hwcnt_virtualizer_client_dump(
 	*ts_start_ns = hvcli->ts_start_ns;
 	hvcli->ts_start_ns = *ts_end_ns;
 
+	/* Store the most recent dump time for rate limiting */
+	hvirt->ts_last_dump_ns = *ts_end_ns;
+
 	return errcode;
+}
+
+/**
+ * kbasep_hwcnt_virtualizer_client_dump_rate_limited - Perform a dump of the
+ *                                           client's currently enabled counters
+ *                                           if it hasn't been rate limited,
+ *                                           otherwise return the client's most
+ *                                           recent accumulation.
+ * @hvirt:       Non-NULL pointer to the hardware counter virtualizer.
+ * @hvcli:       Non-NULL pointer to the virtualizer client.
+ * @ts_start_ns: Non-NULL pointer where the start timestamp of the dump will
+ *               be written out to on success.
+ * @ts_end_ns:   Non-NULL pointer where the end timestamp of the dump will
+ *               be written out to on success.
+ * @dump_buf:    Pointer to the buffer where the dump will be written out to on
+ *               success. If non-NULL, must have the same metadata as the
+ *               accumulator. If NULL, the dump will be discarded.
+ *
+ * Return: 0 on success or error code.
+ */
+static int kbasep_hwcnt_virtualizer_client_dump_rate_limited(
+	struct kbase_hwcnt_virtualizer *hvirt,
+	struct kbase_hwcnt_virtualizer_client *hvcli,
+	u64 *ts_start_ns,
+	u64 *ts_end_ns,
+	struct kbase_hwcnt_dump_buffer *dump_buf)
+{
+	bool rate_limited = true;
+
+	WARN_ON(!hvirt);
+	WARN_ON(!hvcli);
+	WARN_ON(!ts_start_ns);
+	WARN_ON(!ts_end_ns);
+	WARN_ON(dump_buf && (dump_buf->metadata != hvirt->metadata));
+	lockdep_assert_held(&hvirt->lock);
+
+	if (hvirt->dump_threshold_ns == 0) {
+		/* Threshold == 0, so rate limiting disabled */
+		rate_limited = false;
+	} else if (hvirt->ts_last_dump_ns == hvcli->ts_start_ns) {
+		/* Last dump was performed by this client, and dumps from an
+		 * individual client are never rate limited
+		 */
+		rate_limited = false;
+	} else {
+		const u64 ts_ns =
+			kbase_hwcnt_accumulator_timestamp_ns(hvirt->accum);
+		const u64 time_since_last_dump_ns =
+			ts_ns - hvirt->ts_last_dump_ns;
+
+		/* Dump period equals or exceeds the threshold */
+		if (time_since_last_dump_ns >= hvirt->dump_threshold_ns)
+			rate_limited = false;
+	}
+
+	if (!rate_limited)
+		return kbasep_hwcnt_virtualizer_client_dump(
+			hvirt, hvcli, ts_start_ns, ts_end_ns, dump_buf);
+
+	/* If we've gotten this far, the client must have something accumulated
+	 * otherwise it is a logic error
+	 */
+	WARN_ON(!hvcli->has_accum);
+
+	if (dump_buf)
+		kbase_hwcnt_dump_buffer_copy(
+			dump_buf, &hvcli->accum_buf, &hvcli->enable_map);
+	hvcli->has_accum = false;
+
+	*ts_start_ns = hvcli->ts_start_ns;
+	*ts_end_ns = hvirt->ts_last_dump_ns;
+	hvcli->ts_start_ns = hvirt->ts_last_dump_ns;
+
+	return 0;
 }
 
 int kbase_hwcnt_virtualizer_client_dump(
@@ -575,10 +672,13 @@ int kbase_hwcnt_virtualizer_client_dump(
 			/* Fix up the timestamps */
 			*ts_start_ns = hvcli->ts_start_ns;
 			hvcli->ts_start_ns = *ts_end_ns;
+
+			/* Store the most recent dump time for rate limiting */
+			hvirt->ts_last_dump_ns = *ts_end_ns;
 		}
 	} else {
 		/* Otherwise, do the full virtualize */
-		errcode = kbasep_hwcnt_virtualizer_client_dump(
+		errcode = kbasep_hwcnt_virtualizer_client_dump_rate_limited(
 			hvirt, hvcli, ts_start_ns, ts_end_ns, dump_buf);
 	}
 
@@ -639,6 +739,7 @@ KBASE_EXPORT_TEST_API(kbase_hwcnt_virtualizer_client_destroy);
 
 int kbase_hwcnt_virtualizer_init(
 	struct kbase_hwcnt_context *hctx,
+	u64 dump_threshold_ns,
 	struct kbase_hwcnt_virtualizer **out_hvirt)
 {
 	struct kbase_hwcnt_virtualizer *virt;
@@ -656,6 +757,7 @@ int kbase_hwcnt_virtualizer_init(
 		return -ENOMEM;
 
 	virt->hctx = hctx;
+	virt->dump_threshold_ns = dump_threshold_ns;
 	virt->metadata = metadata;
 
 	mutex_init(&virt->lock);

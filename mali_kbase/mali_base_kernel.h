@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -85,6 +85,10 @@ typedef struct base_mem_handle {
  * @addtogroup base_user_api_memory User-side Base Memory APIs
  * @{
  */
+
+/* Physical memory group ID for normal usage.
+ */
+#define BASE_MEM_GROUP_DEFAULT (0)
 
 /**
  * typedef base_mem_alloc_flags - Memory allocation, access/hint flags.

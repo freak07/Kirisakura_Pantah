@@ -248,20 +248,6 @@ enum {
 #define DEFAULT_JS_CTX_TIMESLICE_NS (50000000) /* 50ms */
 
 /**
- * Perform GPU power down using only platform specific code, skipping DDK power
- * management.
- *
- * If this is non-zero then kbase will avoid powering down shader cores, the
- * tiler, and the L2 cache, instead just powering down the entire GPU through
- * platform specific code. This may be required for certain platform
- * integrations.
- *
- * Note that as this prevents kbase from powering down shader cores, this limits
- * the available power policies to coarse_demand and always_on.
- */
-#define PLATFORM_POWER_DOWN_ONLY (0)
-
-/**
  * Maximum frequency (in kHz) that the GPU can be clocked. For some platforms
  * this isn't available, so we simply define a dummy value here. If devfreq
  * is enabled the value will be read from there, otherwise this should be

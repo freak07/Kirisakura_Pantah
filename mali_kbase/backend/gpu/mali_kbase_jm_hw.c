@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -27,9 +27,6 @@
 #include <mali_kbase.h>
 #include <mali_kbase_config.h>
 #include <mali_midg_regmap.h>
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-#include <mali_kbase_gator.h>
-#endif
 #include <mali_kbase_tlstream.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_hwaccess_jm.h>
@@ -185,19 +182,19 @@ void kbase_job_hw_submit(struct kbase_device *kbdev,
 	KBASE_TRACE_ADD_SLOT_INFO(kbdev, JM_SUBMIT, kctx, katom, jc_head, js,
 							(u32)affinity);
 
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-	kbase_trace_mali_job_slots_event(
-				GATOR_MAKE_EVENT(GATOR_JOB_SLOT_START, js),
-				kctx, kbase_jd_atom_id(kctx, katom));
-#endif
-	KBASE_TLSTREAM_TL_ATTRIB_ATOM_CONFIG(katom, jc_head,
+	KBASE_TLSTREAM_AUX_EVENT_JOB_SLOT(kbdev, kctx,
+		js, kbase_jd_atom_id(kctx, katom), TL_JS_EVENT_START);
+
+	KBASE_TLSTREAM_TL_ATTRIB_ATOM_CONFIG(kbdev, katom, jc_head,
 			affinity, cfg);
 	KBASE_TLSTREAM_TL_RET_CTX_LPU(
+		kbdev,
 		kctx,
 		&kbdev->gpu_props.props.raw_props.js_features[
 			katom->slot_nr]);
-	KBASE_TLSTREAM_TL_RET_ATOM_AS(katom, &kbdev->as[kctx->as_nr]);
+	KBASE_TLSTREAM_TL_RET_ATOM_AS(kbdev, katom, &kbdev->as[kctx->as_nr]);
 	KBASE_TLSTREAM_TL_RET_ATOM_LPU(
+			kbdev,
 			katom,
 			&kbdev->gpu_props.props.raw_props.js_features[js],
 			"ctx_nr,atom_nr");
@@ -269,6 +266,7 @@ static void kbasep_trace_tl_event_lpu_softstop(struct kbase_device *kbdev,
 					int js)
 {
 	KBASE_TLSTREAM_TL_EVENT_LPU_SOFTSTOP(
+		kbdev,
 		&kbdev->gpu_props.props.raw_props.js_features[js]);
 }
 
@@ -310,12 +308,9 @@ void kbase_job_done(struct kbase_device *kbdev, u32 done)
 					JOB_SLOT_REG(i, JS_STATUS));
 
 				if (completion_code == BASE_JD_EVENT_STOPPED) {
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-					kbase_trace_mali_job_slots_event(
-						GATOR_MAKE_EVENT(
-						GATOR_JOB_SLOT_SOFT_STOPPED, i),
-								NULL, 0);
-#endif
+					KBASE_TLSTREAM_AUX_EVENT_JOB_SLOT(
+						kbdev, NULL,
+						i, 0, TL_JS_EVENT_SOFT_STOP);
 
 					kbasep_trace_tl_event_lpu_softstop(
 						kbdev, i);
@@ -543,7 +538,7 @@ void kbasep_job_slot_soft_or_hard_stop_do_action(struct kbase_device *kbdev,
 		target_katom->atom_flags |= KBASE_KATOM_FLAG_BEEN_SOFT_STOPPPED;
 
 		/* Mark the point where we issue the soft-stop command */
-		KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTSTOP_ISSUE(target_katom);
+		KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTSTOP_ISSUE(kbdev, target_katom);
 
 		if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8316)) {
 			int i;
@@ -772,6 +767,7 @@ void kbase_job_slot_ctx_priority_check_locked(struct kbase_context *kctx,
 		if (katom->sched_priority > priority) {
 			if (!stop_sent)
 				KBASE_TLSTREAM_TL_ATTRIB_ATOM_PRIORITIZED(
+						kbdev,
 						target_katom);
 
 			kbase_job_slot_softstop(kbdev, js, katom);

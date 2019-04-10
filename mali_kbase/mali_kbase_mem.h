@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -39,9 +39,6 @@
 #include <mali_kbase_hw.h>
 #include "mali_kbase_pm.h"
 #include "mali_kbase_defs.h"
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-#include "mali_kbase_gator.h"
-#endif
 /* Required for kbase_mem_evictable_unmake */
 #include "mali_kbase_mem_linux.h"
 
@@ -94,49 +91,54 @@ struct kbase_aliased {
 /**
  * @brief Physical pages tracking object properties
   */
-#define KBASE_MEM_PHY_ALLOC_ACCESSED_CACHED  (1ul << 0)
-#define KBASE_MEM_PHY_ALLOC_LARGE            (1ul << 1)
+#define KBASE_MEM_PHY_ALLOC_ACCESSED_CACHED  (1u << 0)
+#define KBASE_MEM_PHY_ALLOC_LARGE            (1u << 1)
 
-/* physical pages tracking object.
+/* struct kbase_mem_phy_alloc - Physical pages tracking object.
+ *
  * Set up to track N pages.
  * N not stored here, the creator holds that info.
  * This object only tracks how many elements are actually valid (present).
- * Changing of nents or *pages should only happen if the kbase_mem_phy_alloc is not
- * shared with another region or client. CPU mappings are OK to exist when changing, as
- * long as the tracked mappings objects are updated as part of the change.
+ * Changing of nents or *pages should only happen if the kbase_mem_phy_alloc
+ * is not shared with another region or client. CPU mappings are OK to
+ * exist when changing, as long as the tracked mappings objects are
+ * updated as part of the change.
+ *
+ * @kref: number of users of this alloc
+ * @gpu_mappings: count number of times mapped on the GPU
+ * @nents: 0..N
+ * @pages: N elements, only 0..nents are valid
+ * @mappings: List of CPU mappings of this physical memory allocation.
+ * @evict_node: Node used to store this allocation on the eviction list
+ * @evicted: Physical backing size when the pages where evicted
+ * @reg: Back reference to the region structure which created this
+ *       allocation, or NULL if it has been freed.
+ * @type: type of buffer
+ * @permanent_map: Kernel side mapping of the alloc, shall never be
+ *                 referred directly. kbase_phy_alloc_mapping_get() &
+ *                 kbase_phy_alloc_mapping_put() pair should be used
+ *                 around access to the kernel-side CPU mapping so that
+ *                 mapping doesn't disappear whilst it is being accessed.
+ * @properties: Bitmask of properties, e.g. KBASE_MEM_PHY_ALLOC_LARGE.
+ * @group_id: A memory group ID to be passed to a platform-specific
+ *            memory group manager, if present.
+ *            Valid range is 0..(MEMORY_GROUP_MANAGER_NR_GROUPS-1).
+ * @imported: member in union valid based on @a type
  */
 struct kbase_mem_phy_alloc {
-	struct kref           kref; /* number of users of this alloc */
+	struct kref           kref;
 	atomic_t              gpu_mappings;
-	size_t                nents; /* 0..N */
-	struct tagged_addr    *pages; /* N elements, only 0..nents are valid */
-
-	/* kbase_cpu_mappings */
+	size_t                nents;
+	struct tagged_addr    *pages;
 	struct list_head      mappings;
-
-	/* Node used to store this allocation on the eviction list */
 	struct list_head      evict_node;
-	/* Physical backing size when the pages where evicted */
 	size_t                evicted;
-	/*
-	 * Back reference to the region structure which created this
-	 * allocation, or NULL if it has been freed.
-	 */
 	struct kbase_va_region *reg;
-
-	/* type of buffer */
 	enum kbase_memory_type type;
-
-	/* Kernel side mapping of the alloc, shall never be referred directly.
-	 * kbase_phy_alloc_mapping_get() & kbase_phy_alloc_mapping_put() pair
-	 * should be used around access to the kernel-side CPU mapping so that
-	 * mapping doesn't disappear whilst it is being accessed.
-	 */
 	struct kbase_vmap_struct *permanent_map;
+	u8 properties;
+	u8 group_id;
 
-	unsigned long properties;
-
-	/* member in union valid based on @a type */
 	union {
 #if defined(CONFIG_DMA_SHARED_BUFFER)
 		struct {
@@ -306,11 +308,30 @@ struct kbase_va_region {
  * Extent must be a power of 2 */
 #define KBASE_REG_TILER_ALIGN_TOP   (1ul << 23)
 
-/* Memory is handled by JIT - user space should not be able to free it */
-#define KBASE_REG_JIT               (1ul << 24)
+/* Whilst this flag is set the GPU allocation is not supposed to be freed by
+ * user space. The flag will remain set for the lifetime of JIT allocations.
+ */
+#define KBASE_REG_NO_USER_FREE      (1ul << 24)
 
 /* Memory has permanent kernel side mapping */
 #define KBASE_REG_PERMANENT_KERNEL_MAPPING (1ul << 25)
+
+/* GPU VA region has been freed by the userspace, but still remains allocated
+ * due to the reference held by CPU mappings created on the GPU VA region.
+ *
+ * A region with this flag set has had kbase_gpu_munmap() called on it, but can
+ * still be looked-up in the region tracker as a non-free region. Hence must
+ * not create or update any more GPU mappings on such regions because they will
+ * not be unmapped when the region is finally destroyed.
+ *
+ * Since such regions are still present in the region tracker, new allocations
+ * attempted with BASE_MEM_SAME_VA might fail if their address intersects with
+ * a region with this flag set.
+ *
+ * In addition, this flag indicates the gpu_alloc member might no longer valid
+ * e.g. in infinite cache simulation.
+ */
+#define KBASE_REG_VA_FREED (1ul << 26)
 
 #define KBASE_REG_ZONE_SAME_VA      KBASE_REG_ZONE(0)
 
@@ -349,7 +370,68 @@ struct kbase_va_region {
 	u16 jit_usage_id;
 	/* The JIT bin this allocation came from */
 	u8 jit_bin_id;
+
+	int    va_refcnt; /* number of users of this va */
 };
+
+static inline bool kbase_is_region_free(struct kbase_va_region *reg)
+{
+	return (!reg || reg->flags & KBASE_REG_FREE);
+}
+
+static inline bool kbase_is_region_invalid(struct kbase_va_region *reg)
+{
+	return (!reg || reg->flags & KBASE_REG_VA_FREED);
+}
+
+static inline bool kbase_is_region_invalid_or_free(struct kbase_va_region *reg)
+{
+	/* Possibly not all functions that find regions would be using this
+	 * helper, so they need to be checked when maintaining this function.
+	 */
+	return (kbase_is_region_invalid(reg) ||	kbase_is_region_free(reg));
+}
+
+int kbase_remove_va_region(struct kbase_va_region *reg);
+static inline void kbase_region_refcnt_free(struct kbase_va_region *reg)
+{
+	/* If region was mapped then remove va region*/
+	if (reg->start_pfn)
+		kbase_remove_va_region(reg);
+
+	/* To detect use-after-free in debug builds */
+	KBASE_DEBUG_CODE(reg->flags |= KBASE_REG_FREE);
+	kfree(reg);
+}
+
+static inline struct kbase_va_region *kbase_va_region_alloc_get(
+		struct kbase_context *kctx, struct kbase_va_region *region)
+{
+	lockdep_assert_held(&kctx->reg_lock);
+
+	WARN_ON(!region->va_refcnt);
+
+	/* non-atomic as kctx->reg_lock is held */
+	region->va_refcnt++;
+
+	return region;
+}
+
+static inline struct kbase_va_region *kbase_va_region_alloc_put(
+		struct kbase_context *kctx, struct kbase_va_region *region)
+{
+	lockdep_assert_held(&kctx->reg_lock);
+
+	WARN_ON(region->va_refcnt <= 0);
+	WARN_ON(region->flags & KBASE_REG_FREE);
+
+	/* non-atomic as kctx->reg_lock is held */
+	region->va_refcnt--;
+	if (!region->va_refcnt)
+		kbase_region_refcnt_free(region);
+
+	return NULL;
+}
 
 /* Common functions */
 static inline struct tagged_addr *kbase_get_cpu_phy_pages(
@@ -392,7 +474,7 @@ static inline size_t kbase_reg_current_backed_size(struct kbase_va_region *reg)
 
 static inline struct kbase_mem_phy_alloc *kbase_alloc_create(
 		struct kbase_context *kctx, size_t nr_pages,
-		enum kbase_memory_type type)
+		enum kbase_memory_type type, int group_id)
 {
 	struct kbase_mem_phy_alloc *alloc;
 	size_t alloc_size = sizeof(*alloc) + sizeof(*alloc->pages) * nr_pages;
@@ -439,6 +521,7 @@ static inline struct kbase_mem_phy_alloc *kbase_alloc_create(
 	alloc->pages = (void *)(alloc + 1);
 	INIT_LIST_HEAD(&alloc->mappings);
 	alloc->type = type;
+	alloc->group_id = group_id;
 
 	if (type == KBASE_MEM_TYPE_IMPORTED_USER_BUF)
 		alloc->imported.user_buf.dma_addrs =
@@ -448,7 +531,7 @@ static inline struct kbase_mem_phy_alloc *kbase_alloc_create(
 }
 
 static inline int kbase_reg_prepare_native(struct kbase_va_region *reg,
-		struct kbase_context *kctx)
+		struct kbase_context *kctx, int group_id)
 {
 	KBASE_DEBUG_ASSERT(reg);
 	KBASE_DEBUG_ASSERT(!reg->cpu_alloc);
@@ -456,7 +539,7 @@ static inline int kbase_reg_prepare_native(struct kbase_va_region *reg,
 	KBASE_DEBUG_ASSERT(reg->flags & KBASE_REG_FREE);
 
 	reg->cpu_alloc = kbase_alloc_create(kctx, reg->nr_pages,
-			KBASE_MEM_TYPE_NATIVE);
+			KBASE_MEM_TYPE_NATIVE, group_id);
 	if (IS_ERR(reg->cpu_alloc))
 		return PTR_ERR(reg->cpu_alloc);
 	else if (!reg->cpu_alloc)
@@ -466,7 +549,7 @@ static inline int kbase_reg_prepare_native(struct kbase_va_region *reg,
 	if (kbase_ctx_flag(kctx, KCTX_INFINITE_CACHE)
 	    && (reg->flags & KBASE_REG_CPU_CACHED)) {
 		reg->gpu_alloc = kbase_alloc_create(kctx, reg->nr_pages,
-				KBASE_MEM_TYPE_NATIVE);
+				KBASE_MEM_TYPE_NATIVE, group_id);
 		if (IS_ERR_OR_NULL(reg->gpu_alloc)) {
 			kbase_mem_phy_alloc_put(reg->cpu_alloc);
 			return -ENOMEM;
@@ -484,24 +567,6 @@ static inline int kbase_reg_prepare_native(struct kbase_va_region *reg,
 	reg->flags &= ~KBASE_REG_FREE;
 
 	return 0;
-}
-
-static inline u32 kbase_atomic_add_pages(u32 num_pages, atomic_t *used_pages)
-{
-	int new_val = atomic_add_return(num_pages, used_pages);
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-	kbase_trace_mali_total_alloc_pages_change((long long int)new_val);
-#endif
-	return new_val;
-}
-
-static inline u32 kbase_atomic_sub_pages(u32 num_pages, atomic_t *used_pages)
-{
-	int new_val = atomic_sub_return(num_pages, used_pages);
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-	kbase_trace_mali_total_alloc_pages_change((long long int)new_val);
-#endif
-	return new_val;
 }
 
 /*
@@ -525,10 +590,42 @@ static inline u32 kbase_atomic_sub_pages(u32 num_pages, atomic_t *used_pages)
 #define KBASE_MEM_POOL_4KB_PAGE_TABLE_ORDER	0
 
 /**
+ * kbase_mem_pool_config_set_max_size - Set maximum number of free pages in
+ *                                      initial configuration of a memory pool
+ *
+ * @config:   Initial configuration for a physical memory pool
+ * @max_size: Maximum number of free pages that a pool created from
+ *            @config can hold
+ */
+static inline void kbase_mem_pool_config_set_max_size(
+	struct kbase_mem_pool_config *const config, size_t const max_size)
+{
+	WRITE_ONCE(config->max_size, max_size);
+}
+
+/**
+ * kbase_mem_pool_config_get_max_size - Get maximum number of free pages from
+ *                                      initial configuration of a memory pool
+ *
+ * @config: Initial configuration for a physical memory pool
+ *
+ * Return: Maximum number of free pages that a pool created from @config
+ *         can hold
+ */
+static inline size_t kbase_mem_pool_config_get_max_size(
+	const struct kbase_mem_pool_config *const config)
+{
+	return READ_ONCE(config->max_size);
+}
+
+/**
  * kbase_mem_pool_init - Create a memory pool for a kbase device
  * @pool:      Memory pool to initialize
- * @max_size:  Maximum number of free pages the pool can hold
+ * @config:    Initial configuration for the memory pool
  * @order:     Page order for physical page size (order=0=>4kB, order=9=>2MB)
+ * @group_id:  A memory group ID to be passed to a platform-specific
+ *             memory group manager, if present.
+ *             Valid range is 0..(MEMORY_GROUP_MANAGER_NR_GROUPS-1).
  * @kbdev:     Kbase device where memory is used
  * @next_pool: Pointer to the next pool or NULL.
  *
@@ -539,7 +636,7 @@ static inline u32 kbase_atomic_sub_pages(u32 num_pages, atomic_t *used_pages)
  * certain corner cases grow above @max_size.
  *
  * If @next_pool is not NULL, we will allocate from @next_pool before going to
- * the kernel allocator. Similarily pages can spill over to @next_pool when
+ * the memory group manager. Similarly pages can spill over to @next_pool when
  * @pool is full. Pages are zeroed before they spill over to another pool, to
  * prevent leaking information between applications.
  *
@@ -549,8 +646,9 @@ static inline u32 kbase_atomic_sub_pages(u32 num_pages, atomic_t *used_pages)
  * Return: 0 on success, negative -errno on error
  */
 int kbase_mem_pool_init(struct kbase_mem_pool *pool,
-		size_t max_size,
-		size_t order,
+		const struct kbase_mem_pool_config *config,
+		unsigned int order,
+		int group_id,
 		struct kbase_device *kbdev,
 		struct kbase_mem_pool *next_pool);
 
@@ -867,7 +965,6 @@ int kbase_add_va_region(struct kbase_context *kctx, struct kbase_va_region *reg,
 int kbase_add_va_region_rbtree(struct kbase_device *kbdev,
 		struct kbase_va_region *reg, u64 addr, size_t nr_pages,
 		size_t align);
-int kbase_remove_va_region(struct kbase_va_region *reg);
 
 bool kbase_check_alloc_flags(unsigned long flags);
 bool kbase_check_import_flags(unsigned long flags);
@@ -1218,6 +1315,8 @@ struct tagged_addr *kbase_alloc_phy_pages_helper_locked(
 *
 * @param[in] alloc allocation object to free pages from
 * @param[in] nr_pages_to_free number of physical pages to free
+*
+* Return: 0 on success, otherwise a negative error code
 */
 int kbase_free_phy_pages_helper(struct kbase_mem_phy_alloc *alloc, size_t nr_pages_to_free);
 

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2015-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2015-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -155,7 +155,8 @@ struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool)
 {
 	struct page *p;
 	gfp_t gfp;
-	struct device *dev = pool->kbdev->dev;
+	struct kbase_device *const kbdev = pool->kbdev;
+	struct device *const dev = kbdev->dev;
 	dma_addr_t dma_addr;
 	int i;
 
@@ -167,18 +168,21 @@ struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool)
 	gfp = GFP_HIGHUSER | __GFP_ZERO;
 #endif
 
-	/* don't warn on higer order failures */
+	/* don't warn on higher order failures */
 	if (pool->order)
 		gfp |= __GFP_NOWARN;
 
-	p = alloc_pages(gfp, pool->order);
+	p = kbdev->mgm_dev->ops.mgm_alloc_page(kbdev->mgm_dev,
+		pool->group_id, gfp, pool->order);
 	if (!p)
 		return NULL;
 
 	dma_addr = dma_map_page(dev, p, 0, (PAGE_SIZE << pool->order),
 				DMA_BIDIRECTIONAL);
+
 	if (dma_mapping_error(dev, dma_addr)) {
-		__free_pages(p, pool->order);
+		kbdev->mgm_dev->ops.mgm_free_page(kbdev->mgm_dev,
+			pool->group_id, p, pool->order);
 		return NULL;
 	}
 
@@ -192,7 +196,8 @@ struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool)
 static void kbase_mem_pool_free_page(struct kbase_mem_pool *pool,
 		struct page *p)
 {
-	struct device *dev = pool->kbdev->dev;
+	struct kbase_device *const kbdev = pool->kbdev;
+	struct device *const dev = kbdev->dev;
 	dma_addr_t dma_addr = kbase_dma_addr(p);
 	int i;
 
@@ -200,7 +205,9 @@ static void kbase_mem_pool_free_page(struct kbase_mem_pool *pool,
 		       DMA_BIDIRECTIONAL);
 	for (i = 0; i < (1u << pool->order); i++)
 		kbase_clear_dma_addr(p+i);
-	__free_pages(p, pool->order);
+
+	kbdev->mgm_dev->ops.mgm_free_page(kbdev->mgm_dev,
+		pool->group_id, p, pool->order);
 
 	pool_dbg(pool, "freed page to kernel\n");
 }
@@ -369,14 +376,21 @@ static int kbase_mem_pool_reclaim_shrink(struct shrinker *s,
 #endif
 
 int kbase_mem_pool_init(struct kbase_mem_pool *pool,
-		size_t max_size,
-		size_t order,
+		const struct kbase_mem_pool_config *config,
+		unsigned int order,
+		int group_id,
 		struct kbase_device *kbdev,
 		struct kbase_mem_pool *next_pool)
 {
+	if (WARN_ON(group_id < 0) ||
+		WARN_ON(group_id >= MEMORY_GROUP_MANAGER_NR_GROUPS)) {
+		return -EINVAL;
+	}
+
 	pool->cur_size = 0;
-	pool->max_size = max_size;
+	pool->max_size = kbase_mem_pool_config_get_max_size(config);
 	pool->order = order;
+	pool->group_id = group_id;
 	pool->kbdev = kbdev;
 	pool->next_pool = next_pool;
 	pool->dying = false;

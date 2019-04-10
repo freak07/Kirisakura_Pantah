@@ -1,5 +1,5 @@
 #
-# (C) COPYRIGHT 2012-2018 ARM Limited. All rights reserved.
+# (C) COPYRIGHT 2012-2019 ARM Limited. All rights reserved.
 #
 # This program is free software and is provided to you under the terms of the
 # GNU General Public License version 2 as published by the Free Software
@@ -70,12 +70,8 @@ config MALI_DMA_FENCE
 config MALI_PLATFORM_NAME
 	depends on MALI_MIDGARD
 	string "Platform name"
-	default "arndale" if PLATFORM_ARNDALE
-	default "arndale_octa" if PLATFORM_ARNDALE_OCTA
-	default "rk" if PLATFORM_FIREFLY
 	default "hisilicon" if PLATFORM_HIKEY960
 	default "hisilicon" if PLATFORM_HIKEY970
-	default "vexpress" if PLATFORM_VEXPRESS
 	default "devicetree"
 	help
 	  Enter the name of the desired platform configuration directory to
@@ -108,6 +104,20 @@ config MALI_CORESTACK
 
 	  If unsure, say N.
 
+config MALI_PLATFORM_POWER_DOWN_ONLY
+	bool "Support disabling the power down of individual cores"
+	depends on MALI_MIDGARD && MALI_EXPERT
+	default n
+	help
+	  Enabling this feature will let the driver avoid power down of the
+	  shader cores, the tiler, and the L2 cache.
+	  The entire GPU would be powered down at once through the platform
+	  specific code.
+	  This may be required for certain platform configurations only.
+	  This also limits the available power policies.
+
+	  If unsure, say N.
+
 config MALI_DEBUG
 	bool "Debug build"
 	depends on MALI_MIDGARD && MALI_EXPERT
@@ -133,19 +143,40 @@ config MALI_FENCE_DEBUG
 	  The timeout can be changed at runtime through the js_soft_timeout
 	  device attribute, where the timeout is specified in milliseconds.
 
-config MALI_ERROR_INJECT
-	bool "Error injection"
-	depends on MALI_MIDGARD && MALI_EXPERT && NO_MALI
-	default n
+choice
+	prompt "Error injection level"
+	default MALI_ERROR_INJECT_NONE
 	help
 	  Enables insertion of errors to test module failure and recovery mechanisms.
 
+config MALI_ERROR_INJECT_NONE
+	bool "disabled"
+	help
+	  Error injection is disabled.
+
+config MALI_ERROR_INJECT_TRACK_LIST
+	bool "error track list"
+	depends on MALI_MIDGARD && MALI_EXPERT && NO_MALI
+	help
+	  Errors to inject are pre-configured by the user.
+
 config MALI_ERROR_INJECT_RANDOM
-	bool "Random error injection"
-	depends on MALI_MIDGARD && MALI_EXPERT && NO_MALI && MALI_ERROR_INJECT
-	default n
+	bool "random error injection"
+	depends on MALI_MIDGARD && MALI_EXPERT && NO_MALI
 	help
 	  Injected errors are random, rather than user-driven.
+
+endchoice
+
+config MALI_ERROR_INJECT_ON
+	string
+	default "0" if MALI_ERROR_INJECT_NONE
+	default "1" if MALI_ERROR_INJECT_TRACK_LIST
+	default "2" if MALI_ERROR_INJECT_RANDOM
+
+config MALI_ERROR_INJECT
+	bool
+	default y if !MALI_ERROR_INJECT_NONE
 
 config MALI_SYSTEM_TRACE
 	bool "Enable system event tracing support"
@@ -181,6 +212,13 @@ config MALI_PWRSOFT_765
 	  PWRSOFT-765 fixes devfreq cooling devices issues. However, they are
 	  not merged in mainline kernel yet. So this define helps to guard those
 	  parts of the code.
+
+config MALI_MEMORY_FULLY_BACKED
+	bool "Memory fully physically-backed"
+	default n
+	help
+	  This option enables full backing of all virtual memory allocations
+	  for the kernel. This only affects grow-on-GPU-page-fault memory.
 
 # Instrumentation options.
 

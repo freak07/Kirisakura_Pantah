@@ -132,7 +132,7 @@ static u32 calculate_temp_scaling_factor(s32 ts[4], s64 t)
 	const s64 res_big = ts[3] * t3    /* +/- 2^62 */
 			  + ts[2] * t2    /* +/- 2^55 */
 			  + ts[1] * t     /* +/- 2^48 */
-			  + ts[0] * 1000; /* +/- 2^41 */
+			  + ts[0] * (s64)1000; /* +/- 2^41 */
 
 	/* Range: -2^60 < res_unclamped < 2^60 */
 	s64 res_unclamped = div_s64(res_big, 1000);

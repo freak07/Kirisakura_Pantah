@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -31,6 +31,7 @@
 #include <mali_kbase_mem_linux.h>
 #include <mali_kbase_dma_fence.h>
 #include <mali_kbase_ctx_sched.h>
+#include <mali_kbase_mem_pool_group.h>
 
 struct kbase_context *
 kbase_create_context(struct kbase_device *kbdev, bool is_compat)
@@ -69,21 +70,10 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 	kctx->tgid = current->tgid;
 	kctx->pid = current->pid;
 
-	err = kbase_mem_pool_init(&kctx->mem_pool,
-				  kbdev->mem_pool_max_size_default,
-				  KBASE_MEM_POOL_4KB_PAGE_TABLE_ORDER,
-				  kctx->kbdev,
-				  &kbdev->mem_pool);
+	err = kbase_mem_pool_group_init(&kctx->mem_pools, kbdev,
+		&kbdev->mem_pool_defaults, &kbdev->mem_pools);
 	if (err)
 		goto free_kctx;
-
-	err = kbase_mem_pool_init(&kctx->lp_mem_pool,
-				  (kbdev->mem_pool_max_size_default >> 9),
-				  KBASE_MEM_POOL_2MB_PAGE_TABLE_ORDER,
-				  kctx->kbdev,
-				  &kbdev->lp_mem_pool);
-	if (err)
-		goto free_mem_pool;
 
 	err = kbase_mem_evictable_init(kctx);
 	if (err)
@@ -103,7 +93,6 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 	if (err)
 		goto free_jd;
 
-
 	atomic_set(&kctx->drain_pending, 0);
 
 	mutex_init(&kctx->reg_lock);
@@ -115,13 +104,14 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 	spin_lock_init(&kctx->waiting_soft_jobs_lock);
 	err = kbase_dma_fence_init(kctx);
 	if (err)
-		goto free_kcpu_wq;
+		goto free_event;
 
 	err = kbase_mmu_init(kbdev, &kctx->mmu, kctx);
 	if (err)
 		goto term_dma_fence;
 
-	p = kbase_mem_alloc_page(&kctx->mem_pool);
+	p = kbase_mem_alloc_page(
+		&kctx->mem_pools.small[BASE_MEM_GROUP_DEFAULT]);
 	if (!p)
 		goto no_sink_page;
 	kctx->aliasing_sink_page = as_tagged(page_to_phys(p));
@@ -129,7 +119,6 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 	init_waitqueue_head(&kctx->event_queue);
 
 	kctx->cookies = KBASE_COOKIE_MASK;
-
 
 	/* Make sure page 0 is not used... */
 	err = kbase_region_tracker_init(kctx);
@@ -143,6 +132,8 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 	err = kbase_jit_init(kctx);
 	if (err)
 		goto no_jit;
+
+
 #ifdef CONFIG_GPU_TRACEPOINTS
 	atomic_set(&kctx->jctx.work_id, 0);
 #endif
@@ -163,12 +154,13 @@ no_jit:
 no_sticky:
 	kbase_region_tracker_term(kctx);
 no_region_tracker:
-	kbase_mem_pool_free(&kctx->mem_pool, p, false);
+	kbase_mem_pool_free(
+		&kctx->mem_pools.small[BASE_MEM_GROUP_DEFAULT], p, false);
 no_sink_page:
 	kbase_mmu_term(kbdev, &kctx->mmu);
 term_dma_fence:
 	kbase_dma_fence_term(kctx);
-free_kcpu_wq:
+free_event:
 	kbase_event_cleanup(kctx);
 free_jd:
 	/* Safe to call this one even when didn't initialize (assuming kctx was sufficiently zeroed) */
@@ -177,9 +169,7 @@ free_jd:
 deinit_evictable:
 	kbase_mem_evictable_deinit(kctx);
 free_both_pools:
-	kbase_mem_pool_term(&kctx->lp_mem_pool);
-free_mem_pool:
-	kbase_mem_pool_term(&kctx->mem_pool);
+	kbase_mem_pool_group_term(&kctx->mem_pools);
 free_kctx:
 	vfree(kctx);
 out:
@@ -216,7 +206,7 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	 * thread. */
 	kbase_pm_context_active(kbdev);
 
-	kbase_mem_pool_mark_dying(&kctx->mem_pool);
+	kbase_mem_pool_group_mark_dying(&kctx->mem_pools);
 
 	kbase_jd_zap_context(kctx);
 
@@ -255,7 +245,8 @@ void kbase_destroy_context(struct kbase_context *kctx)
 
 	/* drop the aliasing sink page now that it can't be mapped anymore */
 	p = as_page(kctx->aliasing_sink_page);
-	kbase_mem_pool_free(&kctx->mem_pool, p, false);
+	kbase_mem_pool_free(&kctx->mem_pools.small[BASE_MEM_GROUP_DEFAULT],
+		p, false);
 
 	/* free pending region setups */
 	pending_regions_to_clean = (~kctx->cookies) & KBASE_COOKIE_MASK;
@@ -272,7 +263,6 @@ void kbase_destroy_context(struct kbase_context *kctx)
 
 	kbase_region_tracker_term(kctx);
 	kbase_gpu_vm_unlock(kctx);
-
 
 	/* Safe to call this one even when didn't initialize (assuming kctx was sufficiently zeroed) */
 	kbasep_js_kctx_term(kctx);
@@ -292,8 +282,9 @@ void kbase_destroy_context(struct kbase_context *kctx)
 		dev_warn(kbdev->dev, "%s: %d pages in use!\n", __func__, pages);
 
 	kbase_mem_evictable_deinit(kctx);
-	kbase_mem_pool_term(&kctx->mem_pool);
-	kbase_mem_pool_term(&kctx->lp_mem_pool);
+
+	kbase_mem_pool_group_term(&kctx->mem_pools);
+
 	WARN_ON(atomic_read(&kctx->nonmapped_pages) != 0);
 
 	vfree(kctx);

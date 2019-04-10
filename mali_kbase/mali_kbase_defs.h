@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -43,7 +43,6 @@
 #include <mali_kbase_hwcnt_backend_gpu.h>
 #include <protected_mode_switcher.h>
 
-
 #include <linux/atomic.h>
 #include <linux/mempool.h>
 #include <linux/slab.h>
@@ -70,6 +69,7 @@
 
 #include <linux/clk.h>
 #include <linux/regulator/consumer.h>
+#include <linux/memory_group_manager.h>
 
 #if defined(CONFIG_PM_RUNTIME) || \
 	(defined(CONFIG_PM) && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
@@ -229,6 +229,14 @@
 #define KBASE_SERIALIZE_INTER_SLOT (1 << 1)
 /* Reset the GPU after each atom completion */
 #define KBASE_SERIALIZE_RESET (1 << 2)
+
+/* Minimum threshold period for hwcnt dumps between different hwcnt virtualizer
+ * clients, to reduce undesired system load.
+ * If a virtualizer client requests a dump within this threshold period after
+ * some other client has performed a dump, a new dump won't be performed and
+ * the accumulated counter values for that client will be returned instead.
+ */
+#define KBASE_HWCNT_GPU_VIRTUALIZER_DUMP_THRESHOLD_NS (200 * NSEC_PER_USEC)
 
 /* Forward declarations */
 struct kbase_context;
@@ -1080,6 +1088,9 @@ struct kbase_pm_device_data {
  * @max_size:     Maximum number of free pages in the pool
  * @order:        order = 0 refers to a pool of 4 KB pages
  *                order = 9 refers to a pool of 2 MB pages (2^9 * 4KB = 2 MB)
+ * @group_id:     A memory group ID to be passed to a platform-specific
+ *                memory group manager, if present. Immutable.
+ *                Valid range is 0..(MEMORY_GROUP_MANAGER_NR_GROUPS-1).
  * @pool_lock:    Lock protecting the pool - must be held when modifying
  *                @cur_size and @page_list
  * @page_list:    List of free pages in the pool
@@ -1096,7 +1107,8 @@ struct kbase_mem_pool {
 	struct kbase_device *kbdev;
 	size_t              cur_size;
 	size_t              max_size;
-	size_t		    order;
+	u8                  order;
+	u8                  group_id;
 	spinlock_t          pool_lock;
 	struct list_head    page_list;
 	struct shrinker     reclaim;
@@ -1105,6 +1117,50 @@ struct kbase_mem_pool {
 
 	bool dying;
 	bool dont_reclaim;
+};
+
+/**
+ * struct kbase_mem_pool_group - a complete set of physical memory pools.
+ *
+ * Memory pools are used to allow efficient reallocation of previously-freed
+ * physical pages. A pair of memory pools is initialized for each physical
+ * memory group: one for 4 KiB pages and one for 2 MiB pages. These arrays
+ * should be indexed by physical memory group ID, the meaning of which is
+ * defined by the systems integrator.
+ *
+ * @small: Array of objects containing the state for pools of 4 KiB size
+ *         physical pages.
+ * @large: Array of objects containing the state for pools of 2 MiB size
+ *         physical pages.
+ */
+struct kbase_mem_pool_group {
+	struct kbase_mem_pool small[MEMORY_GROUP_MANAGER_NR_GROUPS];
+	struct kbase_mem_pool large[MEMORY_GROUP_MANAGER_NR_GROUPS];
+};
+
+/**
+ * struct kbase_mem_pool_config - Initial configuration for a physical memory
+ *                                pool
+ *
+ * @max_size: Maximum number of free pages that the pool can hold.
+ */
+struct kbase_mem_pool_config {
+	size_t max_size;
+};
+
+/**
+ * struct kbase_mem_pool_group_config - Initial configuration for a complete
+ *                                      set of physical memory pools
+ *
+ * This array should be indexed by physical memory group ID, the meaning
+ * of which is defined by the systems integrator.
+ *
+ * @small: Array of initial configuration for pools of 4 KiB pages.
+ * @large: Array of initial configuration for pools of 2 MiB pages.
+ */
+struct kbase_mem_pool_group_config {
+	struct kbase_mem_pool_config small[MEMORY_GROUP_MANAGER_NR_GROUPS];
+	struct kbase_mem_pool_config large[MEMORY_GROUP_MANAGER_NR_GROUPS];
 };
 
 /**
@@ -1163,8 +1219,8 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_lpae(void);
 struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
 
 
-#define DEVNAME_SIZE	16
 
+#define DEVNAME_SIZE	16
 
 /**
  * struct kbase_device   - Object representing an instance of GPU platform device,
@@ -1199,6 +1255,8 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  *                         for GPU device
  * @devname:               string containing the name used for GPU device instance,
  *                         miscellaneous device is registered using the same name.
+ * @id:                    Unique identifier for the device, indicates the number of
+ *                         devices which have been created so far.
  * @model:                 Pointer, valid only when Driver is compiled to not access
  *                         the real GPU Hw, to the dummy model which tries to mimic
  *                         to some extent the state & behavior of GPU Hw in response
@@ -1223,14 +1281,16 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  *                         Job Scheduler, which is global to the device and is not
  *                         tied to any particular struct kbase_context running on
  *                         the device
- * @mem_pool:              Object containing the state for global pool of 4KB size
- *                         physical pages which can be used by all the contexts.
- * @lp_mem_pool:           Object containing the state for global pool of 2MB size
- *                         physical pages which can be used by all the contexts.
+ * @mem_pools:             Global pools of free physical memory pages which can
+ *                         be used by all the contexts.
  * @memdev:                keeps track of the in use physical pages allocated by
  *                         the Driver.
  * @mmu_mode:              Pointer to the object containing methods for programming
  *                         the MMU, depending on the type of MMU supported by Hw.
+ * @mgm_dev:               Pointer to the memory group manager device attached
+ *                         to the GPU device. This points to an internal memory
+ *                         group manager if no platform-specific memory group
+ *                         manager was retrieved through device tree.
  * @as:                    Array of objects representing address spaces of GPU.
  * @as_free:               Bitpattern of free/available GPU address spaces.
  * @as_to_kctx:            Array of pointers to struct kbase_context, having
@@ -1254,7 +1314,10 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  *                         @hwaccess_lock must be held when calling
  *                         kbase_hwcnt_context_enable() with @hwcnt_gpu_ctx.
  * @hwcnt_gpu_virt:        Virtualizer for GPU hardware counters.
- * @vinstr_ctx:            vinstr context created per device
+ * @vinstr_ctx:            vinstr context created per device.
+ * @timeline_is_enabled:   Non zero, if there is at least one timeline client,
+ *                         zero otherwise.
+ * @timeline:              Timeline context created per device.
  * @trace_lock:            Lock to serialize the access to trace buffer.
  * @trace_first_out:       Index/offset in the trace buffer at which the first
  *                         unread message is present.
@@ -1312,7 +1375,6 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  *                         previously entered protected mode.
  * @ipa:                   Top level structure for IPA, containing pointers to both
  *                         configured & fallback models.
- * @timeline:              Stores the global timeline tracking information.
  * @job_fault_debug:       Flag to control the dumping of debug data for job faults,
  *                         set when the 'job_fault' debugfs file is opened.
  * @mali_debugfs_directory: Root directory for the debugfs files created by the driver
@@ -1358,8 +1420,8 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  *                         power on for GPU is started.
  * @infinite_cache_active_default: Set to enable using infinite cache for all the
  *                         allocations of a new context.
- * @mem_pool_max_size_default: Initial/default value for the maximum size of both
- *                         types of pool created for a new context.
+ * @mem_pool_defaults:     Default configuration for the group of memory pools
+ *                         created for a new context.
  * @current_gpu_coherency_mode: coherency mode in use, which can be different
  *                         from @system_coherency, when using protected mode.
  * @system_coherency:      coherency mode as retrieved from the device tree.
@@ -1427,6 +1489,7 @@ struct kbase_device {
 	struct regulator *regulator;
 #endif
 	char devname[DEVNAME_SIZE];
+	u32  id;
 
 #ifdef CONFIG_MALI_NO_MALI
 	void *model;
@@ -1440,10 +1503,11 @@ struct kbase_device {
 
 	struct kbase_pm_device_data pm;
 	struct kbasep_js_device_data js_data;
-	struct kbase_mem_pool mem_pool;
-	struct kbase_mem_pool lp_mem_pool;
+	struct kbase_mem_pool_group mem_pools;
 	struct kbasep_mem_device memdev;
 	struct kbase_mmu_mode const *mmu_mode;
+
+	struct memory_group_manager_device *mgm_dev;
 
 	struct kbase_as as[BASE_MAX_NR_AS];
 	u16 as_free; /* Bitpattern of free Address Spaces */
@@ -1479,6 +1543,9 @@ struct kbase_device {
 	struct kbase_hwcnt_context *hwcnt_gpu_ctx;
 	struct kbase_hwcnt_virtualizer *hwcnt_gpu_virt;
 	struct kbase_vinstr_context *vinstr_ctx;
+
+	atomic_t               timeline_is_enabled;
+	struct kbase_timeline *timeline;
 
 #if KBASE_TRACE_ENABLE
 	spinlock_t              trace_lock;
@@ -1584,7 +1651,7 @@ struct kbase_device {
 #else
 	u32 infinite_cache_active_default;
 #endif
-	size_t mem_pool_max_size_default;
+	struct kbase_mem_pool_group_config mem_pool_defaults;
 
 	u32 current_gpu_coherency_mode;
 	u32 system_coherency;
@@ -1735,7 +1802,6 @@ struct kbase_sub_alloc {
 	DECLARE_BITMAP(sub_pages, SZ_2M / SZ_4K);
 };
 
-
 /**
  * struct kbase_context - Object representing an entity, among which GPU is
  *                        scheduled and gets its own GPU address space.
@@ -1745,7 +1811,7 @@ struct kbase_sub_alloc {
  * @kbdev:                Pointer to the Kbase device for which the context is created.
  * @mmu:                  Structure holding details of the MMU tables for this
  *                        context
- * @id:                   Unique indentifier for the context, indicates the number of
+ * @id:                   Unique identifier for the context, indicates the number of
  *                        contexts which have been created for the device so far.
  * @api_version:          contains the version number for User/kernel interface,
  *                        used for compatibility check.
@@ -1819,10 +1885,7 @@ struct kbase_sub_alloc {
  *                        when special tracking page is freed by userspace where it
  *                        is reset to 0.
  * @permanent_mapped_pages: Usage count of permanently mapped memory
- * @mem_pool:             Object containing the state for the context specific pool of
- *                        4KB size physical pages.
- * @lp_mem_pool:          Object containing the state for the context specific pool of
- *                        2MB size physical pages.
+ * @mem_pools:            Context-specific pools of free physical memory pages.
  * @reclaim:              Shrinker object registered with the kernel containing
  *                        the pointer to callback function which is invoked under
  *                        low memory conditions. In the callback function Driver
@@ -1869,8 +1932,6 @@ struct kbase_sub_alloc {
  *                        or U64_MAX if the EXEC_VA zone is uninitialized.
  * @gpu_va_end:           End address of the GPU va space (in 4KB page units)
  * @jit_va:               Indicates if a JIT_VA zone has been created.
- * @timeline:             Object tracking the number of atoms currently in flight for
- *                        the context and thread group id of the process, i.e. @tgid.
  * @mem_profile_data:     Buffer containing the profiling information provided by
  *                        Userspace, can be read through the mem_profile debugfs file.
  * @mem_profile_size:     Size of the @mem_profile_data.
@@ -2007,8 +2068,7 @@ struct kbase_context {
 	atomic_t         nonmapped_pages;
 	unsigned long permanent_mapped_pages;
 
-	struct kbase_mem_pool mem_pool;
-	struct kbase_mem_pool lp_mem_pool;
+	struct kbase_mem_pool_group mem_pools;
 
 	struct shrinker         reclaim;
 	struct list_head        evict_list;
@@ -2025,7 +2085,6 @@ struct kbase_context {
 	int as_nr;
 
 	atomic_t refcount;
-
 
 	/* NOTE:
 	 *

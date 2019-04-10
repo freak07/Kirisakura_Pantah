@@ -794,3 +794,14 @@ int kbase_hwcnt_accumulator_dump(
 	return errcode;
 }
 KBASE_EXPORT_TEST_API(kbase_hwcnt_accumulator_dump);
+
+u64 kbase_hwcnt_accumulator_timestamp_ns(struct kbase_hwcnt_accumulator *accum)
+{
+	struct kbase_hwcnt_context *hctx;
+
+	if (WARN_ON(!accum))
+		return 0;
+
+	hctx = container_of(accum, struct kbase_hwcnt_context, accum);
+	return hctx->iface->timestamp_ns(accum->backend);
+}

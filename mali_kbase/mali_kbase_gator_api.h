@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2015 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2015, 2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -30,9 +30,10 @@
 /* This define is used by the gator kernel module compile to select which DDK
  * API calling convention to use. If not defined (legacy DDK) gator assumes
  * version 1. The version to DDK release mapping is:
- *     Version 1 API: DDK versions r1px, r2px
- *     Version 2 API: DDK versions r3px, r4px
- *     Version 3 API: DDK version r5p0 and newer
+ *     Version 1 API: DDK versions m_r1px, m_r2px
+ *     Version 2 API: DDK versions m_r3px, m_r4px
+ *     Version 3 API: DDK versions m_r5px-m_r28px and b_r1px-b_r16px
+ *     Version 4 API: DDK versions b_r17p0 and newer
  *
  * API Usage
  * =========
@@ -115,7 +116,7 @@
  *    init_names() returned a non-NULL value.
  **/
 
-#define MALI_DDK_GATOR_API_VERSION 3
+#define MALI_DDK_GATOR_API_VERSION 4
 
 enum hwc_type {
 	JM_BLOCK = 0,

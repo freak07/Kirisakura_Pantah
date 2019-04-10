@@ -199,7 +199,9 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 	u32 res_no;
 #ifdef CONFIG_MALI_DMA_FENCE
 	struct kbase_dma_fence_resv_info info = {
+		.resv_objs = NULL,
 		.dma_fence_resv_count = 0,
+		.dma_fence_excl_bitmap = NULL
 	};
 #if defined(CONFIG_SYNC) || defined(CONFIG_SYNC_FILE)
 	/*
@@ -223,10 +225,8 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 		return -EINVAL;
 
 	katom->extres = kmalloc_array(katom->nr_extres, sizeof(*katom->extres), GFP_KERNEL);
-	if (NULL == katom->extres) {
-		err_ret_val = -ENOMEM;
-		goto early_err_out;
-	}
+	if (!katom->extres)
+		return -ENOMEM;
 
 	/* copy user buffer to the end of our real buffer.
 	 * Make sure the struct sizes haven't changed in a way
@@ -282,7 +282,7 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 				katom->kctx,
 				res->ext_resource & ~BASE_EXT_RES_ACCESS_EXCLUSIVE);
 		/* did we find a matching region object? */
-		if (NULL == reg || (reg->flags & KBASE_REG_FREE)) {
+		if (kbase_is_region_invalid_or_free(reg)) {
 			/* roll back */
 			goto failed_loop;
 		}
@@ -782,6 +782,7 @@ static const char *kbasep_map_core_reqs_to_string(base_jd_core_req core_req)
 
 bool jd_submit_atom(struct kbase_context *kctx, const struct base_jd_atom_v2 *user_atom, struct kbase_jd_atom *katom)
 {
+	struct kbase_device *kbdev = kctx->kbdev;
 	struct kbase_jd_context *jctx = &kctx->jctx;
 	int queued = 0;
 	int i;
@@ -845,11 +846,15 @@ bool jd_submit_atom(struct kbase_context *kctx, const struct base_jd_atom_v2 *us
 				 * back to user space. Do not record any
 				 * dependencies. */
 				KBASE_TLSTREAM_TL_NEW_ATOM(
+						kbdev,
 						katom,
 						kbase_jd_atom_id(kctx, katom));
 				KBASE_TLSTREAM_TL_RET_ATOM_CTX(
+						kbdev,
 						katom, kctx);
-				KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(katom,
+				KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(
+						kbdev,
+						katom,
 						TL_ATOM_STATE_IDLE);
 
 				ret = jd_done_nolock(katom, NULL);
@@ -892,10 +897,11 @@ bool jd_submit_atom(struct kbase_context *kctx, const struct base_jd_atom_v2 *us
 			 * will be sent back to user space. Do not record any
 			 * dependencies. */
 			KBASE_TLSTREAM_TL_NEW_ATOM(
+					kbdev,
 					katom,
 					kbase_jd_atom_id(kctx, katom));
-			KBASE_TLSTREAM_TL_RET_ATOM_CTX(katom, kctx);
-			KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(katom,
+			KBASE_TLSTREAM_TL_RET_ATOM_CTX(kbdev, katom, kctx);
+			KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(kbdev, katom,
 					TL_ATOM_STATE_IDLE);
 
 			if ((katom->core_req & BASE_JD_REQ_SOFT_JOB_TYPE)
@@ -967,11 +973,12 @@ bool jd_submit_atom(struct kbase_context *kctx, const struct base_jd_atom_v2 *us
 
 	/* Create a new atom. */
 	KBASE_TLSTREAM_TL_NEW_ATOM(
+			kbdev,
 			katom,
 			kbase_jd_atom_id(kctx, katom));
-	KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(katom, TL_ATOM_STATE_IDLE);
-	KBASE_TLSTREAM_TL_ATTRIB_ATOM_PRIORITY(katom, katom->sched_priority);
-	KBASE_TLSTREAM_TL_RET_ATOM_CTX(katom, kctx);
+	KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(kbdev, katom, TL_ATOM_STATE_IDLE);
+	KBASE_TLSTREAM_TL_ATTRIB_ATOM_PRIORITY(kbdev, katom, katom->sched_priority);
+	KBASE_TLSTREAM_TL_RET_ATOM_CTX(kbdev, katom, kctx);
 
 	/* Reject atoms with job chain = NULL, as these cause issues with soft-stop */
 	if (!katom->jc && (katom->core_req & BASE_JD_REQ_ATOM_TYPE) != BASE_JD_REQ_DEP) {
@@ -1236,7 +1243,7 @@ void kbase_jd_done_worker(struct work_struct *data)
 	 * Begin transaction on JD context and JS context
 	 */
 	mutex_lock(&jctx->lock);
-	KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(katom, TL_ATOM_STATE_DONE);
+	KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(kbdev, katom, TL_ATOM_STATE_DONE);
 	mutex_lock(&js_devdata->queue_mutex);
 	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 

@@ -29,6 +29,7 @@
 static struct base_jd_udata kbase_event_process(struct kbase_context *kctx, struct kbase_jd_atom *katom)
 {
 	struct base_jd_udata data;
+	struct kbase_device *kbdev;
 
 	lockdep_assert_held(&kctx->jctx.lock);
 
@@ -36,10 +37,11 @@ static struct base_jd_udata kbase_event_process(struct kbase_context *kctx, stru
 	KBASE_DEBUG_ASSERT(katom != NULL);
 	KBASE_DEBUG_ASSERT(katom->status == KBASE_JD_ATOM_STATE_COMPLETED);
 
+	kbdev = kctx->kbdev;
 	data = katom->udata;
 
-	KBASE_TLSTREAM_TL_NRET_ATOM_CTX(katom, kctx);
-	KBASE_TLSTREAM_TL_DEL_ATOM(katom);
+	KBASE_TLSTREAM_TL_NRET_ATOM_CTX(kbdev, katom, kctx);
+	KBASE_TLSTREAM_TL_DEL_ATOM(kbdev, katom);
 
 	katom->status = KBASE_JD_ATOM_STATE_UNUSED;
 
@@ -170,6 +172,8 @@ static int kbase_event_coalesce(struct kbase_context *kctx)
 
 void kbase_event_post(struct kbase_context *ctx, struct kbase_jd_atom *atom)
 {
+	struct kbase_device *kbdev = ctx->kbdev;
+
 	if (atom->core_req & BASE_JD_REQ_EVENT_ONLY_ON_FAILURE) {
 		if (atom->event_code == BASE_JD_EVENT_DONE) {
 			/* Don't report the event */
@@ -183,7 +187,7 @@ void kbase_event_post(struct kbase_context *ctx, struct kbase_jd_atom *atom)
 		kbase_event_process_noreport(ctx, atom);
 		return;
 	}
-	KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(atom, TL_ATOM_STATE_POSTED);
+	KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(kbdev, atom, TL_ATOM_STATE_POSTED);
 	if (atom->core_req & BASE_JD_REQ_EVENT_COALESCE) {
 		/* Don't report the event until other event(s) have completed */
 		mutex_lock(&ctx->event_mutex);

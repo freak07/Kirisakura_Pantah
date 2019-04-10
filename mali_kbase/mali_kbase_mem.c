@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -34,6 +34,9 @@
 #include <linux/compat.h>
 #include <linux/version.h>
 #include <linux/log2.h>
+#ifdef CONFIG_OF
+#include <linux/of_platform.h>
+#endif
 
 #include <mali_kbase_config.h>
 #include <mali_kbase.h>
@@ -41,6 +44,8 @@
 #include <mali_kbase_cache_policy.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_tlstream.h>
+#include <mali_kbase_native_mgm.h>
+#include <mali_kbase_mem_pool_group.h>
 
 /* Forward declarations */
 static void free_partial_locked(struct kbase_context *kctx,
@@ -368,7 +373,7 @@ int kbase_remove_va_region(struct kbase_va_region *reg)
 			merged_back = 1;
 			if (merged_front) {
 				/* We already merged with prev, free it */
-				kbase_free_alloced_region(reg);
+				kfree(reg);
 			}
 		}
 	}
@@ -428,7 +433,7 @@ static int kbase_insert_va_region_nolock(struct kbase_va_region *new_reg,
 	if (at_reg->start_pfn == start_pfn && at_reg->nr_pages == nr_pages) {
 		rb_replace_node(&(at_reg->rblink), &(new_reg->rblink),
 								reg_rbtree);
-		kbase_free_alloced_region(at_reg);
+		kfree(at_reg);
 	}
 	/* New region replaces the start of the old one, so insert before. */
 	else if (at_reg->start_pfn == start_pfn) {
@@ -493,8 +498,11 @@ int kbase_add_va_region(struct kbase_context *kctx,
 
 	/* The executable allocation from the SAME_VA zone would already have an
 	 * appropriately aligned GPU VA chosen for it.
+	 * Also the executable allocation from EXEC_VA zone doesn't need the
+	 * special alignment.
 	 */
-	if (!(reg->flags & KBASE_REG_GPU_NX) && !addr) {
+	if (!(reg->flags & KBASE_REG_GPU_NX) && !addr &&
+	    ((reg->flags & KBASE_REG_ZONE_MASK) != KBASE_REG_ZONE_EXEC_VA)) {
 		if (cpu_va_bits > gpu_pc_bits) {
 			align = max(align, (size_t)((1ULL << gpu_pc_bits)
 						>> PAGE_SHIFT));
@@ -539,6 +547,7 @@ int kbase_add_va_region_rbtree(struct kbase_device *kbdev,
 		struct kbase_va_region *reg,
 		u64 addr, size_t nr_pages, size_t align)
 {
+	struct device *const dev = kbdev->dev;
 	struct rb_root *rbtree = NULL;
 	struct kbase_va_region *tmp;
 	u64 gpu_pfn = addr >> PAGE_SHIFT;
@@ -557,18 +566,15 @@ int kbase_add_va_region_rbtree(struct kbase_device *kbdev,
 	 * which *must* be free.
 	 */
 	if (gpu_pfn) {
-		struct device *dev = kbdev->dev;
-
 		KBASE_DEBUG_ASSERT(!(gpu_pfn & (align - 1)));
 
 		tmp = find_region_enclosing_range_rbtree(rbtree, gpu_pfn,
 				nr_pages);
-		if (!tmp) {
-			dev_warn(dev, "Enclosing region not found: 0x%08llx gpu_pfn, %zu nr_pages", gpu_pfn, nr_pages);
+		if (kbase_is_region_invalid(tmp)) {
+			dev_warn(dev, "Enclosing region not found or invalid: 0x%08llx gpu_pfn, %zu nr_pages", gpu_pfn, nr_pages);
 			err = -ENOMEM;
 			goto exit;
-		}
-		if (!(tmp->flags & KBASE_REG_FREE)) {
+		} else if (!kbase_is_region_free(tmp)) {
 			dev_warn(dev, "!(tmp->flags & KBASE_REG_FREE): tmp->start_pfn=0x%llx tmp->flags=0x%lx tmp->nr_pages=0x%zx gpu_pfn=0x%llx nr_pages=0x%zx\n",
 					tmp->start_pfn, tmp->flags,
 					tmp->nr_pages, gpu_pfn, nr_pages);
@@ -602,7 +608,13 @@ int kbase_add_va_region_rbtree(struct kbase_device *kbdev,
 		if (tmp) {
 			err = kbase_insert_va_region_nolock(reg, tmp,
 							start_pfn, nr_pages);
+			if (unlikely(err)) {
+				dev_warn(dev, "Failed to insert region: 0x%08llx start_pfn, %zu nr_pages",
+					start_pfn, nr_pages);
+			}
 		} else {
+			dev_dbg(dev, "Failed to find a suitable region: %zu nr_pages, %zu align_offset, %zu align_mask\n",
+				nr_pages, align_offset, align_mask);
 			err = -ENOMEM;
 		}
 	}
@@ -645,6 +657,16 @@ static void kbase_region_tracker_erase_rbtree(struct rb_root *rbtree)
 		if (rbnode) {
 			rb_erase(rbnode, rbtree);
 			reg = rb_entry(rbnode, struct kbase_va_region, rblink);
+			WARN_ON(reg->va_refcnt != 1);
+			/* Reset the start_pfn - as the rbtree is being
+			 * destroyed and we've already erased this region, there
+			 * is no further need to attempt to remove it.
+			 * This won't affect the cleanup if the region was
+			 * being used as a sticky resource as the cleanup
+			 * related to sticky resources anyways need to be
+			 * performed before the term of region tracker.
+			 */
+			reg->start_pfn = 0;
 			kbase_free_alloced_region(reg);
 		}
 	} while (rbnode);
@@ -748,6 +770,8 @@ static int kbase_region_tracker_init_jit_64(struct kbase_context *kctx,
 	struct kbase_va_region *custom_va_reg;
 	u64 same_va_bits = kbase_get_same_va_bits(kctx);
 	u64 total_va_size;
+
+	lockdep_assert_held(&kctx->reg_lock);
 
 	total_va_size = (1ULL << (same_va_bits - PAGE_SHIFT)) - 1;
 
@@ -901,34 +925,63 @@ exit_unlock:
 
 int kbase_mem_init(struct kbase_device *kbdev)
 {
+	int err = 0;
 	struct kbasep_mem_device *memdev;
-	int ret;
+#ifdef CONFIG_OF
+	struct device_node *mgm_node = NULL;
+#endif
 
 	KBASE_DEBUG_ASSERT(kbdev);
 
 	memdev = &kbdev->memdev;
-	kbdev->mem_pool_max_size_default = KBASE_MEM_POOL_MAX_SIZE_KCTX;
+
+	kbase_mem_pool_group_config_set_max_size(&kbdev->mem_pool_defaults,
+		KBASE_MEM_POOL_MAX_SIZE_KCTX);
 
 	/* Initialize memory usage */
 	atomic_set(&memdev->used_pages, 0);
 
-	ret = kbase_mem_pool_init(&kbdev->mem_pool,
-			KBASE_MEM_POOL_MAX_SIZE_KBDEV,
-			KBASE_MEM_POOL_4KB_PAGE_TABLE_ORDER,
-			kbdev,
-			NULL);
-	if (ret)
-		return ret;
+	kbdev->mgm_dev = &kbase_native_mgm_dev;
 
-	ret = kbase_mem_pool_init(&kbdev->lp_mem_pool,
-			(KBASE_MEM_POOL_MAX_SIZE_KBDEV >> 9),
-			KBASE_MEM_POOL_2MB_PAGE_TABLE_ORDER,
-			kbdev,
-			NULL);
-	if (ret)
-		kbase_mem_pool_term(&kbdev->mem_pool);
+#ifdef CONFIG_OF
+	/* Check to see whether or not a platform-specific memory group manager
+	 * is configured and available.
+	 */
+	mgm_node = of_parse_phandle(kbdev->dev->of_node,
+		"physical-memory-group-manager", 0);
+	if (!mgm_node) {
+		dev_info(kbdev->dev,
+			"No memory group manager is configured\n");
+	} else {
+		struct platform_device *const pdev =
+			of_find_device_by_node(mgm_node);
 
-	return ret;
+		if (!pdev) {
+			dev_err(kbdev->dev,
+				"The configured memory group manager was not found\n");
+		} else {
+			kbdev->mgm_dev = platform_get_drvdata(pdev);
+			if (!kbdev->mgm_dev) {
+				dev_info(kbdev->dev,
+					"Memory group manager is not ready\n");
+				err = -EPROBE_DEFER;
+			}
+		}
+		of_node_put(mgm_node);
+	}
+#endif
+
+	if (likely(!err)) {
+		struct kbase_mem_pool_group_config mem_pool_defaults;
+
+		kbase_mem_pool_group_config_set_max_size(&mem_pool_defaults,
+			KBASE_MEM_POOL_MAX_SIZE_KBDEV);
+
+		err = kbase_mem_pool_group_init(&kbdev->mem_pools, kbdev,
+			&mem_pool_defaults, NULL);
+	}
+
+	return err;
 }
 
 void kbase_mem_halt(struct kbase_device *kbdev)
@@ -949,8 +1002,7 @@ void kbase_mem_term(struct kbase_device *kbdev)
 	if (pages != 0)
 		dev_warn(kbdev->dev, "%s: %d pages in use!\n", __func__, pages);
 
-	kbase_mem_pool_term(&kbdev->mem_pool);
-	kbase_mem_pool_term(&kbdev->lp_mem_pool);
+	kbase_mem_pool_group_term(&kbdev->mem_pools);
 }
 
 KBASE_EXPORT_TEST_API(kbase_mem_term);
@@ -985,6 +1037,7 @@ struct kbase_va_region *kbase_alloc_free_region(struct rb_root *rbtree,
 	if (!new_reg)
 		return NULL;
 
+	new_reg->va_refcnt = 1;
 	new_reg->cpu_alloc = NULL; /* no alloc bound yet */
 	new_reg->gpu_alloc = NULL; /* no alloc bound yet */
 	new_reg->rbtree = rbtree;
@@ -1047,6 +1100,9 @@ void kbase_free_alloced_region(struct kbase_va_region *reg)
 		if (WARN_ON(!kctx))
 			return;
 
+		if (WARN_ON(kbase_is_region_invalid(reg)))
+			return;
+
 
 		mutex_lock(&kctx->jit_evict_lock);
 
@@ -1095,10 +1151,12 @@ void kbase_free_alloced_region(struct kbase_va_region *reg)
 
 		kbase_mem_phy_alloc_put(reg->cpu_alloc);
 		kbase_mem_phy_alloc_put(reg->gpu_alloc);
-		/* To detect use-after-free in debug builds */
-		KBASE_DEBUG_CODE(reg->flags |= KBASE_REG_FREE);
+
+		reg->flags |= KBASE_REG_VA_FREED;
+		kbase_va_region_alloc_put(kctx, reg);
+	} else {
+		kfree(reg);
 	}
-	kfree(reg);
 }
 
 KBASE_EXPORT_TEST_API(kbase_free_alloced_region);
@@ -1204,7 +1262,7 @@ static void kbase_jd_user_buf_unmap(struct kbase_context *kctx,
 
 int kbase_gpu_munmap(struct kbase_context *kctx, struct kbase_va_region *reg)
 {
-	int err;
+	int err = 0;
 
 	if (reg->start_pfn == 0)
 		return 0;
@@ -1218,7 +1276,7 @@ int kbase_gpu_munmap(struct kbase_context *kctx, struct kbase_va_region *reg)
 		for (i = 0; i < reg->gpu_alloc->imported.alias.nents; i++)
 			if (reg->gpu_alloc->imported.alias.aliased[i].alloc)
 				kbase_mem_phy_alloc_gpu_unmapped(reg->gpu_alloc->imported.alias.aliased[i].alloc);
-	} else {
+	} else if (reg->gpu_alloc) {
 		err = kbase_mmu_teardown_pages(kctx->kbdev, &kctx->mmu,
 			reg->start_pfn, kbase_reg_current_backed_size(reg),
 			kctx->as_nr);
@@ -1242,7 +1300,6 @@ int kbase_gpu_munmap(struct kbase_context *kctx, struct kbase_va_region *reg)
 	if (err)
 		return err;
 
-	err = kbase_remove_va_region(reg);
 	return err;
 }
 
@@ -1413,8 +1470,8 @@ static int kbase_do_syncset(struct kbase_context *kctx,
 	/* find the region where the virtual address is contained */
 	reg = kbase_region_tracker_find_region_enclosing_address(kctx,
 			sset->mem_handle.basep.handle);
-	if (!reg) {
-		dev_warn(kctx->kbdev->dev, "Can't find region at VA 0x%016llX",
+	if (kbase_is_region_invalid_or_free(reg)) {
+		dev_warn(kctx->kbdev->dev, "Can't find a valid region at VA 0x%016llX",
 				sset->mem_handle.basep.handle);
 		err = -EINVAL;
 		goto out_unlock;
@@ -1523,8 +1580,8 @@ int kbase_mem_free_region(struct kbase_context *kctx, struct kbase_va_region *re
 	KBASE_DEBUG_ASSERT(NULL != reg);
 	lockdep_assert_held(&kctx->reg_lock);
 
-	if (reg->flags & KBASE_REG_JIT) {
-		dev_warn(kctx->kbdev->dev, "Attempt to free JIT memory!\n");
+	if (reg->flags & KBASE_REG_NO_USER_FREE) {
+		dev_warn(kctx->kbdev->dev, "Attempt to free GPU memory whose freeing by user space is forbidden!\n");
 		return -EINVAL;
 	}
 
@@ -1608,7 +1665,7 @@ int kbase_mem_free(struct kbase_context *kctx, u64 gpu_addr)
 		/* A real GPU va */
 		/* Validate the region */
 		reg = kbase_region_tracker_find_region_base_address(kctx, gpu_addr);
-		if (!reg || (reg->flags & KBASE_REG_FREE)) {
+		if (kbase_is_region_invalid_or_free(reg)) {
 			dev_warn(kctx->kbdev->dev, "kbase_mem_free called with nonexistent gpu_addr 0x%llX",
 					gpu_addr);
 			err = -EINVAL;
@@ -1715,10 +1772,14 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc,
 	size_t nr_left = nr_pages_requested;
 	int res;
 	struct kbase_context *kctx;
+	struct kbase_device *kbdev;
 	struct tagged_addr *tp;
 
-	KBASE_DEBUG_ASSERT(alloc->type == KBASE_MEM_TYPE_NATIVE);
-	KBASE_DEBUG_ASSERT(alloc->imported.native.kctx);
+	if (WARN_ON(alloc->type != KBASE_MEM_TYPE_NATIVE) ||
+	    WARN_ON(alloc->imported.native.kctx == NULL) ||
+	    WARN_ON(alloc->group_id >= MEMORY_GROUP_MANAGER_NR_GROUPS)) {
+		return -EINVAL;
+	}
 
 	if (alloc->reg) {
 		if (nr_pages_requested > alloc->reg->nr_pages - alloc->nents)
@@ -1726,14 +1787,15 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc,
 	}
 
 	kctx = alloc->imported.native.kctx;
+	kbdev = kctx->kbdev;
 
 	if (nr_pages_requested == 0)
 		goto done; /*nothing to do*/
 
-	new_page_count = kbase_atomic_add_pages(
-			nr_pages_requested, &kctx->used_pages);
-	kbase_atomic_add_pages(nr_pages_requested,
-			       &kctx->kbdev->memdev.used_pages);
+	new_page_count = atomic_add_return(
+		nr_pages_requested, &kctx->used_pages);
+	atomic_add(nr_pages_requested,
+		&kctx->kbdev->memdev.used_pages);
 
 	/* Increase mm counters before we allocate pages so that this
 	 * allocation is visible to the OOM killer */
@@ -1748,10 +1810,11 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc,
 	if (nr_left >= (SZ_2M / SZ_4K)) {
 		int nr_lp = nr_left / (SZ_2M / SZ_4K);
 
-		res = kbase_mem_pool_alloc_pages(&kctx->lp_mem_pool,
-						 nr_lp * (SZ_2M / SZ_4K),
-						 tp,
-						 true);
+		res = kbase_mem_pool_alloc_pages(
+			&kctx->mem_pools.large[alloc->group_id],
+			 nr_lp * (SZ_2M / SZ_4K),
+			 tp,
+			 true);
 
 		if (res > 0) {
 			nr_left -= res;
@@ -1797,10 +1860,15 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc,
 			do {
 				int err;
 
-				np = kbase_mem_pool_alloc(&kctx->lp_mem_pool);
+				np = kbase_mem_pool_alloc(
+					&kctx->mem_pools.large[
+						alloc->group_id]);
 				if (np)
 					break;
-				err = kbase_mem_pool_grow(&kctx->lp_mem_pool, 1);
+
+				err = kbase_mem_pool_grow(
+					&kctx->mem_pools.large[alloc->group_id],
+					1);
 				if (err)
 					break;
 			} while (1);
@@ -1812,7 +1880,11 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc,
 
 				sa = kmalloc(sizeof(*sa), GFP_KERNEL);
 				if (!sa) {
-					kbase_mem_pool_free(&kctx->lp_mem_pool, np, false);
+					kbase_mem_pool_free(
+						&kctx->mem_pools.large[
+							alloc->group_id],
+						np,
+						false);
 					goto no_new_partial;
 				}
 
@@ -1841,15 +1913,15 @@ no_new_partial:
 #endif
 
 	if (nr_left) {
-		res = kbase_mem_pool_alloc_pages(&kctx->mem_pool,
-						 nr_left,
-						 tp,
-						 false);
+		res = kbase_mem_pool_alloc_pages(
+			&kctx->mem_pools.small[alloc->group_id],
+			nr_left, tp, false);
 		if (res <= 0)
 			goto alloc_failed;
 	}
 
 	KBASE_TLSTREAM_AUX_PAGESALLOC(
+			kbdev,
 			kctx->id,
 			(u64)new_page_count);
 
@@ -1865,17 +1937,17 @@ alloc_failed:
 		alloc->nents += nr_pages_to_free;
 
 		kbase_process_page_usage_inc(kctx, nr_pages_to_free);
-		kbase_atomic_add_pages(nr_pages_to_free, &kctx->used_pages);
-		kbase_atomic_add_pages(nr_pages_to_free,
-			       &kctx->kbdev->memdev.used_pages);
+		atomic_add(nr_pages_to_free, &kctx->used_pages);
+		atomic_add(nr_pages_to_free,
+			&kctx->kbdev->memdev.used_pages);
 
 		kbase_free_phy_pages_helper(alloc, nr_pages_to_free);
 	}
 
 	kbase_process_page_usage_dec(kctx, nr_pages_requested);
-	kbase_atomic_sub_pages(nr_pages_requested, &kctx->used_pages);
-	kbase_atomic_sub_pages(nr_pages_requested,
-			       &kctx->kbdev->memdev.used_pages);
+	atomic_sub(nr_pages_requested, &kctx->used_pages);
+	atomic_sub(nr_pages_requested,
+		&kctx->kbdev->memdev.used_pages);
 
 invalid_request:
 	return -ENOMEM;
@@ -1890,6 +1962,7 @@ struct tagged_addr *kbase_alloc_phy_pages_helper_locked(
 	size_t nr_left = nr_pages_requested;
 	int res;
 	struct kbase_context *kctx;
+	struct kbase_device *kbdev;
 	struct tagged_addr *tp;
 	struct tagged_addr *new_pages = NULL;
 
@@ -1908,16 +1981,17 @@ struct tagged_addr *kbase_alloc_phy_pages_helper_locked(
 	}
 
 	kctx = alloc->imported.native.kctx;
+	kbdev = kctx->kbdev;
 
 	lockdep_assert_held(&kctx->mem_partials_lock);
 
 	if (nr_pages_requested == 0)
 		goto done; /*nothing to do*/
 
-	new_page_count = kbase_atomic_add_pages(
-			nr_pages_requested, &kctx->used_pages);
-	kbase_atomic_add_pages(nr_pages_requested,
-			       &kctx->kbdev->memdev.used_pages);
+	new_page_count = atomic_add_return(
+		nr_pages_requested, &kctx->used_pages);
+	atomic_add(nr_pages_requested,
+		&kctx->kbdev->memdev.used_pages);
 
 	/* Increase mm counters before we allocate pages so that this
 	 * allocation is visible to the OOM killer
@@ -2023,6 +2097,7 @@ struct tagged_addr *kbase_alloc_phy_pages_helper_locked(
 #endif
 
 	KBASE_TLSTREAM_AUX_PAGESALLOC(
+			kbdev,
 			kctx->id,
 			(u64)new_page_count);
 
@@ -2068,9 +2143,8 @@ alloc_failed:
 	}
 
 	kbase_process_page_usage_dec(kctx, nr_pages_requested);
-	kbase_atomic_sub_pages(nr_pages_requested, &kctx->used_pages);
-	kbase_atomic_sub_pages(nr_pages_requested,
-			       &kctx->kbdev->memdev.used_pages);
+	atomic_sub(nr_pages_requested, &kctx->used_pages);
+	atomic_sub(nr_pages_requested, &kctx->kbdev->memdev.used_pages);
 
 invalid_request:
 	return NULL;
@@ -2088,7 +2162,10 @@ static void free_partial(struct kbase_context *kctx, struct tagged_addr tp)
 	clear_bit(p - head_page, sa->sub_pages);
 	if (bitmap_empty(sa->sub_pages, SZ_2M / SZ_4K)) {
 		list_del(&sa->link);
-		kbase_mem_pool_free(&kctx->lp_mem_pool, head_page, true);
+		kbase_mem_pool_free(
+			&kctx->mem_pools.large[BASE_MEM_GROUP_DEFAULT],
+			head_page,
+			true);
 		kfree(sa);
 	} else if (bitmap_weight(sa->sub_pages, SZ_2M / SZ_4K) ==
 		   SZ_2M / SZ_4K - 1) {
@@ -2103,15 +2180,19 @@ int kbase_free_phy_pages_helper(
 	size_t nr_pages_to_free)
 {
 	struct kbase_context *kctx = alloc->imported.native.kctx;
+	struct kbase_device *kbdev = kctx->kbdev;
 	bool syncback;
 	bool reclaimed = (alloc->evicted != 0);
 	struct tagged_addr *start_free;
 	int new_page_count __maybe_unused;
 	size_t freed = 0;
 
-	KBASE_DEBUG_ASSERT(alloc->type == KBASE_MEM_TYPE_NATIVE);
-	KBASE_DEBUG_ASSERT(alloc->imported.native.kctx);
-	KBASE_DEBUG_ASSERT(alloc->nents >= nr_pages_to_free);
+	if (WARN_ON(alloc->type != KBASE_MEM_TYPE_NATIVE) ||
+	    WARN_ON(alloc->imported.native.kctx == NULL) ||
+	    WARN_ON(alloc->nents < nr_pages_to_free) ||
+	    WARN_ON(alloc->group_id >= MEMORY_GROUP_MANAGER_NR_GROUPS)) {
+		return -EINVAL;
+	}
 
 	/* early out if nothing to do */
 	if (0 == nr_pages_to_free)
@@ -2133,11 +2214,12 @@ int kbase_free_phy_pages_helper(
 			/* This is a 2MB entry, so free all the 512 pages that
 			 * it points to
 			 */
-			kbase_mem_pool_free_pages(&kctx->lp_mem_pool,
-					512,
-					start_free,
-					syncback,
-					reclaimed);
+			kbase_mem_pool_free_pages(
+				&kctx->mem_pools.large[alloc->group_id],
+				512,
+				start_free,
+				syncback,
+				reclaimed);
 			nr_pages_to_free -= 512;
 			start_free += 512;
 			freed += 512;
@@ -2151,16 +2233,17 @@ int kbase_free_phy_pages_helper(
 
 			local_end_free = start_free;
 			while (nr_pages_to_free &&
-			       !is_huge(*local_end_free) &&
-			       !is_partial(*local_end_free)) {
+				!is_huge(*local_end_free) &&
+				!is_partial(*local_end_free)) {
 				local_end_free++;
 				nr_pages_to_free--;
 			}
-			kbase_mem_pool_free_pages(&kctx->mem_pool,
-					local_end_free - start_free,
-					start_free,
-					syncback,
-					reclaimed);
+			kbase_mem_pool_free_pages(
+				&kctx->mem_pools.small[alloc->group_id],
+				local_end_free - start_free,
+				start_free,
+				syncback,
+				reclaimed);
 			freed += local_end_free - start_free;
 			start_free += local_end_free - start_free;
 		}
@@ -2174,14 +2257,15 @@ int kbase_free_phy_pages_helper(
 	 */
 	if (!reclaimed) {
 		kbase_process_page_usage_dec(kctx, freed);
-		new_page_count = kbase_atomic_sub_pages(freed,
-							&kctx->used_pages);
-		kbase_atomic_sub_pages(freed,
-				       &kctx->kbdev->memdev.used_pages);
+		new_page_count = atomic_sub_return(freed,
+			&kctx->used_pages);
+		atomic_sub(freed,
+			&kctx->kbdev->memdev.used_pages);
 
 		KBASE_TLSTREAM_AUX_PAGESALLOC(
-				kctx->id,
-				(u64)new_page_count);
+			kbdev,
+			kctx->id,
+			(u64)new_page_count);
 	}
 
 	return 0;
@@ -2216,6 +2300,7 @@ void kbase_free_phy_pages_helper_locked(struct kbase_mem_phy_alloc *alloc,
 		size_t nr_pages_to_free)
 {
 	struct kbase_context *kctx = alloc->imported.native.kctx;
+	struct kbase_device *kbdev = kctx->kbdev;
 	bool syncback;
 	bool reclaimed = (alloc->evicted != 0);
 	struct tagged_addr *start_free;
@@ -2294,12 +2379,13 @@ void kbase_free_phy_pages_helper_locked(struct kbase_mem_phy_alloc *alloc,
 		int new_page_count;
 
 		kbase_process_page_usage_dec(kctx, freed);
-		new_page_count = kbase_atomic_sub_pages(freed,
-							&kctx->used_pages);
-		kbase_atomic_sub_pages(freed,
-				       &kctx->kbdev->memdev.used_pages);
+		new_page_count = atomic_sub_return(freed,
+			&kctx->used_pages);
+		atomic_sub(freed,
+			&kctx->kbdev->memdev.used_pages);
 
 		KBASE_TLSTREAM_AUX_PAGESALLOC(
+				kbdev,
 				kctx->id,
 				(u64)new_page_count);
 	}
@@ -2824,7 +2910,7 @@ static void kbase_jit_destroy_worker(struct work_struct *work)
 		mutex_unlock(&kctx->jit_evict_lock);
 
 		kbase_gpu_vm_lock(kctx);
-		reg->flags &= ~KBASE_REG_JIT;
+		reg->flags &= ~KBASE_REG_NO_USER_FREE;
 		kbase_mem_free_region(kctx, reg);
 		kbase_gpu_vm_unlock(kctx);
 	} while (1);
@@ -2914,13 +3000,13 @@ static int kbase_jit_grow(struct kbase_context *kctx,
 	}
 
 	if (pages_required >= (SZ_2M / SZ_4K)) {
-		pool = &kctx->lp_mem_pool;
+		pool = &kctx->mem_pools.large[BASE_MEM_GROUP_DEFAULT];
 		/* Round up to number of 2 MB pages required */
 		pages_required += ((SZ_2M / SZ_4K) - 1);
 		pages_required /= (SZ_2M / SZ_4K);
 	} else {
 #endif
-		pool = &kctx->mem_pool;
+		pool = &kctx->mem_pools.small[BASE_MEM_GROUP_DEFAULT];
 #ifdef CONFIG_MALI_2MB_ALLOC
 	}
 #endif
@@ -3005,6 +3091,7 @@ static void trace_jit_stats(struct kbase_context *kctx,
 {
 	const u32 alloc_count =
 		kctx->jit_current_allocations_per_bin[bin_id];
+	struct kbase_device *kbdev = kctx->kbdev;
 
 	struct kbase_va_region *walker;
 	u32 va_pages = 0;
@@ -3020,8 +3107,8 @@ static void trace_jit_stats(struct kbase_context *kctx,
 	}
 	mutex_unlock(&kctx->jit_evict_lock);
 
-	KBASE_TLSTREAM_AUX_JIT_STATS(kctx->id, bin_id, max_allocations,
-		alloc_count, va_pages, ph_pages);
+	KBASE_TLSTREAM_AUX_JIT_STATS(kbdev, kctx->id, bin_id,
+		max_allocations, alloc_count, va_pages, ph_pages);
 }
 
 struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
@@ -3031,12 +3118,21 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 
 	if (kctx->jit_current_allocations >= kctx->jit_max_allocations) {
 		/* Too many current allocations */
+		dev_dbg(kctx->kbdev->dev,
+			"Max JIT allocations limit reached: active allocations %d, max allocations %d\n",
+			kctx->jit_current_allocations,
+			kctx->jit_max_allocations);
 		return NULL;
 	}
 	if (info->max_allocations > 0 &&
 			kctx->jit_current_allocations_per_bin[info->bin_id] >=
 			info->max_allocations) {
 		/* Too many current allocations in this bin */
+		dev_dbg(kctx->kbdev->dev,
+			"Per bin limit of max JIT allocations reached: bin_id %d, active allocations %d, max allocations %d\n",
+			info->bin_id,
+			kctx->jit_current_allocations_per_bin[info->bin_id],
+			info->max_allocations);
 		return NULL;
 	}
 
@@ -3147,6 +3243,9 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 			 * better so return the allocation to the pool and
 			 * return the function with failure.
 			 */
+			dev_dbg(kctx->kbdev->dev,
+				"JIT allocation resize failed: va_pages 0x%llx, commit_pages 0x%llx\n",
+				info->va_pages, info->commit_pages);
 			goto update_failed_unlocked;
 		}
 	} else {
@@ -3163,10 +3262,17 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 
 		reg = kbase_mem_alloc(kctx, info->va_pages, info->commit_pages,
 				info->extent, &flags, &gpu_addr);
-		if (!reg)
+		if (!reg) {
+			/* Most likely not enough GPU virtual space left for
+			 * the new JIT allocation.
+			 */
+			dev_dbg(kctx->kbdev->dev,
+				"Failed to allocate JIT memory: va_pages 0x%llx, commit_pages 0x%llx\n",
+				info->va_pages, info->commit_pages);
 			goto out_unlocked;
+		}
 
-		reg->flags |= KBASE_REG_JIT;
+		reg->flags |= KBASE_REG_NO_USER_FREE;
 
 		mutex_lock(&kctx->jit_evict_lock);
 		list_add(&reg->jit_node, &kctx->jit_active_head);
@@ -3288,7 +3394,7 @@ bool kbase_jit_evict(struct kbase_context *kctx)
 	mutex_unlock(&kctx->jit_evict_lock);
 
 	if (reg) {
-		reg->flags &= ~KBASE_REG_JIT;
+		reg->flags &= ~KBASE_REG_NO_USER_FREE;
 		kbase_mem_free_region(kctx, reg);
 	}
 
@@ -3310,7 +3416,7 @@ void kbase_jit_term(struct kbase_context *kctx)
 		list_del(&walker->jit_node);
 		list_del_init(&walker->gpu_alloc->evict_node);
 		mutex_unlock(&kctx->jit_evict_lock);
-		walker->flags &= ~KBASE_REG_JIT;
+		walker->flags &= ~KBASE_REG_NO_USER_FREE;
 		kbase_mem_free_region(kctx, walker);
 		mutex_lock(&kctx->jit_evict_lock);
 	}
@@ -3322,7 +3428,7 @@ void kbase_jit_term(struct kbase_context *kctx)
 		list_del(&walker->jit_node);
 		list_del_init(&walker->gpu_alloc->evict_node);
 		mutex_unlock(&kctx->jit_evict_lock);
-		walker->flags &= ~KBASE_REG_JIT;
+		walker->flags &= ~KBASE_REG_NO_USER_FREE;
 		kbase_mem_free_region(kctx, walker);
 		mutex_lock(&kctx->jit_evict_lock);
 	}
@@ -3376,8 +3482,14 @@ static int kbase_jd_user_buf_map(struct kbase_context *kctx,
 	pinned_pages = get_user_pages(NULL, mm,
 			address,
 			alloc->imported.user_buf.nr_pages,
+#if KERNEL_VERSION(4, 4, 168) <= LINUX_VERSION_CODE && \
+KERNEL_VERSION(4, 5, 0) > LINUX_VERSION_CODE
+			reg->flags & KBASE_REG_GPU_WR ? FOLL_WRITE : 0,
+			pages, NULL);
+#else
 			reg->flags & KBASE_REG_GPU_WR,
 			0, pages, NULL);
+#endif
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0)
 	pinned_pages = get_user_pages_remote(NULL, mm,
 			address,
@@ -3719,7 +3831,7 @@ struct kbase_ctx_ext_res_meta *kbase_sticky_resource_acquire(
 		/* Find the region */
 		reg = kbase_region_tracker_find_region_enclosing_address(
 				kctx, gpu_addr);
-		if (NULL == reg || (reg->flags & KBASE_REG_FREE))
+		if (kbase_is_region_invalid_or_free(reg))
 			goto failed;
 
 		/* Allocate the metadata object */

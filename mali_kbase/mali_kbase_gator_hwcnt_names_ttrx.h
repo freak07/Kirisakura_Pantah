@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2016-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2016-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -166,12 +166,12 @@ static const char * const hardware_counters_mali_tTRx[] = {
 	"",
 	"",
 	"TTRx_FRAG_ACTIVE",
-	"TTRx_FRAG_PRIMITIVES",
+	"TTRx_FRAG_PRIMITIVES_OUT",
 	"TTRx_FRAG_PRIM_RAST",
 	"TTRx_FRAG_FPK_ACTIVE",
 	"TTRx_FRAG_STARVING",
 	"TTRx_FRAG_WARPS",
-	"TTRx_FRAG_PARTIAL_WARPS",
+	"TTRx_FRAG_PARTIAL_QUADS_RAST",
 	"TTRx_FRAG_QUADS_RAST",
 	"TTRx_FRAG_QUADS_EZS_TEST",
 	"TTRx_FRAG_QUADS_EZS_UPDATE",
@@ -196,15 +196,15 @@ static const char * const hardware_counters_mali_tTRx[] = {
 	"TTRx_EXEC_ICACHE_MISS",
 	"TTRx_EXEC_STARVE_ARITH",
 	"TTRx_CALL_BLEND_SHADER",
-	"TTRx_TEX_MSGI_NUM_QUADS",
-	"TTRx_TEX_DFCH_NUM_PASSES",
-	"TTRx_TEX_DFCH_NUM_PASSES_MISS",
-	"TTRx_TEX_DFCH_NUM_PASSES_MIP_MAP",
-	"TTRx_TEX_TIDX_NUM_SPLIT_MIP_MAP",
-	"TTRx_TEX_TFCH_NUM_LINES_FETCHED",
-	"TTRx_TEX_TFCH_NUM_LINES_FETCHED_BLOCK",
-	"TTRx_TEX_TFCH_NUM_OPERATIONS",
+	"TTRx_TEX_MSGI_NUM_FLITS",
+	"TTRx_TEX_DFCH_CLK_STALLED",
+	"TTRx_TEX_TFCH_CLK_STALLED",
+	"TTRx_TEX_TFCH_STARVED_PENDING_DATA_FETCH",
 	"TTRx_TEX_FILT_NUM_OPERATIONS",
+	"TTRx_TEX_FILT_NUM_FXR_OPERATIONS",
+	"TTRx_TEX_FILT_NUM_FST_OPERATIONS",
+	"TTRx_TEX_MSGO_NUM_MSG",
+	"TTRx_TEX_MSGO_NUM_FLITS",
 	"TTRx_LS_MEM_READ_FULL",
 	"TTRx_LS_MEM_READ_SHORT",
 	"TTRx_LS_MEM_WRITE_FULL",

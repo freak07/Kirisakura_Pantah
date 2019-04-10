@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -27,9 +27,6 @@
  */
 #include <mali_kbase.h>
 #include <mali_kbase_js.h>
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-#include <mali_kbase_gator.h>
-#endif
 #include <mali_kbase_tlstream.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_ctx_sched.h>
@@ -365,6 +362,7 @@ jsctx_rb_pull(struct kbase_context *kctx, struct kbase_jd_atom *katom)
 static void
 jsctx_tree_add(struct kbase_context *kctx, struct kbase_jd_atom *katom)
 {
+	struct kbase_device *kbdev = kctx->kbdev;
 	int prio = katom->sched_priority;
 	int js = katom->slot_nr;
 	struct jsctx_queue *queue = &kctx->jsctx_queue[prio][js];
@@ -387,7 +385,7 @@ jsctx_tree_add(struct kbase_context *kctx, struct kbase_jd_atom *katom)
 	rb_link_node(&katom->runnable_tree_node, parent, new);
 	rb_insert_color(&katom->runnable_tree_node, &queue->runnable_tree);
 
-	KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(katom, TL_ATOM_STATE_READY);
+	KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(kbdev, katom, TL_ATOM_STATE_READY);
 }
 
 /**
@@ -1482,10 +1480,7 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 				kctx, new_ref_count, js_kctx_info->ctx.nr_jobs,
 				kbasep_js_is_submit_allowed(js_devdata, kctx));
 
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-		kbase_trace_mali_mmu_as_released(kctx->as_nr);
-#endif
-		KBASE_TLSTREAM_TL_NRET_AS_CTX(&kbdev->as[kctx->as_nr], kctx);
+		KBASE_TLSTREAM_TL_NRET_AS_CTX(kbdev, &kbdev->as[kctx->as_nr], kctx);
 
 		kbase_backend_release_ctx_irq(kbdev, kctx);
 
@@ -1763,10 +1758,7 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 
 	kbdev->hwaccess.active_kctx[js] = kctx;
 
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-	kbase_trace_mali_mmu_as_in_use(kctx->as_nr);
-#endif
-	KBASE_TLSTREAM_TL_RET_AS_CTX(&kbdev->as[kctx->as_nr], kctx);
+	KBASE_TLSTREAM_TL_RET_AS_CTX(kbdev, &kbdev->as[kctx->as_nr], kctx);
 
 	/* Cause any future waiter-on-termination to wait until the context is
 	 * descheduled */
@@ -2260,7 +2252,7 @@ static void js_return_worker(struct work_struct *data)
 	unsigned long flags;
 	base_jd_core_req core_req = katom->core_req;
 
-	KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTSTOP_EX(katom);
+	KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTSTOP_EX(kbdev, katom);
 
 	kbase_backend_complete_wq(kbdev, katom);
 
@@ -2491,10 +2483,8 @@ struct kbase_jd_atom *kbase_js_complete_atom(struct kbase_jd_atom *katom,
 				katom->sched_priority);
 	}
 
-#if defined(CONFIG_MALI_GATOR_SUPPORT)
-	kbase_trace_mali_job_slots_event(GATOR_MAKE_EVENT(GATOR_JOB_SLOT_STOP,
-				katom->slot_nr), NULL, 0);
-#endif
+	KBASE_TLSTREAM_AUX_EVENT_JOB_SLOT(kbdev, NULL,
+		katom->slot_nr, 0, TL_JS_EVENT_STOP);
 
 	kbase_jd_done(katom, katom->slot_nr, end_timestamp, 0);
 
