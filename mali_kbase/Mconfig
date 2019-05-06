@@ -199,11 +199,6 @@ config MALI_2MB_ALLOC
 
 	  If in doubt, say N
 
-config MALI_FPGA_BUS_LOGGER
-	bool "Enable bus log integration"
-	depends on MALI_MIDGARD && MALI_EXPERT
-	default n
-
 config MALI_PWRSOFT_765
 	bool "PWRSOFT-765 ticket"
 	depends on MALI_MIDGARD && MALI_EXPERT
@@ -219,6 +214,25 @@ config MALI_MEMORY_FULLY_BACKED
 	help
 	  This option enables full backing of all virtual memory allocations
 	  for the kernel. This only affects grow-on-GPU-page-fault memory.
+
+config MALI_DMA_BUF_MAP_ON_DEMAND
+	bool "Map imported dma-bufs on demand"
+	depends on MALI_MIDGARD
+	default n
+	default y if !DMA_BUF_SYNC_IOCTL_SUPPORTED
+	help
+	  This option caused kbase to set up the GPU mapping of imported
+	  dma-buf when needed to run atoms.  This is the legacy behaviour.
+
+config MALI_DMA_BUF_LEGACY_COMPAT
+	bool "Enable legacy compatibility cache flush on dma-buf map"
+	depends on MALI_MIDGARD && !MALI_DMA_BUF_MAP_ON_DEMAND
+	default n
+	help
+	  This option enables compatibility with legacy dma-buf mapping
+	  behavior, then the dma-buf is mapped on import, by adding cache
+	  maintenance where MALI_DMA_BUF_MAP_ON_DEMAND would do the mapping,
+	  including a cache flush.
 
 # Instrumentation options.
 

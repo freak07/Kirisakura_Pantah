@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2013-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2013-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -107,48 +107,6 @@ enum {
 	/* Restrict GPU to 1/8 of maximum Address ID count. */
 	KBASE_3BIT_AID_4  = 0x7
 };
-
-/**
- * Default setting for read Address ID limiting on AXI bus.
- *
- * Attached value: u32 register value
- *    KBASE_AID_32 - use the full 32 IDs (5 ID bits)
- *    KBASE_AID_16 - use 16 IDs (4 ID bits)
- *    KBASE_AID_8  - use 8 IDs (3 ID bits)
- *    KBASE_AID_4  - use 4 IDs (2 ID bits)
- * Default value: KBASE_AID_32 (no limit). Note hardware implementation
- * may limit to a lower value.
- */
-#define DEFAULT_ARID_LIMIT KBASE_AID_32
-
-/**
- * Default setting for write Address ID limiting on AXI.
- *
- * Attached value: u32 register value
- *    KBASE_AID_32 - use the full 32 IDs (5 ID bits)
- *    KBASE_AID_16 - use 16 IDs (4 ID bits)
- *    KBASE_AID_8  - use 8 IDs (3 ID bits)
- *    KBASE_AID_4  - use 4 IDs (2 ID bits)
- * Default value: KBASE_AID_32 (no limit). Note hardware implementation
- * may limit to a lower value.
- */
-#define DEFAULT_AWID_LIMIT KBASE_AID_32
-
-/**
- * Default setting for read Address ID limiting on AXI bus.
- *
- * Default value: KBASE_3BIT_AID_32 (no limit). Note hardware implementation
- * may limit to a lower value.
- */
-#define DEFAULT_3BIT_ARID_LIMIT KBASE_3BIT_AID_32
-
-/**
- * Default setting for write Address ID limiting on AXI.
- *
- * Default value: KBASE_3BIT_AID_32 (no limit). Note hardware implementation
- * may limit to a lower value.
- */
-#define DEFAULT_3BIT_AWID_LIMIT KBASE_3BIT_AID_32
 
 /**
  * Default period for DVFS sampling

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -58,9 +58,9 @@ enum base_hw_feature {
 	BASE_HW_FEATURE_AARCH64_MMU,
 	BASE_HW_FEATURE_TLS_HASHING,
 	BASE_HW_FEATURE_THREAD_GROUP_SPLIT,
-	BASE_HW_FEATURE_3BIT_EXT_RW_L2_MMU_CONFIG,
 	BASE_HW_FEATURE_CLEAN_ONLY_SAFE,
 	BASE_HW_FEATURE_IDVS_GROUP_SIZE,
+	BASE_HW_FEATURE_L2_CONFIG,
 	BASE_HW_FEATURE_END
 };
 
@@ -319,7 +319,6 @@ static const enum base_hw_feature base_hw_features_tNOx[] = {
 	BASE_HW_FEATURE_COHERENCY_REG,
 	BASE_HW_FEATURE_AARCH64_MMU,
 	BASE_HW_FEATURE_TLS_HASHING,
-	BASE_HW_FEATURE_3BIT_EXT_RW_L2_MMU_CONFIG,
 	BASE_HW_FEATURE_IDVS_GROUP_SIZE,
 	BASE_HW_FEATURE_END
 };
@@ -350,7 +349,6 @@ static const enum base_hw_feature base_hw_features_tGOx[] = {
 	BASE_HW_FEATURE_COHERENCY_REG,
 	BASE_HW_FEATURE_AARCH64_MMU,
 	BASE_HW_FEATURE_TLS_HASHING,
-	BASE_HW_FEATURE_3BIT_EXT_RW_L2_MMU_CONFIG,
 	BASE_HW_FEATURE_IDVS_GROUP_SIZE,
 	BASE_HW_FEATURE_END
 };
@@ -463,6 +461,7 @@ static const enum base_hw_feature base_hw_features_tBEx[] = {
 	BASE_HW_FEATURE_COHERENCY_REG,
 	BASE_HW_FEATURE_AARCH64_MMU,
 	BASE_HW_FEATURE_IDVS_GROUP_SIZE,
+	BASE_HW_FEATURE_L2_CONFIG,
 	BASE_HW_FEATURE_END
 };
 
@@ -491,6 +490,7 @@ static const enum base_hw_feature base_hw_features_tULx[] = {
 	BASE_HW_FEATURE_COHERENCY_REG,
 	BASE_HW_FEATURE_AARCH64_MMU,
 	BASE_HW_FEATURE_IDVS_GROUP_SIZE,
+	BASE_HW_FEATURE_L2_CONFIG,
 	BASE_HW_FEATURE_END
 };
 
@@ -519,6 +519,7 @@ static const enum base_hw_feature base_hw_features_tDUx[] = {
 	BASE_HW_FEATURE_COHERENCY_REG,
 	BASE_HW_FEATURE_AARCH64_MMU,
 	BASE_HW_FEATURE_IDVS_GROUP_SIZE,
+	BASE_HW_FEATURE_L2_CONFIG,
 	BASE_HW_FEATURE_END
 };
 
@@ -575,6 +576,7 @@ static const enum base_hw_feature base_hw_features_tIDx[] = {
 	BASE_HW_FEATURE_COHERENCY_REG,
 	BASE_HW_FEATURE_AARCH64_MMU,
 	BASE_HW_FEATURE_IDVS_GROUP_SIZE,
+	BASE_HW_FEATURE_L2_CONFIG,
 	BASE_HW_FEATURE_END
 };
 
@@ -603,6 +605,7 @@ static const enum base_hw_feature base_hw_features_tVAx[] = {
 	BASE_HW_FEATURE_COHERENCY_REG,
 	BASE_HW_FEATURE_AARCH64_MMU,
 	BASE_HW_FEATURE_IDVS_GROUP_SIZE,
+	BASE_HW_FEATURE_L2_CONFIG,
 	BASE_HW_FEATURE_END
 };
 
@@ -632,7 +635,6 @@ static const enum base_hw_feature base_hw_features_tEGx[] = {
 	BASE_HW_FEATURE_COHERENCY_REG,
 	BASE_HW_FEATURE_AARCH64_MMU,
 	BASE_HW_FEATURE_TLS_HASHING,
-	BASE_HW_FEATURE_3BIT_EXT_RW_L2_MMU_CONFIG,
 	BASE_HW_FEATURE_END
 };
 

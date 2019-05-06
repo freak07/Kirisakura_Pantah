@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -229,7 +229,12 @@ static const struct file_operations kbasep_jd_debugfs_atoms_fops = {
 
 void kbasep_jd_debugfs_ctx_init(struct kbase_context *kctx)
 {
-	KBASE_DEBUG_ASSERT(kctx != NULL);
+	/* Caller already ensures this, but we keep the pattern for
+	 * maintenance safety.
+	 */
+	if (WARN_ON(!kctx) ||
+		WARN_ON(IS_ERR_OR_NULL(kctx->kctx_dentry)))
+		return;
 
 	/* Expose all atoms */
 	debugfs_create_file("atoms", S_IRUGO, kctx->kctx_dentry, kctx,

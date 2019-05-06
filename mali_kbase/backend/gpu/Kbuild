@@ -39,7 +39,8 @@ BACKEND += \
 	backend/gpu/mali_kbase_pm_always_on.c \
 	backend/gpu/mali_kbase_pm_coarse_demand.c \
 	backend/gpu/mali_kbase_pm_policy.c \
-	backend/gpu/mali_kbase_time.c
+	backend/gpu/mali_kbase_time.c \
+	backend/gpu/mali_kbase_l2_mmu_config.c
 
 ifeq ($(MALI_CUSTOMER_RELEASE),0)
 BACKEND += \

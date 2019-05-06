@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2016-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2016-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -166,12 +166,12 @@ static const char * const hardware_counters_mali_tBEx[] = {
 	"",
 	"",
 	"TBEx_FRAG_ACTIVE",
-	"TBEx_FRAG_PRIMITIVES",
+	"TBEx_FRAG_PRIMITIVES_OUT",
 	"TBEx_FRAG_PRIM_RAST",
 	"TBEx_FRAG_FPK_ACTIVE",
 	"TBEx_FRAG_STARVING",
 	"TBEx_FRAG_WARPS",
-	"TBEx_FRAG_PARTIAL_WARPS",
+	"TBEx_FRAG_PARTIAL_QUADS_RAST",
 	"TBEx_FRAG_QUADS_RAST",
 	"TBEx_FRAG_QUADS_EZS_TEST",
 	"TBEx_FRAG_QUADS_EZS_UPDATE",

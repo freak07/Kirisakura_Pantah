@@ -32,15 +32,26 @@
 #include <mali_kbase_dma_fence.h>
 #include <mali_kbase_ctx_sched.h>
 #include <mali_kbase_mem_pool_group.h>
+#include <mali_kbase_tracepoints.h>
 
 struct kbase_context *
-kbase_create_context(struct kbase_device *kbdev, bool is_compat)
+kbase_create_context(struct kbase_device *kbdev, bool is_compat,
+	base_context_create_flags const flags,
+	unsigned long const api_version,
+	struct file *const filp)
 {
 	struct kbase_context *kctx;
 	int err;
 	struct page *p;
+	struct kbasep_js_kctx_info *js_kctx_info = NULL;
+	unsigned long irq_flags = 0;
 
-	KBASE_DEBUG_ASSERT(kbdev != NULL);
+	if (WARN_ON(!kbdev))
+		goto out;
+
+	/* Validate flags */
+	if (WARN_ON(flags != (flags & BASEP_CONTEXT_CREATE_KERNEL_FLAGS)))
+		goto out;
 
 	/* zero-inited as lot of code assume it's zero'ed out on create */
 	kctx = vzalloc(sizeof(*kctx));
@@ -61,8 +72,6 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 		kbase_ctx_flag_set(kctx, KCTX_FORCE_SAME_VA);
 #endif /* !defined(CONFIG_64BIT) */
 
-	atomic_set(&kctx->setup_complete, 0);
-	atomic_set(&kctx->setup_in_progress, 0);
 	spin_lock_init(&kctx->mm_update_lock);
 	kctx->process_mm = NULL;
 	atomic_set(&kctx->nonmapped_pages, 0);
@@ -106,7 +115,8 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 	if (err)
 		goto free_event;
 
-	err = kbase_mmu_init(kbdev, &kctx->mmu, kctx);
+	err = kbase_mmu_init(kbdev, &kctx->mmu, kctx,
+		base_context_mmu_group_id_get(flags));
 	if (err)
 		goto term_dma_fence;
 
@@ -144,6 +154,26 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 
 	kbase_timer_setup(&kctx->soft_job_timeout,
 			  kbasep_soft_job_timeout_worker);
+
+	mutex_lock(&kbdev->kctx_list_lock);
+	list_add(&kctx->kctx_list_link, &kbdev->kctx_list);
+	KBASE_TLSTREAM_TL_NEW_CTX(kbdev, kctx, kctx->id, (u32)(kctx->tgid));
+	mutex_unlock(&kbdev->kctx_list_lock);
+
+	kctx->api_version = api_version;
+	kctx->filp = filp;
+
+	js_kctx_info = &kctx->jctx.sched_info;
+
+	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+	spin_lock_irqsave(&kctx->kbdev->hwaccess_lock, irq_flags);
+
+	/* Translate the flags */
+	if ((flags & BASE_CONTEXT_SYSTEM_MONITOR_SUBMIT_DISABLED) == 0)
+		kbase_ctx_flag_clear(kctx, KCTX_SUBMIT_DISABLED);
+
+	spin_unlock_irqrestore(&kctx->kbdev->hwaccess_lock, irq_flags);
+	mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 
 	return kctx;
 
@@ -194,10 +224,17 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	unsigned long flags;
 	struct page *p;
 
-	KBASE_DEBUG_ASSERT(NULL != kctx);
+	if (WARN_ON(!kctx))
+		return;
 
 	kbdev = kctx->kbdev;
-	KBASE_DEBUG_ASSERT(NULL != kbdev);
+	if (WARN_ON(!kbdev))
+		return;
+
+	mutex_lock(&kbdev->kctx_list_lock);
+	KBASE_TLSTREAM_TL_DEL_CTX(kbdev, kctx);
+	list_del(&kctx->kctx_list_link);
+	mutex_unlock(&kbdev->kctx_list_lock);
 
 	KBASE_TRACE_ADD(kbdev, CORE_CTX_DESTROY, kctx, NULL, 0u, 0u);
 
@@ -292,33 +329,3 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	kbase_pm_context_idle(kbdev);
 }
 KBASE_EXPORT_SYMBOL(kbase_destroy_context);
-
-int kbase_context_set_create_flags(struct kbase_context *kctx, u32 flags)
-{
-	int err = 0;
-	struct kbasep_js_kctx_info *js_kctx_info;
-	unsigned long irq_flags;
-
-	KBASE_DEBUG_ASSERT(NULL != kctx);
-
-	js_kctx_info = &kctx->jctx.sched_info;
-
-	/* Validate flags */
-	if (flags != (flags & BASE_CONTEXT_CREATE_KERNEL_FLAGS)) {
-		err = -EINVAL;
-		goto out;
-	}
-
-	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
-	spin_lock_irqsave(&kctx->kbdev->hwaccess_lock, irq_flags);
-
-	/* Translate the flags */
-	if ((flags & BASE_CONTEXT_SYSTEM_MONITOR_SUBMIT_DISABLED) == 0)
-		kbase_ctx_flag_clear(kctx, KCTX_SUBMIT_DISABLED);
-
-	spin_unlock_irqrestore(&kctx->kbdev->hwaccess_lock, irq_flags);
-	mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
- out:
-	return err;
-}
-KBASE_EXPORT_SYMBOL(kbase_context_set_create_flags);

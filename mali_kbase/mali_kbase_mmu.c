@@ -32,7 +32,7 @@
 #include <linux/dma-mapping.h>
 #include <mali_kbase.h>
 #include <mali_midg_regmap.h>
-#include <mali_kbase_tlstream.h>
+#include <mali_kbase_tracepoints.h>
 #include <mali_kbase_instr_defs.h>
 #include <mali_kbase_debug.h>
 
@@ -890,8 +890,7 @@ static phys_addr_t kbase_mmu_alloc_pgd(struct kbase_device *kbdev,
 	int i;
 	struct page *p;
 
-	p = kbase_mem_pool_alloc(
-		&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT]);
+	p = kbase_mem_pool_alloc(&kbdev->mem_pools.small[mmut->group_id]);
 	if (!p)
 		return 0;
 
@@ -926,7 +925,7 @@ static phys_addr_t kbase_mmu_alloc_pgd(struct kbase_device *kbdev,
 	return page_to_phys(p);
 
 alloc_free:
-	kbase_mem_pool_free(&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT], p,
+	kbase_mem_pool_free(&kbdev->mem_pools.small[mmut->group_id], p,
 		false);
 
 	return 0;
@@ -1151,7 +1150,7 @@ int kbase_mmu_insert_single_page(struct kbase_context *kctx, u64 vpfn,
 			mutex_unlock(&kctx->mmu.mmu_lock);
 			err = kbase_mem_pool_grow(
 				&kctx->kbdev->mem_pools.small[
-					BASE_MEM_GROUP_DEFAULT],
+					kctx->mmu.group_id],
 				MIDGARD_MMU_BOTTOMLEVEL);
 			mutex_lock(&kctx->mmu.mmu_lock);
 		} while (!err);
@@ -1227,7 +1226,7 @@ static inline void cleanup_empty_pte(struct kbase_device *kbdev,
 
 	tmp_pgd = kbdev->mmu_mode->pte_to_phy_addr(*pte);
 	tmp_p = phys_to_page(tmp_pgd);
-	kbase_mem_pool_free(&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT],
+	kbase_mem_pool_free(&kbdev->mem_pools.small[mmut->group_id],
 		tmp_p, false);
 
 	/* If the MMU tables belong to a context then we accounted the memory
@@ -1297,7 +1296,7 @@ int kbase_mmu_insert_pages_no_flush(struct kbase_device *kbdev,
 			 */
 			mutex_unlock(&mmut->mmu_lock);
 			err = kbase_mem_pool_grow(
-				&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT],
+				&kbdev->mem_pools.small[mmut->group_id],
 				cur_level);
 			mutex_lock(&mmut->mmu_lock);
 		} while (!err);
@@ -1782,7 +1781,7 @@ static int kbase_mmu_update_pages_no_flush(struct kbase_context *kctx, u64 vpfn,
 			mutex_unlock(&kctx->mmu.mmu_lock);
 			err = kbase_mem_pool_grow(
 				&kctx->kbdev->mem_pools.small[
-					BASE_MEM_GROUP_DEFAULT],
+					kctx->mmu.group_id],
 				MIDGARD_MMU_BOTTOMLEVEL);
 			mutex_lock(&kctx->mmu.mmu_lock);
 		} while (!err);
@@ -1873,7 +1872,7 @@ static void mmu_teardown_level(struct kbase_device *kbdev,
 
 	p = pfn_to_page(PFN_DOWN(pgd));
 
-	kbase_mem_pool_free(&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT],
+	kbase_mem_pool_free(&kbdev->mem_pools.small[mmut->group_id],
 		p, true);
 
 	atomic_sub(1, &kbdev->memdev.used_pages);
@@ -1887,9 +1886,15 @@ static void mmu_teardown_level(struct kbase_device *kbdev,
 	}
 }
 
-int kbase_mmu_init(struct kbase_device *kbdev, struct kbase_mmu_table *mmut,
-		struct kbase_context *kctx)
+int kbase_mmu_init(struct kbase_device *const kbdev,
+	struct kbase_mmu_table *const mmut, struct kbase_context *const kctx,
+	int const group_id)
 {
+	if (WARN_ON(group_id >= MEMORY_GROUP_MANAGER_NR_GROUPS) ||
+	    WARN_ON(group_id < 0))
+		return -EINVAL;
+
+	mmut->group_id = group_id;
 	mutex_init(&mmut->mmu_lock);
 	mmut->kctx = kctx;
 
@@ -1908,7 +1913,7 @@ int kbase_mmu_init(struct kbase_device *kbdev, struct kbase_mmu_table *mmut,
 		int err;
 
 		err = kbase_mem_pool_grow(
-			&kbdev->mem_pools.small[BASE_MEM_GROUP_DEFAULT],
+			&kbdev->mem_pools.small[mmut->group_id],
 			MIDGARD_MMU_BOTTOMLEVEL);
 		if (err) {
 			kbase_mmu_term(kbdev, mmut);

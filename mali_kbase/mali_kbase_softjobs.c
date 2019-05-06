@@ -35,7 +35,7 @@
 #include <mali_base_kernel.h>
 #include <mali_kbase_hwaccess_time.h>
 #include <mali_kbase_mem_linux.h>
-#include <mali_kbase_tlstream.h>
+#include <mali_kbase_tracepoints.h>
 #include <linux/version.h>
 #include <linux/ktime.h>
 #include <linux/pfn.h>
@@ -1168,8 +1168,7 @@ static int kbase_jit_allocate_process(struct kbase_jd_atom *katom)
 
 		KBASE_TLSTREAM_TL_ATTRIB_ATOM_JIT(kbdev, katom,
 			info->gpu_alloc_addr,
-			new_addr, info->va_pages,
-			entry_mmu_flags);
+			new_addr, entry_mmu_flags, info->id);
 		kbase_vunmap(kctx, &mapping);
 	}
 
@@ -1320,9 +1319,12 @@ static void kbase_jit_free_finish(struct kbase_jd_atom *katom)
 			 * still succeed this soft job but don't try and free
 			 * the allocation.
 			 */
-			if (kctx->jit_alloc[ids[j]] != (struct kbase_va_region *) -1)
+			if (kctx->jit_alloc[ids[j]] != (struct kbase_va_region *) -1) {
+				KBASE_TLSTREAM_TL_JIT_USEDPAGES(kctx->kbdev,
+					kctx->jit_alloc[ids[j]]->
+					gpu_alloc->nents, ids[j]);
 				kbase_jit_free(kctx, kctx->jit_alloc[ids[j]]);
-
+			}
 			kctx->jit_alloc[ids[j]] = NULL;
 		}
 	}

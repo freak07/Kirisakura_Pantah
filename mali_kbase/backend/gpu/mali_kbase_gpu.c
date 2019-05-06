@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -110,10 +110,29 @@ int kbase_backend_late_init(struct kbase_device *kbdev)
 	if (err)
 		goto fail_job_slot;
 
+	/* Do the initialisation of devfreq.
+	 * Devfreq needs backend_timer_init() for completion of its
+	 * initialisation and it also needs to catch the first callback
+	 * occurence of the runtime_suspend event for maintaining state
+	 * coherence with the backend power management, hence needs to be
+	 * placed before the kbase_pm_context_idle().
+	 */
+	err = kbase_backend_devfreq_init(kbdev);
+	if (err)
+		goto fail_devfreq_init;
+
+	/* Idle the GPU and/or cores, if the policy wants it to */
+	kbase_pm_context_idle(kbdev);
+
+	/* Update gpuprops with L2_FEATURES if applicable */
+	kbase_gpuprops_update_l2_features(kbdev);
+
 	init_waitqueue_head(&kbdev->hwaccess.backend.reset_wait);
 
 	return 0;
 
+fail_devfreq_init:
+	kbase_job_slot_term(kbdev);
 fail_job_slot:
 
 #ifdef CONFIG_MALI_DEBUG
@@ -133,6 +152,7 @@ fail_pm_powerup:
 
 void kbase_backend_late_term(struct kbase_device *kbdev)
 {
+	kbase_backend_devfreq_term(kbdev);
 	kbase_job_slot_halt(kbdev);
 	kbase_job_slot_term(kbdev);
 	kbase_backend_timer_term(kbdev);

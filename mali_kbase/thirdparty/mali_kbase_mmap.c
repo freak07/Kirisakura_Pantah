@@ -35,7 +35,7 @@
 /* mali_kbase_mmap.c
  *
  * This file contains Linux specific implementation of
- * kbase_get_unmapped_area() interface.
+ * kbase_context_get_unmapped_area() interface.
  */
 
 
@@ -253,11 +253,10 @@ check_current:
  * simplified slightly. Modifications come from the fact that some values
  * about the memory area are known in advance.
  */
-unsigned long kbase_get_unmapped_area(struct file *filp,
+unsigned long kbase_context_get_unmapped_area(struct kbase_context *const kctx,
 		const unsigned long addr, const unsigned long len,
 		const unsigned long pgoff, const unsigned long flags)
 {
-	struct kbase_context *kctx = filp->private_data;
 	struct mm_struct *mm = current->mm;
 	struct vm_unmapped_area_info info;
 	unsigned long align_offset = 0;
@@ -337,8 +336,8 @@ unsigned long kbase_get_unmapped_area(struct file *filp,
 			kbase_gpu_vm_unlock(kctx);
 #ifndef CONFIG_64BIT
 	} else {
-		return current->mm->get_unmapped_area(filp, addr, len, pgoff,
-						      flags);
+		return current->mm->get_unmapped_area(
+			kctx->filp, addr, len, pgoff, flags);
 #endif
 	}
 

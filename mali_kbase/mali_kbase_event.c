@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2016,2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2016,2018-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -24,7 +24,7 @@
 
 #include <mali_kbase.h>
 #include <mali_kbase_debug.h>
-#include <mali_kbase_tlstream.h>
+#include <mali_kbase_tracepoints.h>
 
 static struct base_jd_udata kbase_event_process(struct kbase_context *kctx, struct kbase_jd_atom *katom)
 {

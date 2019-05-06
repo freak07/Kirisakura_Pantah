@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -111,9 +111,9 @@ void kbase_release_device(struct kbase_device *kbdev);
 
 
 /**
- * kbase_get_unmapped_area() - get an address range which is currently
- *                             unmapped.
- * @filp: File operations associated with kbase device.
+ * kbase_context_get_unmapped_area() - get an address range which is currently
+ *                                     unmapped.
+ * @kctx: A kernel base context (which has its own GPU address space).
  * @addr: CPU mapped address (set to 0 since MAP_FIXED mapping is not allowed
  *        as Mali GPU driver decides about the mapping).
  * @len: Length of the address range.
@@ -148,7 +148,7 @@ void kbase_release_device(struct kbase_device *kbdev);
  * Return: if successful, address of the unmapped area aligned as required;
  *         error code (negative) in case of failure;
  */
-unsigned long kbase_get_unmapped_area(struct file *filp,
+unsigned long kbase_context_get_unmapped_area(struct kbase_context *kctx,
 		const unsigned long addr, const unsigned long len,
 		const unsigned long pgoff, const unsigned long flags);
 

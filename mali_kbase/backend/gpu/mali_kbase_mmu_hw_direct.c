@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -25,7 +25,7 @@
 #include <mali_kbase.h>
 #include <mali_kbase_mem.h>
 #include <mali_kbase_mmu_hw.h>
-#include <mali_kbase_tlstream.h>
+#include <mali_kbase_tracepoints.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <mali_kbase_as_fault_debugfs.h>
 

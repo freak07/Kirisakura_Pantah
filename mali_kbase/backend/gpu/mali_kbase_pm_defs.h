@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -36,6 +36,11 @@
 /* Forward definition - see mali_kbase.h */
 struct kbase_device;
 struct kbase_jd_atom;
+
+/**
+ * Maximum number of PM policies that may be active on a device.
+ */
+#define KBASE_PM_MAX_NUM_POLICIES (10)
 
 /**
  * enum kbase_pm_core_type - The types of core in a GPU.

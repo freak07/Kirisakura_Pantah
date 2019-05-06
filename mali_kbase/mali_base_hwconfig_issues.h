@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -129,6 +129,9 @@ enum base_hw_issue {
 	BASE_HW_ISSUE_TNOX_1194,
 	BASE_HW_ISSUE_TGOX_R1_1234,
 	BASE_HW_ISSUE_TTRX_1337,
+	BASE_HW_ISSUE_TSIX_1792,
+	BASE_HW_ISSUE_TTRX_2968_TTRX_3162,
+	BASE_HW_ISSUE_TTRX_3076,
 	BASE_HW_ISSUE_END
 };
 
@@ -1102,6 +1105,7 @@ static const enum base_hw_issue base_hw_issues_tSIx_r0p0[] = {
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_TSIX_1116,
 	BASE_HW_ISSUE_TSIX_2033,
+	BASE_HW_ISSUE_TSIX_1792,
 	BASE_HW_ISSUE_END
 };
 
@@ -1111,6 +1115,7 @@ static const enum base_hw_issue base_hw_issues_tSIx_r0p1[] = {
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_TSIX_1116,
 	BASE_HW_ISSUE_TSIX_2033,
+	BASE_HW_ISSUE_TSIX_1792,
 	BASE_HW_ISSUE_END
 };
 
@@ -1224,6 +1229,18 @@ static const enum base_hw_issue base_hw_issues_tTRx_r0p0[] = {
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_TSIX_2033,
 	BASE_HW_ISSUE_TTRX_1337,
+	BASE_HW_ISSUE_TTRX_2968_TTRX_3162,
+	BASE_HW_ISSUE_TTRX_3076,
+	BASE_HW_ISSUE_END
+};
+
+static const enum base_hw_issue base_hw_issues_tTRx_r0p1[] = {
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_TSIX_2033,
+	BASE_HW_ISSUE_TTRX_1337,
+	BASE_HW_ISSUE_TTRX_2968_TTRX_3162,
+	BASE_HW_ISSUE_TTRX_3076,
 	BASE_HW_ISSUE_END
 };
 
@@ -1241,6 +1258,18 @@ static const enum base_hw_issue base_hw_issues_tNAx_r0p0[] = {
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_TSIX_2033,
 	BASE_HW_ISSUE_TTRX_1337,
+	BASE_HW_ISSUE_TTRX_2968_TTRX_3162,
+	BASE_HW_ISSUE_TTRX_3076,
+	BASE_HW_ISSUE_END
+};
+
+static const enum base_hw_issue base_hw_issues_tNAx_r0p1[] = {
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TMIX_8133,
+	BASE_HW_ISSUE_TSIX_2033,
+	BASE_HW_ISSUE_TTRX_1337,
+	BASE_HW_ISSUE_TTRX_2968_TTRX_3162,
+	BASE_HW_ISSUE_TTRX_3076,
 	BASE_HW_ISSUE_END
 };
 
@@ -1258,6 +1287,7 @@ static const enum base_hw_issue base_hw_issues_tBEx_r0p0[] = {
 	BASE_HW_ISSUE_TMIX_8133,
 	BASE_HW_ISSUE_TSIX_2033,
 	BASE_HW_ISSUE_TTRX_1337,
+	BASE_HW_ISSUE_TTRX_2968_TTRX_3162,
 	BASE_HW_ISSUE_END
 };
 

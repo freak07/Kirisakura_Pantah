@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -241,6 +241,9 @@ int kbase_device_init(struct kbase_device * const kbdev)
 	else
 		kbdev->mmu_mode = kbase_mmu_mode_get_lpae();
 
+	mutex_init(&kbdev->kctx_list_lock);
+	INIT_LIST_HEAD(&kbdev->kctx_list);
+
 	return 0;
 term_trace:
 	kbasep_trace_term(kbdev);
@@ -255,6 +258,8 @@ fail:
 void kbase_device_term(struct kbase_device *kbdev)
 {
 	KBASE_DEBUG_ASSERT(kbdev);
+
+	WARN_ON(!list_empty(&kbdev->kctx_list));
 
 #if KBASE_TRACE_ENABLE
 	kbase_debug_assert_register_hook(NULL, NULL);

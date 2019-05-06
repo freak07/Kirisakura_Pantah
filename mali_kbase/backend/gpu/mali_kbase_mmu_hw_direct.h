@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2015 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2015, 2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -29,8 +29,8 @@
  * register access implementation of the MMU hardware interface
  */
 
-#ifndef _MALI_KBASE_MMU_HW_DIRECT_H_
-#define _MALI_KBASE_MMU_HW_DIRECT_H_
+#ifndef _KBASE_MMU_HW_DIRECT_H_
+#define _KBASE_MMU_HW_DIRECT_H_
 
 #include <mali_kbase_defs.h>
 
@@ -44,4 +44,4 @@
  */
 void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat);
 
-#endif	/* _MALI_KBASE_MMU_HW_DIRECT_H_ */
+#endif	/* _KBASE_MMU_HW_DIRECT_H_ */

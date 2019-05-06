@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014, 2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -18,21 +18,24 @@
  *
  * SPDX-License-Identifier: GPL-2.0
  *
+ *//* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *
+ * (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the
+ * GNU General Public License version 2 as published by the Free Software
+ * Foundation, and any use by you of this program is subject to the terms
+ * of such GNU licence.
  */
 
-#ifndef _BASE_DEVFREQ_H_
-#define _BASE_DEVFREQ_H_
+#ifndef _KBASE_BITS_H_
+#define _KBASE_BITS_H_
 
-int kbase_devfreq_init(struct kbase_device *kbdev);
+#if (KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE)
+#include <linux/bits.h>
+#else
+#include <linux/bitops.h>
+#endif
 
-void kbase_devfreq_term(struct kbase_device *kbdev);
-
-/**
- * kbase_devfreq_enqueue_work - Enqueue a work item for suspend/resume devfreq.
- * @kbdev:      Device pointer
- * @work_type:  The type of the devfreq work item, i.e. suspend or resume
- */
-void kbase_devfreq_enqueue_work(struct kbase_device *kbdev,
-				enum kbase_devfreq_work_type work_type);
-
-#endif /* _BASE_DEVFREQ_H_ */
+#endif /* _KBASE_BITS_H_ */

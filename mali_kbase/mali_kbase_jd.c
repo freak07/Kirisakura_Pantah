@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -35,7 +35,7 @@
 
 #include <mali_kbase_jm.h>
 #include <mali_kbase_hwaccess_jm.h>
-#include <mali_kbase_tlstream.h>
+#include <mali_kbase_tracepoints.h>
 
 #include "mali_kbase_dma_fence.h"
 

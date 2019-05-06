@@ -27,7 +27,7 @@
 #include <mali_kbase.h>
 #include <mali_kbase_config.h>
 #include <mali_midg_regmap.h>
-#include <mali_kbase_tlstream.h>
+#include <mali_kbase_tracepoints.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_hwaccess_jm.h>
 #include <mali_kbase_ctx_sched.h>
@@ -233,14 +233,12 @@ static void kbasep_job_slot_update_head_start_timestamp(
 						int js,
 						ktime_t end_timestamp)
 {
-	if (kbase_backend_nr_atoms_on_slot(kbdev, js) > 0) {
-		struct kbase_jd_atom *katom;
-		ktime_t timestamp_diff;
-		/* The atom in the HEAD */
-		katom = kbase_gpu_inspect(kbdev, js, 0);
+	ktime_t timestamp_diff;
+	struct kbase_jd_atom *katom;
 
-		KBASE_DEBUG_ASSERT(katom != NULL);
-
+	/* Checking the HEAD position for the job slot */
+	katom = kbase_gpu_inspect(kbdev, js, 0);
+	if (katom != NULL) {
 		timestamp_diff = ktime_sub(end_timestamp,
 				katom->start_timestamp);
 		if (ktime_to_ns(timestamp_diff) >= 0) {
@@ -334,6 +332,17 @@ void kbase_job_done(struct kbase_device *kbdev, u32 done)
 				}
 
 				kbase_gpu_irq_evict(kbdev, i, completion_code);
+
+				/* Some jobs that encounter a BUS FAULT may result in corrupted
+				 * state causing future jobs to hang. Reset GPU before
+				 * allowing any other jobs on the slot to continue. */
+				if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TTRX_3076)) {
+					if (completion_code == BASE_JD_EVENT_JOB_BUS_FAULT) {
+						if (kbase_prepare_to_reset_gpu_locked(kbdev)) {
+							kbase_reset_gpu_locked(kbdev);
+						}
+					}
+				}
 			}
 
 			kbase_reg_write(kbdev, JOB_CONTROL_REG(JOB_IRQ_CLEAR),

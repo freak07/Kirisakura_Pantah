@@ -66,9 +66,22 @@ extern "C" {
  * - Removed ioctl: KBASE_IOCTL_GET_PROFILING_CONTROLS
  * 11.13:
  * - New ioctl: KBASE_IOCTL_MEM_EXEC_INIT
+ * 11.14:
+ * - Add BASE_MEM_GROUP_ID_MASK, base_mem_group_id_get, base_mem_group_id_set
+ *   under base_mem_alloc_flags
+ * 11.15:
+ * - Added BASEP_CONTEXT_MMU_GROUP_ID_MASK under base_context_create_flags.
+ * - Require KBASE_IOCTL_SET_FLAGS before BASE_MEM_MAP_TRACKING_HANDLE can be
+ *   passed to mmap().
+ * 11.16:
+ * - Extended ioctl KBASE_IOCTL_MEM_SYNC to accept imported dma-buf.
+ * - Modified (backwards compatible) ioctl KBASE_IOCTL_MEM_IMPORT behavior for
+ *   dma-buf. Now, buffers are mapped on GPU when first imported, no longer
+ *   requiring external resource or sticky resource tracking. UNLESS,
+ *   CONFIG_MALI_DMA_BUF_MAP_ON_DEMAND is enabled.
  */
-#define BASE_UK_VERSION_MAJOR 11
-#define BASE_UK_VERSION_MINOR 13
+#define BASE_UK_VERSION_MAJOR ((__u16)11)
+#define BASE_UK_VERSION_MINOR ((__u16)16)
 
 /**
  * struct kbase_ioctl_version_check - Check version compatibility with kernel
@@ -336,6 +349,7 @@ struct kbase_ioctl_mem_jit_init_old {
  * @va_pages: Number of VA pages to reserve for JIT
  * @max_allocations: Maximum number of concurrent allocations
  * @trim_level: Level of JIT allocation trimming to perform on free (0 - 100%)
+ * @group_id: Group ID to be used for physical allocations
  * @padding: Currently unused, must be zero
  *
  * Note that depending on the VA size of the application and GPU, the value
@@ -345,7 +359,8 @@ struct kbase_ioctl_mem_jit_init {
 	__u64 va_pages;
 	__u8 max_allocations;
 	__u8 trim_level;
-	__u8 padding[6];
+	__u8 group_id;
+	__u8 padding[5];
 };
 
 #define KBASE_IOCTL_MEM_JIT_INIT \

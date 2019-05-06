@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -46,34 +46,30 @@ static const struct kbase_pm_policy *const all_policy_list[] = {
 #endif /* CONFIG_MALI_NO_MALI */
 };
 
-/* A filtered list of policies available in the system, calculated by filtering
- * all_policy_list based on the flags provided by each policy.
- */
-static const struct kbase_pm_policy *enabled_policy_list[ARRAY_SIZE(all_policy_list)];
-static size_t enabled_policy_count;
-
-static void generate_filtered_policy_list(void)
+static void generate_filtered_policy_list(struct kbase_device *kbdev)
 {
 	size_t i;
 
 	for (i = 0; i < ARRAY_SIZE(all_policy_list); ++i) {
 		const struct kbase_pm_policy *pol = all_policy_list[i];
 
+		BUILD_BUG_ON(ARRAY_SIZE(all_policy_list) >
+			KBASE_PM_MAX_NUM_POLICIES);
 		if (platform_power_down_only &&
 				(pol->flags & KBASE_PM_POLICY_FLAG_DISABLED_WITH_POWER_DOWN_ONLY))
 			continue;
 
-		enabled_policy_list[enabled_policy_count++] = pol;
+		kbdev->policy_list[kbdev->policy_count++] = pol;
 	}
 }
 
 int kbase_pm_policy_init(struct kbase_device *kbdev)
 {
-	generate_filtered_policy_list();
-	if (enabled_policy_count == 0)
+	generate_filtered_policy_list(kbdev);
+	if (kbdev->policy_count == 0)
 		return -EINVAL;
 
-	kbdev->pm.backend.pm_current_policy = enabled_policy_list[0];
+	kbdev->pm.backend.pm_current_policy = kbdev->policy_list[0];
 	kbdev->pm.backend.pm_current_policy->init(kbdev);
 
 	return 0;
@@ -180,13 +176,14 @@ void kbase_pm_update_cores_state(struct kbase_device *kbdev)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
 
-int kbase_pm_list_policies(const struct kbase_pm_policy * const **list)
+int kbase_pm_list_policies(struct kbase_device *kbdev,
+	const struct kbase_pm_policy * const **list)
 {
-	WARN_ON(enabled_policy_count == 0);
+	WARN_ON(kbdev->policy_count == 0);
 	if (list)
-		*list = enabled_policy_list;
+		*list = kbdev->policy_list;
 
-	return enabled_policy_count;
+	return kbdev->policy_count;
 }
 
 KBASE_EXPORT_TEST_API(kbase_pm_list_policies);

@@ -49,7 +49,7 @@
 #include <linux/file.h>
 #include <linux/sizes.h>
 
-#ifdef CONFIG_MALI_FPGA_BUS_LOGGER
+#ifdef CONFIG_MALI_BUSLOG
 #include <linux/bus_logger.h>
 #endif
 
@@ -928,6 +928,9 @@ struct kbase_as {
  *                        level page table of the context, this is used for
  *                        MMU HW programming as the address translation will
  *                        start from the top level page table.
+ * @group_id:             A memory group ID to be passed to a platform-specific
+ *                        memory group manager.
+ *                        Valid range is 0..(MEMORY_GROUP_MANAGER_NR_GROUPS-1).
  * @kctx:                 If this set of MMU tables belongs to a context then
  *                        this is a back-reference to the context, otherwise
  *                        it is NULL
@@ -936,6 +939,7 @@ struct kbase_mmu_table {
 	u64 *mmu_teardown_pages;
 	struct mutex mmu_lock;
 	phys_addr_t pgd;
+	u8 group_id;
 	struct kbase_context *kctx;
 };
 
@@ -1017,11 +1021,6 @@ struct kbase_trace {
 	u8 jobslot;
 	u8 refcount;
 	u8 flags;
-};
-
-struct kbasep_kctx_list_element {
-	struct list_head link;
-	struct kbase_context *kctx;
 };
 
 /**
@@ -1223,6 +1222,36 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
 #define DEVNAME_SIZE	16
 
 /**
+ * enum kbase_devfreq_work_type - The type of work to perform in the devfreq
+ *                                suspend/resume worker.
+ * @DEVFREQ_WORK_NONE:    Initilisation state.
+ * @DEVFREQ_WORK_SUSPEND: Call devfreq_suspend_device().
+ * @DEVFREQ_WORK_RESUME:  Call devfreq_resume_device().
+ */
+enum kbase_devfreq_work_type {
+	DEVFREQ_WORK_NONE,
+	DEVFREQ_WORK_SUSPEND,
+	DEVFREQ_WORK_RESUME
+};
+
+/**
+ * struct kbase_devfreq_queue_info - Object representing an instance for managing
+ *                                   the queued devfreq suspend/resume works.
+ * @workq:                 Workqueue for devfreq suspend/resume requests
+ * @work:                  Work item for devfreq suspend & resume
+ * @req_type:              Requested work type to be performed by the devfreq
+ *                         suspend/resume worker
+ * @acted_type:            Work type has been acted on by the worker, i.e. the
+ *                         internal recorded state of the suspend/resume
+ */
+struct kbase_devfreq_queue_info {
+	struct workqueue_struct *workq;
+	struct work_struct work;
+	enum kbase_devfreq_work_type req_type;
+	enum kbase_devfreq_work_type acted_type;
+};
+
+/**
  * struct kbase_device   - Object representing an instance of GPU platform device,
  *                         allocated from the probe method of mali driver.
  * @hw_quirks_sc:          Configuration to be used for the shader cores as per
@@ -1339,8 +1368,9 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  * @cache_clean_wait:      Signalled when a cache clean has finished.
  * @platform_context:      Platform specific private data to be accessed by
  *                         platform specific config files only.
- * @kctx_list:             List of kbase_contexts created for the device, including
- *                         the kbase_context created for vinstr_ctx.
+ * @kctx_list:             List of kbase_contexts created for the device,
+ *                         including any contexts that might be created for
+ *                         hardware counters.
  * @kctx_list_lock:        Lock protecting concurrent accesses to @kctx_list.
  * @devfreq_profile:       Describes devfreq profile for the Mali GPU device, passed
  *                         to devfreq_add_device() to add devfreq feature to Mali
@@ -1367,6 +1397,8 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  *                         to operating-points-v2-mali table in devicetree.
  * @num_opps:              Number of operating performance points available for the Mali
  *                         GPU device.
+ * @devfreq_queue:         Per device object for storing data that manages devfreq
+ *                         suspend & resume request queue and the related items.
  * @devfreq_cooling:       Pointer returned on registering devfreq cooling device
  *                         corresponding to @devfreq.
  * @ipa_protection_mode_switched: is set to TRUE when GPU is put into protected
@@ -1465,6 +1497,10 @@ struct kbase_mmu_mode const *kbase_mmu_mode_get_aarch64(void);
  *                          on disabling of GWT.
  * @js_ctx_scheduling_mode: Context scheduling mode currently being used by
  *                          Job Scheduler
+ * @l2_size_override:       Used to set L2 cache size via device tree blob
+ * @l2_hash_override:       Used to set L2 cache hash via device tree blob
+ * @policy_list:            A filtered list of policies available in the system.
+ * @policy_count:           Number of policies in the @policy_list.
  */
 struct kbase_device {
 	u32 hw_quirks_sc;
@@ -1575,6 +1611,11 @@ struct kbase_device {
 	struct kbase_devfreq_opp *opp_table;
 	int num_opps;
 	struct kbasep_pm_metrics last_devfreq_metrics;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
+	struct kbase_devfreq_queue_info devfreq_queue;
+#endif
+
 #ifdef CONFIG_DEVFREQ_THERMAL
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0)
 	struct devfreq_cooling_device *devfreq_cooling;
@@ -1677,7 +1718,7 @@ struct kbase_device {
 
 	bool protected_mode_support;
 
-#ifdef CONFIG_MALI_FPGA_BUS_LOGGER
+#ifdef CONFIG_MALI_BUSLOG
 	struct bus_logger_client *buslogger;
 #endif
 
@@ -1696,9 +1737,15 @@ struct kbase_device {
 	u8 backup_serialize_jobs;
 #endif
 
+	u8 l2_size_override;
+	u8 l2_hash_override;
+
 	/* See KBASE_JS_*_PRIORITY_MODE for details. */
 	u32 js_ctx_scheduling_mode;
 
+
+	const struct kbase_pm_policy *policy_list[KBASE_PM_MAX_NUM_POLICIES];
+	int policy_count;
 };
 
 /**
@@ -1720,6 +1767,56 @@ struct jsctx_queue {
 #define KBASE_API_VERSION(major, minor) ((((major) & 0xFFF) << 20)  | \
 					 (((minor) & 0xFFF) << 8) | \
 					 ((0 & 0xFF) << 0))
+
+/**
+ * enum kbase_file_state - Initialization state of a file opened by @kbase_open
+ *
+ * @KBASE_FILE_NEED_VSN:        Initial state, awaiting API version.
+ * @KBASE_FILE_VSN_IN_PROGRESS: Indicates if setting an API version is in
+ *                              progress and other setup calls shall be
+ *                              rejected.
+ * @KBASE_FILE_NEED_CTX:        Indicates if the API version handshake has
+ *                              completed, awaiting context creation flags.
+ * @KBASE_FILE_CTX_IN_PROGRESS: Indicates if the context's setup is in progress
+ *                              and other setup calls shall be rejected.
+ * @KBASE_FILE_COMPLETE:        Indicates if the setup for context has
+ *                              completed, i.e. flags have been set for the
+ *                              context.
+ *
+ * The driver allows only limited interaction with user-space until setup
+ * is complete.
+ */
+enum kbase_file_state {
+	KBASE_FILE_NEED_VSN,
+	KBASE_FILE_VSN_IN_PROGRESS,
+	KBASE_FILE_NEED_CTX,
+	KBASE_FILE_CTX_IN_PROGRESS,
+	KBASE_FILE_COMPLETE
+};
+
+/**
+ * struct kbase_file - Object representing a file opened by @kbase_open
+ *
+ * @kbdev:               Object representing an instance of GPU platform device,
+ *                       allocated from the probe method of the Mali driver.
+ * @filp:                Pointer to the struct file corresponding to device file
+ *                       /dev/malixx instance, passed to the file's open method.
+ * @kctx:                Object representing an entity, among which GPU is
+ *                       scheduled and which gets its own GPU address space.
+ *                       Invalid until @setup_state is KBASE_FILE_COMPLETE.
+ * @api_version:         Contains the version number for User/kernel interface,
+ *                       used for compatibility check. Invalid until
+ *                       @setup_state is KBASE_FILE_NEED_CTX.
+ * @setup_state:         Initialization state of the file. Values come from
+ *                       the kbase_file_state enumeration.
+ */
+struct kbase_file {
+	struct kbase_device  *kbdev;
+	struct file          *filp;
+	struct kbase_context *kctx;
+	unsigned long         api_version;
+	atomic_t              setup_state;
+};
 
 /**
  * enum kbase_context_flags - Flags for kbase contexts
@@ -1803,12 +1900,12 @@ struct kbase_sub_alloc {
 };
 
 /**
- * struct kbase_context - Object representing an entity, among which GPU is
- *                        scheduled and gets its own GPU address space.
- *                        Created when the device file /dev/malixx is opened.
+ * struct kbase_context - Kernel base context
+ *
  * @filp:                 Pointer to the struct file corresponding to device file
  *                        /dev/malixx instance, passed to the file's open method.
  * @kbdev:                Pointer to the Kbase device for which the context is created.
+ * @kctx_list_link:       Node into Kbase device list of contexts.
  * @mmu:                  Structure holding details of the MMU tables for this
  *                        context
  * @id:                   Unique identifier for the context, indicates the number of
@@ -1832,12 +1929,6 @@ struct kbase_sub_alloc {
  * @event_coalesce_count: Count of the events present in @event_coalesce_list.
  * @flags:                bitmap of enums from kbase_context_flags, indicating the
  *                        state & attributes for the context.
- * @setup_complete:       Indicates if the setup for context has completed, i.e.
- *                        flags have been set for the context. Driver allows only
- *                        2 ioctls until the setup is done. Valid only for
- *                        @api_version value 0.
- * @setup_in_progress:    Indicates if the context's setup is in progress and other
- *                        setup calls during that shall be rejected.
  * @aliasing_sink_page:   Special page used for KBASE_MEM_TYPE_ALIAS allocations,
  *                        which can alias number of memory regions. The page is
  *                        represent a region where it is mapped with a write-alloc
@@ -1873,10 +1964,16 @@ struct kbase_sub_alloc {
  * @event_queue:          Wait queue used for blocking the thread, which consumes
  *                        the base_jd_event corresponding to an atom, when there
  *                        are no more posted events.
- * @tgid:                 thread group id of the process, whose thread opened the
- *                        device file /dev/malixx instance to create a context.
- * @pid:                  id of the thread, corresponding to process @tgid, which
- *                        actually which opened the device file.
+ * @tgid:                 Thread group ID of the process whose thread created
+ *                        the context (by calling KBASE_IOCTL_VERSION_CHECK or
+ *                        KBASE_IOCTL_SET_FLAGS, depending on the @api_version).
+ *                        This is usually, but not necessarily, the same as the
+ *                        process whose thread opened the device file
+ *                        /dev/malixx instance.
+ * @pid:                  ID of the thread, corresponding to process @tgid,
+ *                        which actually created the context. This is usually,
+ *                        but not necessarily, the same as the thread which
+ *                        opened the device file /dev/malixx instance.
  * @jctx:                 object encapsulating all the Job dispatcher related state,
  *                        including the array of atoms.
  * @used_pages:           Keeps a track of the number of 4KB physical pages in use
@@ -1985,6 +2082,9 @@ struct kbase_sub_alloc {
  *                        old or new version of interface for JIT allocations
  *	                  1 -> client used KBASE_IOCTL_MEM_JIT_INIT_OLD
  *	                  2 -> client used KBASE_IOCTL_MEM_JIT_INIT
+ * @jit_group_id:         A memory group ID to be passed to a platform-specific
+ *                        memory group manager.
+ *                        Valid range is 0..(MEMORY_GROUP_MANAGER_NR_GROUPS-1).
  * @jit_active_head:      List containing the JIT allocations which are in use.
  * @jit_pool_head:        List containing the JIT allocations which have been
  *                        freed up by userpsace and so not being used by them.
@@ -2024,10 +2124,17 @@ struct kbase_sub_alloc {
  * @priority:             Indicates the context priority. Used along with @atoms_count
  *                        for context scheduling, protected by hwaccess_lock.
  * @atoms_count:          Number of gpu atoms currently in use, per priority
+ *
+ * A kernel base context is an entity among which the GPU is scheduled.
+ * Each context has its own GPU address space.
+ * Up to one context can be created for each client that opens the device file
+ * /dev/malixx. Context creation is deferred until a special ioctl() system call
+ * is made on the device file.
  */
 struct kbase_context {
 	struct file *filp;
 	struct kbase_device *kbdev;
+	struct list_head kctx_list_link;
 	struct kbase_mmu_table mmu;
 
 	u32 id;
@@ -2041,9 +2148,6 @@ struct kbase_context {
 	int event_coalesce_count;
 
 	atomic_t flags;
-
-	atomic_t                setup_complete;
-	atomic_t                setup_in_progress;
 
 	struct tagged_addr aliasing_sink_page;
 
@@ -2086,12 +2190,6 @@ struct kbase_context {
 
 	atomic_t refcount;
 
-	/* NOTE:
-	 *
-	 * Flags are in jctx.sched_info.ctx.flags
-	 * Mutable flags *must* be accessed under jctx.sched_info.ctx.jsctx_mutex
-	 *
-	 * All other flags must be added there */
 	spinlock_t         mm_update_lock;
 	struct mm_struct __rcu *process_mm;
 	u64 same_va_end;
@@ -2138,6 +2236,7 @@ struct kbase_context {
 	u8 jit_current_allocations;
 	u8 jit_current_allocations_per_bin[256];
 	u8 jit_version;
+	u8 jit_group_id;
 	struct list_head jit_active_head;
 	struct list_head jit_pool_head;
 	struct list_head jit_destroy_head;

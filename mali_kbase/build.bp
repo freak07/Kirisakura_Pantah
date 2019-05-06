@@ -28,8 +28,8 @@ bob_defaults {
     mali_debug: {
         kbuild_options: ["CONFIG_MALI_DEBUG=y"],
     },
-    mali_fpga_bus_logger: {
-        kbuild_options: ["CONFIG_MALI_FPGA_BUS_LOGGER=y"],
+    buslog: {
+        kbuild_options: ["CONFIG_MALI_BUSLOG=y"],
     },
     cinstr_job_dump: {
         kbuild_options: ["CONFIG_MALI_JOB_DUMP=y"],
@@ -51,6 +51,9 @@ bob_defaults {
     },
     mali_memory_fully_backed: {
         kbuild_options: ["CONFIG_MALI_MEMORY_FULLY_BACKED=y"],
+    },
+    mali_dma_buf_map_on_demand: {
+        kbuild_options: ["CONFIG_MALI_DMA_BUF_MAP_ON_DEMAND=y"],
     },
     kbuild_options: [
         "MALI_UNIT_TEST={{.unit_test_code}}",
@@ -87,7 +90,7 @@ bob_kernel_module {
         "CONFIG_MALI_NO_MALI_DEFAULT_GPU={{.gpu}}",
         "CONFIG_MALI_PLATFORM_NAME={{.mali_platform_name}}",
     ],
-    mali_fpga_bus_logger: {
+    buslog: {
         extra_symbols: [
             "bus_logger",
         ],

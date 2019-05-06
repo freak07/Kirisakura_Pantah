@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef _MIDGARD_REGMAP_JM_H_
-#define _MIDGARD_REGMAP_JM_H_
+#ifndef _MIDG_REGMAP_JM_H_
+#define _MIDG_REGMAP_JM_H_
 
 /* GPU control registers */
 
@@ -195,4 +195,4 @@
 #define JM_IDVS_GROUP_SIZE_SHIFT (16)
 #define JM_MAX_IDVS_GROUP_SIZE (0x3F)
 
-#endif /* _MIDGARD_REGMAP_JM_H_ */
+#endif /* _MIDG_REGMAP_JM_H_ */

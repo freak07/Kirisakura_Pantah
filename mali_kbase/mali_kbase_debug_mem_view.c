@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2013-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2013-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -198,12 +198,11 @@ out:
 
 static int debug_mem_open(struct inode *i, struct file *file)
 {
-	struct file *kctx_file = i->i_private;
-	struct kbase_context *kctx = kctx_file->private_data;
+	struct kbase_context *const kctx = i->i_private;
 	struct debug_mem_data *mem_data;
 	int ret;
 
-	if (get_file_rcu(kctx_file) == 0)
+	if (get_file_rcu(kctx->filp) == 0)
 		return -ENOENT;
 
 	ret = seq_open(file, &ops);
@@ -255,14 +254,14 @@ out:
 	}
 	seq_release(i, file);
 open_fail:
-	fput(kctx_file);
+	fput(kctx->filp);
 
 	return ret;
 }
 
 static int debug_mem_release(struct inode *inode, struct file *file)
 {
-	struct file *kctx_file = inode->i_private;
+	struct kbase_context *const kctx = inode->i_private;
 	struct seq_file *sfile = file->private_data;
 	struct debug_mem_data *mem_data = sfile->private;
 	struct debug_mem_mapping *mapping;
@@ -279,7 +278,7 @@ static int debug_mem_release(struct inode *inode, struct file *file)
 
 	kfree(mem_data);
 
-	fput(kctx_file);
+	fput(kctx->filp);
 
 	return 0;
 }
@@ -291,21 +290,16 @@ static const struct file_operations kbase_debug_mem_view_fops = {
 	.llseek = seq_lseek
 };
 
-/**
- * kbase_debug_mem_view_init - Initialise the mem_view sysfs file
- * @kctx_file: The /dev/mali0 file instance for the context
- *
- * This function creates a "mem_view" file which can be used to get a view of
- * the context's memory as the GPU sees it (i.e. using the GPU's page tables).
- *
- * The file is cleaned up by a call to debugfs_remove_recursive() deleting the
- * parent directory.
- */
-void kbase_debug_mem_view_init(struct file *kctx_file)
+void kbase_debug_mem_view_init(struct kbase_context *const kctx)
 {
-	struct kbase_context *kctx = kctx_file->private_data;
+	/* Caller already ensures this, but we keep the pattern for
+	 * maintenance safety.
+	 */
+	if (WARN_ON(!kctx) ||
+		WARN_ON(IS_ERR_OR_NULL(kctx->kctx_dentry)))
+		return;
 
-	debugfs_create_file("mem_view", S_IRUSR, kctx->kctx_dentry, kctx_file,
+	debugfs_create_file("mem_view", 0400, kctx->kctx_dentry, kctx,
 			&kbase_debug_mem_view_fops);
 }
 

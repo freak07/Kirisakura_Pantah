@@ -726,7 +726,7 @@ void kbase_mem_pool_free_locked(struct kbase_mem_pool *pool, struct page *p,
 /**
  * kbase_mem_pool_alloc_pages - Allocate pages from memory pool
  * @pool:     Memory pool to allocate from
- * @nr_pages: Number of pages to allocate
+ * @nr_4k_pages: Number of pages to allocate
  * @pages:    Pointer to array where the physical address of the allocated
  *            pages will be stored.
  * @partial_allowed: If fewer pages allocated is allowed
@@ -745,7 +745,7 @@ void kbase_mem_pool_free_locked(struct kbase_mem_pool *pool, struct page *p,
  * the kernel OoM killer runs. If the caller must allocate pages while holding
  * this lock, it should use kbase_mem_pool_alloc_pages_locked() instead.
  */
-int kbase_mem_pool_alloc_pages(struct kbase_mem_pool *pool, size_t nr_pages,
+int kbase_mem_pool_alloc_pages(struct kbase_mem_pool *pool, size_t nr_4k_pages,
 		struct tagged_addr *pages, bool partial_allowed);
 
 /**
@@ -911,11 +911,13 @@ int kbase_region_tracker_init(struct kbase_context *kctx);
  * @jit_va_pages: Size of the JIT region in pages
  * @max_allocations: Maximum number of allocations allowed for the JIT region
  * @trim_level: Trim level for the JIT region
+ * @group_id: The physical group ID from which to allocate JIT memory.
+ *            Valid range is 0..(MEMORY_GROUP_MANAGER_NR_GROUPS-1).
  *
  * Return: 0 if success, negative error code otherwise.
  */
 int kbase_region_tracker_init_jit(struct kbase_context *kctx, u64 jit_va_pages,
-		u8 max_allocations, u8 trim_level);
+		u8 max_allocations, u8 trim_level, int group_id);
 
 /**
  * kbase_region_tracker_init_exec - Initialize the EXEC_VA region
@@ -1013,20 +1015,24 @@ int kbase_alloc_phy_pages(struct kbase_va_region *reg, size_t vsize, size_t size
  *
  * The structure should be terminated using kbase_mmu_term()
  *
- * @kbdev: kbase device
- * @mmut:  structure to initialise
- * @kctx:  optional kbase context, may be NULL if this set of MMU tables is not
- *         associated with a context
+ * @kbdev:    Instance of GPU platform device, allocated from the probe method.
+ * @mmut:     GPU page tables to be initialized.
+ * @kctx:     Optional kbase context, may be NULL if this set of MMU tables
+ *            is not associated with a context.
+ * @group_id: The physical group ID from which to allocate GPU page tables.
+ *            Valid range is 0..(MEMORY_GROUP_MANAGER_NR_GROUPS-1).
+ *
+ * Return:    0 if successful, otherwise a negative error code.
  */
 int kbase_mmu_init(struct kbase_device *kbdev, struct kbase_mmu_table *mmut,
-		struct kbase_context *kctx);
+		struct kbase_context *kctx, int group_id);
 /**
  * kbase_mmu_term - Terminate an object representing GPU page tables
  *
  * This will free any page tables that have been allocated
  *
- * @kbdev: kbase device
- * @mmut:  kbase_mmu_table to be destroyed
+ * @kbdev: Instance of GPU platform device, allocated from the probe method.
+ * @mmut:  GPU page tables to be destroyed.
  */
 void kbase_mmu_term(struct kbase_device *kbdev, struct kbase_mmu_table *mmut);
 
@@ -1519,6 +1525,21 @@ struct kbase_mem_phy_alloc *kbase_map_external_resource(
 void kbase_unmap_external_resource(struct kbase_context *kctx,
 		struct kbase_va_region *reg, struct kbase_mem_phy_alloc *alloc);
 
+
+/**
+ * kbase_jd_user_buf_pin_pages - Pin the pages of a user buffer.
+ * @kctx: kbase context.
+ * @reg:  The region associated with the imported user buffer.
+ *
+ * To successfully pin the pages for a user buffer the current mm_struct must
+ * be the same as the mm_struct of the user buffer. After successfully pinning
+ * the pages further calls to this function succeed without doing work.
+ *
+ * Return: zero on success or negative number on failure.
+ */
+int kbase_jd_user_buf_pin_pages(struct kbase_context *kctx,
+		struct kbase_va_region *reg);
+
 /**
  * kbase_sticky_resource_init - Initialize sticky resource management.
  * @kctx: kbase context
@@ -1583,5 +1604,55 @@ static inline void kbase_mem_pool_unlock(struct kbase_mem_pool *pool)
  */
 void kbase_mem_evictable_mark_reclaim(struct kbase_mem_phy_alloc *alloc);
 
+
+#if defined(CONFIG_DMA_SHARED_BUFFER)
+/**
+ * kbase_mem_umm_map - Map dma-buf
+ * @kctx: Pointer to the kbase context
+ * @reg: Pointer to the region of the imported dma-buf to map
+ *
+ * Map a dma-buf on the GPU. The mappings are reference counted.
+ *
+ * Returns 0 on success, or a negative error code.
+ */
+int kbase_mem_umm_map(struct kbase_context *kctx,
+		struct kbase_va_region *reg);
+
+/**
+ * kbase_mem_umm_unmap - Unmap dma-buf
+ * @kctx: Pointer to the kbase context
+ * @reg: Pointer to the region of the imported dma-buf to unmap
+ * @alloc: Pointer to the alloc to release
+ *
+ * Unmap a dma-buf from the GPU. The mappings are reference counted.
+ *
+ * @reg must be the original region with GPU mapping of @alloc; or NULL. If
+ * @reg is NULL, or doesn't match @alloc, the GPU page table entries matching
+ * @reg will not be updated.
+ *
+ * @alloc must be a valid physical allocation of type
+ * KBASE_MEM_TYPE_IMPORTED_UMM that was previously mapped by
+ * kbase_mem_umm_map(). The dma-buf attachment referenced by @alloc will
+ * release it's mapping reference, and if the refcount reaches 0, also be be
+ * unmapped, regardless of the value of @reg.
+ */
+void kbase_mem_umm_unmap(struct kbase_context *kctx,
+		struct kbase_va_region *reg, struct kbase_mem_phy_alloc *alloc);
+
+/**
+ * kbase_mem_do_sync_imported - Sync caches for imported memory
+ * @kctx: Pointer to the kbase context
+ * @reg: Pointer to the region with imported memory to sync
+ * @sync_fn: The type of sync operation to perform
+ *
+ * Sync CPU caches for supported (currently only dma-buf (UMM)) memory.
+ * Attempting to sync unsupported imported memory types will result in an error
+ * code, -EINVAL.
+ *
+ * Return: 0 on success, or a negative error code.
+ */
+int kbase_mem_do_sync_imported(struct kbase_context *kctx,
+		struct kbase_va_region *reg, enum kbase_sync_type sync_fn);
+#endif /* CONFIG_DMA_SHARED_BUFFER */
 
 #endif				/* _KBASE_MEM_H_ */

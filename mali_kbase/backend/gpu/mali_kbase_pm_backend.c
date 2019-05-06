@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -436,9 +436,6 @@ int kbase_hwaccess_pm_powerup(struct kbase_device *kbdev,
 	kbase_pm_do_poweron(kbdev, false);
 	mutex_unlock(&kbdev->pm.lock);
 	mutex_unlock(&js_devdata->runpool_mutex);
-
-	/* Idle the GPU and/or cores, if the policy wants it to */
-	kbase_pm_context_idle(kbdev);
 
 	return 0;
 }

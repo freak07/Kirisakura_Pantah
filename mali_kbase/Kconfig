@@ -1,5 +1,5 @@
 #
-# (C) COPYRIGHT 2012-2018 ARM Limited. All rights reserved.
+# (C) COPYRIGHT 2012-2019 ARM Limited. All rights reserved.
 #
 # This program is free software and is provided to you under the terms of the
 # GNU General Public License version 2 as published by the Free Software
@@ -205,6 +205,27 @@ config MALI_MEMORY_FULLY_BACKED
 	  memory allocations in the kernel. Notice that this build
 	  option only affects allocations of grow-on-GPU-page-fault
 	  memory.
+
+config MALI_DMA_BUF_MAP_ON_DEMAND
+	bool "Map imported dma-bufs on demand"
+	depends on DMA_SHARED_BUFFER && MALI_MIDGARD && MALI_EXPERT
+	default n
+	help
+	  This option caused kbase to set up the GPU mapping of imported
+	  dma-buf when needed to run atoms.  This is the legacy behaviour.
+
+	  This is intended for testing and the option will get removed in the
+	  future.
+
+config MALI_DMA_BUF_LEGACY_COMPAT
+	bool "Enable legacy compatibility cache flush on dma-buf map"
+	depends on MALI_MIDGARD && !MALI_DMA_BUF_MAP_ON_DEMAND
+	default n
+	help
+	  This option enables compatibility with legacy dma-buf mapping
+	  behavior, then the dma-buf is mapped on import, by adding cache
+	  maintenance where MALI_DMA_BUF_MAP_ON_DEMAND would do the mapping,
+	  including a cache flush.
 
 # Instrumentation options.
 

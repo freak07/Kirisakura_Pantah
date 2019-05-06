@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2018-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -27,7 +27,7 @@
 #include "mali_kbase_pm_policy.h"
 #include "mali_kbase_pm_ca.h"
 #include "mali_kbase_hwaccess_instr.h"
-#include "mali_kbase_tlstream.h"
+#include "mali_kbase_tracepoints.h"
 #ifdef CONFIG_MALI_NO_MALI
 #include "backend/gpu/mali_kbase_model_dummy.h"
 #endif
@@ -54,7 +54,6 @@ struct kbase_hwcnt_backend_gpu_info {
  * @info:         Info used to create the backend.
  * @kctx:         KBase context used for GPU memory allocation and
  *                counter dumping.
- * @kctx_element: List element used to add kctx to device context list.
  * @gpu_dump_va:  GPU hardware counter dump buffer virtual address.
  * @cpu_dump_va:  CPU mapping of gpu_dump_va.
  * @vmap:         Dump buffer vmap.
@@ -64,7 +63,6 @@ struct kbase_hwcnt_backend_gpu_info {
 struct kbase_hwcnt_backend_gpu {
 	const struct kbase_hwcnt_backend_gpu_info *info;
 	struct kbase_context *kctx;
-	struct kbasep_kctx_list_element *kctx_element;
 	u64 gpu_dump_va;
 	void *cpu_dump_va;
 	struct kbase_vmap_struct *vmap;
@@ -257,7 +255,7 @@ static int kbasep_hwcnt_backend_gpu_dump_alloc(
 
 	flags = BASE_MEM_PROT_CPU_RD |
 		BASE_MEM_PROT_GPU_WR |
-		BASE_MEM_PERMANENT_KERNEL_MAPPING |
+		BASEP_MEM_PERMANENT_KERNEL_MAPPING |
 		BASE_MEM_CACHED_CPU;
 
 	if (kctx->kbdev->mmu_mode->flags & KBASE_MMU_MODE_HAS_NON_CACHEABLE)
@@ -310,16 +308,6 @@ static void kbasep_hwcnt_backend_gpu_destroy(
 			kbasep_hwcnt_backend_gpu_dump_free(
 				kctx, backend->gpu_dump_va);
 
-		if (backend->kctx_element) {
-			mutex_lock(&kbdev->kctx_list_lock);
-
-			KBASE_TLSTREAM_TL_DEL_CTX(kbdev, kctx);
-			list_del(&backend->kctx_element->link);
-
-			mutex_unlock(&kbdev->kctx_list_lock);
-			kfree(backend->kctx_element);
-		}
-
 		kbasep_js_release_privileged_ctx(kbdev, kctx);
 		kbase_destroy_context(kctx);
 	}
@@ -353,32 +341,12 @@ static int kbasep_hwcnt_backend_gpu_create(
 
 	backend->info = info;
 
-	backend->kctx = kbase_create_context(kbdev, true);
+	backend->kctx = kbase_create_context(kbdev, true,
+		BASE_CONTEXT_SYSTEM_MONITOR_SUBMIT_DISABLED, 0, NULL);
 	if (!backend->kctx)
 		goto alloc_error;
 
 	kbasep_js_schedule_privileged_ctx(kbdev, backend->kctx);
-
-	backend->kctx_element = kzalloc(
-		sizeof(*backend->kctx_element), GFP_KERNEL);
-	if (!backend->kctx_element)
-		goto alloc_error;
-
-	backend->kctx_element->kctx = backend->kctx;
-
-	/* Add kernel context to list of contexts associated with device. */
-	mutex_lock(&kbdev->kctx_list_lock);
-
-	list_add(&backend->kctx_element->link, &kbdev->kctx_list);
-	/* Fire tracepoint while lock is held, to ensure tracepoint is not
-	 * created in both body and summary stream
-	 */
-	KBASE_TLSTREAM_TL_NEW_CTX(kbdev,
-				  backend->kctx,
-				  backend->kctx->id,
-				  (u32)(backend->kctx->tgid));
-
-	mutex_unlock(&kbdev->kctx_list_lock);
 
 	errcode = kbasep_hwcnt_backend_gpu_dump_alloc(
 		info, backend->kctx, &backend->gpu_dump_va);

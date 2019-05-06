@@ -29,7 +29,7 @@
 #include <mali_kbase.h>
 #include <mali_kbase_config_defaults.h>
 #include <mali_midg_regmap.h>
-#include <mali_kbase_tlstream.h>
+#include <mali_kbase_tracepoints.h>
 #include <mali_kbase_pm.h>
 #include <mali_kbase_config_defaults.h>
 #include <mali_kbase_smc.h>
@@ -40,6 +40,7 @@
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_irq_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
+#include <backend/gpu/mali_kbase_l2_mmu_config.h>
 
 #include <linux/of.h>
 
@@ -450,6 +451,41 @@ static void kbase_pm_trigger_hwcnt_disable(struct kbase_device *kbdev)
 	}
 }
 
+static void kbase_pm_l2_config_override(struct kbase_device *kbdev)
+{
+	u32 val;
+
+	/*
+	 * Skip if it is not supported
+	 */
+	if (!kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_L2_CONFIG))
+		return;
+
+	/*
+	 * Skip if size and hash are not given explicitly,
+	 * which means default values are used.
+	 */
+	if ((kbdev->l2_size_override == 0) && (kbdev->l2_hash_override == 0))
+		return;
+
+	val = kbase_reg_read(kbdev, GPU_CONTROL_REG(L2_CONFIG));
+
+	if (kbdev->l2_size_override) {
+		val &= ~L2_CONFIG_SIZE_MASK;
+		val |= (kbdev->l2_size_override << L2_CONFIG_SIZE_SHIFT);
+	}
+
+	if (kbdev->l2_hash_override) {
+		val &= ~L2_CONFIG_HASH_MASK;
+		val |= (kbdev->l2_hash_override << L2_CONFIG_HASH_SHIFT);
+	}
+
+	dev_dbg(kbdev->dev, "Program 0x%x to L2_CONFIG\n", val);
+
+	/* Write L2_CONFIG to override */
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(L2_CONFIG), val);
+}
+
 static u64 kbase_pm_l2_update_state(struct kbase_device *kbdev)
 {
 	struct kbase_pm_backend_data *backend = &kbdev->pm.backend;
@@ -481,6 +517,12 @@ static u64 kbase_pm_l2_update_state(struct kbase_device *kbdev)
 		switch (backend->l2_state) {
 		case KBASE_L2_OFF:
 			if (kbase_pm_is_l2_desired(kbdev)) {
+				/*
+				 * Set the desired config for L2 before powering
+				 * it on
+				 */
+				kbase_pm_l2_config_override(kbdev);
+
 				/* L2 is required, power on.  Powering on the
 				 * tiler will also power the first L2 cache.
 				 */
@@ -1329,9 +1371,11 @@ void kbase_pm_clock_on(struct kbase_device *kbdev, bool is_resume)
 		reset_required = kbdev->pm.backend.callback_power_on(kbdev);
 	}
 
-	spin_lock_irqsave(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	spin_lock(&kbdev->pm.backend.gpu_powered_lock);
 	kbdev->pm.backend.gpu_powered = true;
-	spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_unlock(&kbdev->pm.backend.gpu_powered_lock);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	if (reset_required) {
 		/* GPU state was lost, reset GPU to ensure it is in a
@@ -1383,13 +1427,14 @@ bool kbase_pm_clock_off(struct kbase_device *kbdev, bool is_suspend)
 	/* Ensure that any IRQ handlers have finished */
 	kbase_synchronize_irqs(kbdev);
 
-	spin_lock_irqsave(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	spin_lock(&kbdev->pm.backend.gpu_powered_lock);
 
 	if (atomic_read(&kbdev->faults_pending)) {
 		/* Page/bus faults are still being processed. The GPU can not
 		 * be powered off until they have completed */
-		spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock,
-									flags);
+		spin_unlock(&kbdev->pm.backend.gpu_powered_lock);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 		return false;
 	}
 
@@ -1397,7 +1442,8 @@ bool kbase_pm_clock_off(struct kbase_device *kbdev, bool is_suspend)
 
 	/* The GPU power may be turned off from this point */
 	kbdev->pm.backend.gpu_powered = false;
-	spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_unlock(&kbdev->pm.backend.gpu_powered_lock);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	if (is_suspend && kbdev->pm.backend.callback_power_suspend)
 		kbdev->pm.backend.callback_power_suspend(kbdev);
@@ -1493,6 +1539,9 @@ static void kbase_pm_hw_issues_detect(struct kbase_device *kbdev)
 			kbdev->hw_quirks_sc |= SC_LS_ALLOW_ATTR_TYPES;
 	}
 
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TTRX_2968_TTRX_3162))
+		kbdev->hw_quirks_sc |= SC_VAR_ALGORITHM;
+
 	if (!kbdev->hw_quirks_sc)
 		kbdev->hw_quirks_sc = kbase_reg_read(kbdev,
 				GPU_CONTROL_REG(SHADER_CONFIG));
@@ -1505,28 +1554,7 @@ static void kbase_pm_hw_issues_detect(struct kbase_device *kbdev)
 		kbdev->hw_quirks_tiler |= TC_CLOCK_GATE_OVERRIDE;
 
 	/* Limit the GPU bus bandwidth if the platform needs this. */
-	kbdev->hw_quirks_mmu = kbase_reg_read(kbdev,
-			GPU_CONTROL_REG(L2_MMU_CONFIG));
-
-
-	/* Limit read & write ID width for AXI */
-	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_3BIT_EXT_RW_L2_MMU_CONFIG)) {
-		kbdev->hw_quirks_mmu &= ~(L2_MMU_CONFIG_3BIT_LIMIT_EXTERNAL_READS);
-		kbdev->hw_quirks_mmu |= (DEFAULT_3BIT_ARID_LIMIT & 0x7) <<
-				L2_MMU_CONFIG_3BIT_LIMIT_EXTERNAL_READS_SHIFT;
-
-		kbdev->hw_quirks_mmu &= ~(L2_MMU_CONFIG_3BIT_LIMIT_EXTERNAL_WRITES);
-		kbdev->hw_quirks_mmu |= (DEFAULT_3BIT_AWID_LIMIT & 0x7) <<
-				L2_MMU_CONFIG_3BIT_LIMIT_EXTERNAL_WRITES_SHIFT;
-	} else {
-		kbdev->hw_quirks_mmu &= ~(L2_MMU_CONFIG_LIMIT_EXTERNAL_READS);
-		kbdev->hw_quirks_mmu |= (DEFAULT_ARID_LIMIT & 0x3) <<
-				L2_MMU_CONFIG_LIMIT_EXTERNAL_READS_SHIFT;
-
-		kbdev->hw_quirks_mmu &= ~(L2_MMU_CONFIG_LIMIT_EXTERNAL_WRITES);
-		kbdev->hw_quirks_mmu |= (DEFAULT_AWID_LIMIT & 0x3) <<
-				L2_MMU_CONFIG_LIMIT_EXTERNAL_WRITES_SHIFT;
-	}
+	kbase_set_mmu_quirks(kbdev);
 
 	if (kbdev->system_coherency == COHERENCY_ACE) {
 		/* Allow memory configuration disparity to be ignored, we

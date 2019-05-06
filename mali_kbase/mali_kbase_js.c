@@ -27,7 +27,7 @@
  */
 #include <mali_kbase.h>
 #include <mali_kbase_js.h>
-#include <mali_kbase_tlstream.h>
+#include <mali_kbase_tracepoints.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_ctx_sched.h>
 
@@ -1878,7 +1878,7 @@ void kbasep_js_schedule_privileged_ctx(struct kbase_device *kbdev,
 	} else {
 		/* Already scheduled in - We need to retain it to keep the
 		 * corresponding address space */
-		kbasep_js_runpool_retain_ctx(kbdev, kctx);
+		WARN_ON(!kbasep_js_runpool_retain_ctx(kbdev, kctx));
 		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 		mutex_unlock(&js_devdata->queue_mutex);
 	}

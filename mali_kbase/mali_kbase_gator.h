@@ -27,8 +27,11 @@
  * and s/w counter reporting. We cannot use the enums in mali_uk_types.h because
  * they are unknown inside gator.
  */
+
 #ifndef _KBASE_GATOR_H_
 #define _KBASE_GATOR_H_
+
+#include <linux/types.h>
 
 #define GATOR_JOB_SLOT_START 1
 #define GATOR_JOB_SLOT_STOP  2
@@ -37,6 +40,8 @@
 #ifdef CONFIG_MALI_GATOR_SUPPORT
 
 #define GATOR_MAKE_EVENT(type, number) (((type) << 24) | ((number) << 16))
+
+struct kbase_context;
 
 void kbase_trace_mali_job_slots_event(u32 dev_id, u32 event, const struct kbase_context *kctx, u8 atom_id);
 void kbase_trace_mali_pm_status(u32 dev_id, u32 event, u64 value);

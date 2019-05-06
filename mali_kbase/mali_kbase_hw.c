@@ -224,11 +224,17 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 		{GPU_ID2_PRODUCT_TTRX,
 		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tTRx_r0p0},
 		  {GPU_ID2_VERSION_MAKE(0, 0, 3), base_hw_issues_tTRx_r0p0},
+		  {GPU_ID2_VERSION_MAKE(0, 1, 0), base_hw_issues_tTRx_r0p1},
+		  {GPU_ID2_VERSION_MAKE(0, 1, 1), base_hw_issues_tTRx_r0p1},
 		  {U32_MAX, NULL} } },
 
 		{GPU_ID2_PRODUCT_TNAX,
 		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tNAx_r0p0},
 		  {GPU_ID2_VERSION_MAKE(0, 0, 3), base_hw_issues_tNAx_r0p0},
+		  {GPU_ID2_VERSION_MAKE(0, 0, 4), base_hw_issues_tNAx_r0p0},
+		  {GPU_ID2_VERSION_MAKE(0, 0, 5), base_hw_issues_tNAx_r0p0},
+		  {GPU_ID2_VERSION_MAKE(0, 1, 0), base_hw_issues_tNAx_r0p1},
+		  {GPU_ID2_VERSION_MAKE(0, 1, 1), base_hw_issues_tNAx_r0p1},
 		  {U32_MAX, NULL} } },
 
 		{GPU_ID2_PRODUCT_TBEX,
