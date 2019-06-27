@@ -80,8 +80,8 @@ extern "C" {
  *   requiring external resource or sticky resource tracking. UNLESS,
  *   CONFIG_MALI_DMA_BUF_MAP_ON_DEMAND is enabled.
  */
-#define BASE_UK_VERSION_MAJOR ((__u16)11)
-#define BASE_UK_VERSION_MINOR ((__u16)16)
+#define BASE_UK_VERSION_MAJOR 11
+#define BASE_UK_VERSION_MINOR 16
 
 /**
  * struct kbase_ioctl_version_check - Check version compatibility with kernel

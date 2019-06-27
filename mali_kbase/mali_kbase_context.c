@@ -121,7 +121,7 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat,
 		goto term_dma_fence;
 
 	p = kbase_mem_alloc_page(
-		&kctx->mem_pools.small[BASE_MEM_GROUP_DEFAULT]);
+		&kctx->mem_pools.small[KBASE_MEM_GROUP_SINK]);
 	if (!p)
 		goto no_sink_page;
 	kctx->aliasing_sink_page = as_tagged(page_to_phys(p));
@@ -185,7 +185,7 @@ no_sticky:
 	kbase_region_tracker_term(kctx);
 no_region_tracker:
 	kbase_mem_pool_free(
-		&kctx->mem_pools.small[BASE_MEM_GROUP_DEFAULT], p, false);
+		&kctx->mem_pools.small[KBASE_MEM_GROUP_SINK], p, false);
 no_sink_page:
 	kbase_mmu_term(kbdev, &kctx->mmu);
 term_dma_fence:
@@ -282,7 +282,7 @@ void kbase_destroy_context(struct kbase_context *kctx)
 
 	/* drop the aliasing sink page now that it can't be mapped anymore */
 	p = as_page(kctx->aliasing_sink_page);
-	kbase_mem_pool_free(&kctx->mem_pools.small[BASE_MEM_GROUP_DEFAULT],
+	kbase_mem_pool_free(&kctx->mem_pools.small[KBASE_MEM_GROUP_SINK],
 		p, false);
 
 	/* free pending region setups */

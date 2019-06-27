@@ -180,8 +180,12 @@ void __kbase_tlstream_tl_attrib_atom_jit(
 	const void *atom,
 	u64 edit_addr,
 	u64 new_addr,
-	u64 jit_flags,
-	u32 j_id);
+	u32 jit_flags,
+	u64 mem_flags,
+	u32 j_id,
+	u64 com_pgs,
+	u64 extent,
+	u64 va_pgs);
 void __kbase_tlstream_tl_jit_usedpages(
 	struct kbase_tlstream *stream,
 	u64 used_pages,
@@ -195,7 +199,7 @@ void __kbase_tlstream_tl_attrib_atom_jitallocinfo(
 	u32 j_id,
 	u32 bin_id,
 	u32 max_allocs,
-	u32 flags,
+	u32 jit_flags,
 	u32 usg_id);
 void __kbase_tlstream_tl_attrib_atom_jitfreeinfo(
 	struct kbase_tlstream *stream,
@@ -410,15 +414,21 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_alloc_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 jit_alloc_gpu_alloc_addr,
-	u64 jit_alloc_mmu_flags,
-	u64 jit_alloc_pages_allocated);
+	u64 jit_alloc_mmu_flags);
 void __kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_alloc_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
 void __kbase_tlstream_tl_event_kcpuqueue_execute_jit_free_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_jit_free_end(
+void __kbase_tlstream_tl_event_array_begin_kcpuqueue_execute_jit_free_end(
+	struct kbase_tlstream *stream,
+	const void *kcpu_queue);
+void __kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_free_end(
+	struct kbase_tlstream *stream,
+	const void *kcpu_queue,
+	u64 jit_free_pages_used);
+void __kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_free_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
 void __kbase_tlstream_tl_event_kcpuqueue_execute_errorbarrier(
@@ -924,9 +934,16 @@ struct kbase_tlstream;
  * @atom:	Atom identifier
  * @edit_addr:	Address edited by jit
  * @new_addr:	Address placed into the edited location
- * @jit_flags:	Flags defining the properties of the memory region
+ * @jit_flags:	Flags specifying the special requirements for
+ * the JIT allocation.
+ * @mem_flags:	Flags defining the properties of a memory region
  * @j_id:	Unique ID provided by the caller, this is used
  * to pair allocation and free requests.
+ * @com_pgs:	The minimum number of physical pages which
+ * should back the allocation.
+ * @extent:	Granularity of physical pages to grow the
+ * allocation by during a fault.
+ * @va_pgs:	The minimum number of virtual pages required
  */
 #define KBASE_TLSTREAM_TL_ATTRIB_ATOM_JIT(	\
 	kbdev,	\
@@ -934,14 +951,18 @@ struct kbase_tlstream;
 	edit_addr,	\
 	new_addr,	\
 	jit_flags,	\
-	j_id	\
+	mem_flags,	\
+	j_id,	\
+	com_pgs,	\
+	extent,	\
+	va_pgs	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled);	\
 		if (enabled & BASE_TLSTREAM_JOB_DUMPING_ENABLED)	\
 			__kbase_tlstream_tl_attrib_atom_jit(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
-				atom, edit_addr, new_addr, jit_flags, j_id);	\
+				atom, edit_addr, new_addr, jit_flags, mem_flags, j_id, com_pgs, extent, va_pgs);	\
 	} while (0)
 
 /**
@@ -983,7 +1004,7 @@ struct kbase_tlstream;
  * max_allocations to limit the number of each
  * type of JIT allocation.
  * @max_allocs:	Maximum allocations allowed in this bin.
- * @flags:	Flags specifying the special requirements for
+ * @jit_flags:	Flags specifying the special requirements for
  * the JIT allocation.
  * @usg_id:	A hint about which allocation should be reused.
  */
@@ -996,7 +1017,7 @@ struct kbase_tlstream;
 	j_id,	\
 	bin_id,	\
 	max_allocs,	\
-	flags,	\
+	jit_flags,	\
 	usg_id	\
 	)	\
 	do {	\
@@ -1004,7 +1025,7 @@ struct kbase_tlstream;
 		if (enabled & TLSTREAM_ENABLED)	\
 			__kbase_tlstream_tl_attrib_atom_jitallocinfo(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
-				atom, va_pgs, com_pgs, extent, j_id, bin_id, max_allocs, flags, usg_id);	\
+				atom, va_pgs, com_pgs, extent, j_id, bin_id, max_allocs, jit_flags, usg_id);	\
 	} while (0)
 
 /**
@@ -1536,7 +1557,7 @@ struct kbase_tlstream;
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  * @cqs_obj_gpu_addr:	CQS Object GPU ptr
- * @cqs_obj_compare_value:	Semaphore value that should be met or exceeded
+ * @cqs_obj_compare_value:	Semaphore value that should be exceeded
  * for the WAIT to pass
  */
 #define KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT(	\
@@ -2189,22 +2210,19 @@ struct kbase_tlstream;
  * @kcpu_queue:	KCPU queue
  * @jit_alloc_gpu_alloc_addr:	The JIT allocated GPU virtual address
  * @jit_alloc_mmu_flags:	The MMU flags for the JIT allocation
- * @jit_alloc_pages_allocated:	The number of pages allocated by the JIT
- * allocation
  */
 #define KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END(	\
 	kbdev,	\
 	kcpu_queue,	\
 	jit_alloc_gpu_alloc_addr,	\
-	jit_alloc_mmu_flags,	\
-	jit_alloc_pages_allocated	\
+	jit_alloc_mmu_flags	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
 			__kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_alloc_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
-				kcpu_queue, jit_alloc_gpu_alloc_addr, jit_alloc_mmu_flags, jit_alloc_pages_allocated);	\
+				kcpu_queue, jit_alloc_gpu_alloc_addr, jit_alloc_mmu_flags);	\
 	} while (0)
 
 /**
@@ -2246,20 +2264,61 @@ struct kbase_tlstream;
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_FREE_END -
- *   KCPU Queue ends an array of JIT Frees
+ * KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END -
+ *   Begin array of KCPU Queue ends an array of JIT Frees
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
+#define KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_jit_free_end(	\
+			__kbase_tlstream_tl_event_array_begin_kcpuqueue_execute_jit_free_end(	\
+				__TL_DISPATCH_STREAM(kbdev, obj), \
+				kcpu_queue);	\
+	} while (0)
+
+/**
+ * KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END -
+ *   Array item of KCPU Queue ends an array of JIT Frees
+ *
+ * @kbdev:	Kbase device
+ * @kcpu_queue:	KCPU queue
+ * @jit_free_pages_used:	The actual number of pages used by the JIT
+ * allocation
+ */
+#define KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
+	kbdev,	\
+	kcpu_queue,	\
+	jit_free_pages_used	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
+		if (enabled & TLSTREAM_ENABLED)	\
+			__kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_free_end(	\
+				__TL_DISPATCH_STREAM(kbdev, obj), \
+				kcpu_queue, jit_free_pages_used);	\
+	} while (0)
+
+/**
+ * KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END -
+ *   End array of KCPU Queue ends an array of JIT Frees
+ *
+ * @kbdev:	Kbase device
+ * @kcpu_queue:	KCPU queue
+ */
+#define KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
+	kbdev,	\
+	kcpu_queue	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
+		if (enabled & TLSTREAM_ENABLED)	\
+			__kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_free_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)

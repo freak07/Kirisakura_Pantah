@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2014, 2016-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2014, 2016-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -130,7 +130,7 @@ static phys_addr_t pte_to_phy_addr(u64 entry)
 	return entry & ~0xFFF;
 }
 
-static int ate_is_valid(u64 ate, unsigned int level)
+static int ate_is_valid(u64 ate, int const level)
 {
 	if (level == MIDGARD_MMU_BOTTOMLEVEL)
 		return ((ate & ENTRY_TYPE_MASK) == ENTRY_IS_ATE_L3);
@@ -138,7 +138,7 @@ static int ate_is_valid(u64 ate, unsigned int level)
 		return ((ate & ENTRY_TYPE_MASK) == ENTRY_IS_ATE_L02);
 }
 
-static int pte_is_valid(u64 pte, unsigned int level)
+static int pte_is_valid(u64 pte, int const level)
 {
 	/* PTEs cannot exist at the bottom level */
 	if (level == MIDGARD_MMU_BOTTOMLEVEL)
@@ -181,7 +181,7 @@ static u64 get_mmu_flags(unsigned long flags)
 static void entry_set_ate(u64 *entry,
 		struct tagged_addr phy,
 		unsigned long flags,
-		unsigned int level)
+		int const level)
 {
 	if (level == MIDGARD_MMU_BOTTOMLEVEL)
 		page_table_entry_set(entry, as_phys_addr_t(phy) |

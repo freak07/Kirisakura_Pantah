@@ -84,14 +84,9 @@ enum kbase_pm_core_type {
  *                       are unknown
  */
 enum kbase_l2_core_state {
-	KBASE_L2_OFF = 0,
-	KBASE_L2_PEND_ON,
-	KBASE_L2_ON_HWCNT_ENABLE,
-	KBASE_L2_ON,
-	KBASE_L2_ON_HWCNT_DISABLE,
-	KBASE_L2_POWER_DOWN,
-	KBASE_L2_PEND_OFF,
-	KBASE_L2_RESET_WAIT
+#define KBASEP_L2_STATE(n) KBASE_L2_ ## n,
+#include "mali_kbase_pm_l2_states.h"
+#undef KBASEP_L2_STATE
 };
 
 /**
@@ -113,6 +108,10 @@ enum kbase_l2_core_state {
  *                                       power off, but they remain on for the
  *                                       duration of the hysteresis timer
  * @KBASE_SHADERS_WAIT_FINISHED_CORESTACK_ON: The hysteresis timer has expired
+ * @KBASE_SHADERS_L2_FLUSHING_CORESTACK_ON: The core stacks are on and the
+ *                                          level 2 cache is being flushed.
+ * @KBASE_SHADERS_READY_OFF_CORESTACK_ON: The core stacks are on and the shaders
+ *                                        are ready to be powered off.
  * @KBASE_SHADERS_PEND_OFF_CORESTACK_ON: The core stacks are on, and the shaders
  *                                       have been requested to power off
  * @KBASE_SHADERS_OFF_CORESTACK_PEND_OFF: The shaders are off, and the core stacks
@@ -125,17 +124,9 @@ enum kbase_l2_core_state {
  *                            states are unknown
  */
 enum kbase_shader_core_state {
-	KBASE_SHADERS_OFF_CORESTACK_OFF = 0,
-	KBASE_SHADERS_OFF_CORESTACK_PEND_ON,
-	KBASE_SHADERS_PEND_ON_CORESTACK_ON,
-	KBASE_SHADERS_ON_CORESTACK_ON,
-	KBASE_SHADERS_ON_CORESTACK_ON_RECHECK,
-	KBASE_SHADERS_WAIT_OFF_CORESTACK_ON,
-	KBASE_SHADERS_WAIT_FINISHED_CORESTACK_ON,
-	KBASE_SHADERS_PEND_OFF_CORESTACK_ON,
-	KBASE_SHADERS_OFF_CORESTACK_PEND_OFF,
-	KBASE_SHADERS_OFF_CORESTACK_OFF_TIMER_PEND_OFF,
-	KBASE_SHADERS_RESET_WAIT
+#define KBASEP_SHADER_STATE(n) KBASE_SHADERS_ ## n,
+#include "mali_kbase_pm_shader_states.h"
+#undef KBASEP_SHADER_STATE
 };
 
 /**
@@ -256,7 +247,10 @@ union kbase_pm_policy_data {
  *                             state according to the L2 and shader power state
  *                             machines
  * @gpu_powered:       Set to true when the GPU is powered and register
- *                     accesses are possible, false otherwise
+ *                     accesses are possible, false otherwise. Access to this
+ *                     variable should be protected by: both the hwaccess_lock
+ *                     spinlock and the pm.lock mutex for writes; or at least
+ *                     one of either lock for reads.
  * @pm_shaders_core_mask: Shader PM state synchronised shaders core mask. It
  *                     holds the cores enabled in a hardware counters dump,
  *                     and may differ from @shaders_avail when under different
@@ -266,8 +260,6 @@ union kbase_pm_policy_data {
  * @driver_ready_for_irqs: Debug state indicating whether sufficient
  *                         initialization of the driver has occurred to handle
  *                         IRQs
- * @gpu_powered_lock:  Spinlock that must be held when writing @gpu_powered or
- *                     accessing @driver_ready_for_irqs
  * @metrics:           Structure to hold metrics for the GPU
  * @shader_tick_timer: Structure to hold the shader poweroff tick timer state
  * @poweroff_wait_in_progress: true if a wait for GPU power off is in progress.
@@ -353,8 +345,6 @@ struct kbase_pm_backend_data {
 #ifdef CONFIG_MALI_DEBUG
 	bool driver_ready_for_irqs;
 #endif /* CONFIG_MALI_DEBUG */
-
-	spinlock_t gpu_powered_lock;
 
 	struct kbasep_pm_metrics_state metrics;
 

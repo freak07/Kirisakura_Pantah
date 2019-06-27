@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2016-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2016-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -208,6 +208,7 @@ extern const struct kbase_ipa_model_ops kbase_g76_ipa_model_ops;
 extern const struct kbase_ipa_model_ops kbase_g52_ipa_model_ops;
 extern const struct kbase_ipa_model_ops kbase_g52_r1_ipa_model_ops;
 extern const struct kbase_ipa_model_ops kbase_g51_ipa_model_ops;
+extern const struct kbase_ipa_model_ops kbase_g77_ipa_model_ops;
 
 /**
  * kbase_get_real_power() - get the real power consumption of the GPU

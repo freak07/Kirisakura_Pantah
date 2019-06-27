@@ -325,6 +325,96 @@
 #define AS_COMMAND_FLUSH_MEM   0x05	/* Wait for memory accesses to complete, flush all the L1s cache then
 					   flush all L2 caches then issue a flush region command to all MMUs */
 
+#if GPU_HAS_CSF_VERSION_10_REVISION_2
+/* GPU_COMMAND codes */
+#define GPU_COMMAND_CODE_NOP                0x00 /* No operation, nothing happens */
+#define GPU_COMMAND_CODE_RESET              0x01 /* Reset the GPU */
+#define GPU_COMMAND_CODE_PRFCNT             0x02 /* Clear or sample performance counters */
+#define GPU_COMMAND_CODE_TIME               0x03 /* Configure time sources */
+#define GPU_COMMAND_CODE_FLUSH_CACHES       0x04 /* Flush caches */
+#define GPU_COMMAND_CODE_SET_PROTECTED_MODE 0x05 /* Places the GPU in protected mode */
+#define GPU_COMMAND_CODE_FINISH_HALT        0x06 /* Halt CSF */
+
+/* GPU_COMMAND_RESET payloads */
+
+/* This will leave the state of active jobs UNDEFINED, but will leave the external bus in a defined and idle state.
+ * Power domains will remain powered on.
+ */
+#define GPU_COMMAND_RESET_PAYLOAD_FAST_RESET 0x00
+
+/* This will leave the state of active command streams UNDEFINED, but will leave the external bus in a defined and
+ * idle state.
+ */
+#define GPU_COMMAND_RESET_PAYLOAD_SOFT_RESET 0x01
+
+/* This reset will leave the state of currently active streams UNDEFINED, will likely lose data, and may leave
+ * the system bus in an inconsistent state. Use only as a last resort when nothing else works.
+ */
+#define GPU_COMMAND_RESET_PAYLOAD_HARD_RESET 0x02
+
+/* GPU_COMMAND_PRFCNT payloads */
+#define GPU_COMMAND_PRFCNT_PAYLOAD_SAMPLE 0x01 /* Sample performance counters */
+#define GPU_COMMAND_PRFCNT_PAYLOAD_CLEAR  0x02 /* Clear performance counters */
+
+/* GPU_COMMAND_TIME payloads */
+#define GPU_COMMAND_TIME_DISABLE 0x00 /* Disable cycle counter */
+#define GPU_COMMAND_TIME_ENABLE  0x01 /* Enable cycle counter */
+
+/* GPU_COMMAND_FLUSH_CACHES payloads */
+#define GPU_COMMAND_FLUSH_PAYLOAD_NONE             0x00 /* No flush */
+#define GPU_COMMAND_FLUSH_PAYLOAD_CLEAN            0x01 /* Clean the caches */
+#define GPU_COMMAND_FLUSH_PAYLOAD_INVALIDATE       0x02 /* Invalidate the caches */
+#define GPU_COMMAND_FLUSH_PAYLOAD_CLEAN_INVALIDATE 0x03 /* Clean and invalidate the caches */
+
+/* GPU_COMMAND command + payload */
+#define GPU_COMMAND_CODE_PAYLOAD(opcode, payload) \
+	((u32)opcode || ((u32)payload << 8))
+
+/* Final GPU_COMMAND form */
+/* No operation, nothing happens */
+#define GPU_COMMAND_NOP \
+	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_NOP, 0)
+
+/* Stop all external bus interfaces, and then reset the entire GPU. */
+#define GPU_COMMAND_SOFT_RESET \
+	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_RESET, GPU_COMMAND_RESET_PAYLOAD_SOFT_RESET)
+
+/* Immediately reset the entire GPU. */
+#define GPU_COMMAND_HARD_RESET \
+	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_RESET, GPU_COMMAND_RESET_PAYLOAD_HARD_RESET)
+
+/* Clear all performance counters, setting them all to zero. */
+#define GPU_COMMAND_PRFCNT_CLEAR \
+	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_PRFCNT, GPU_COMMAND_PRFCNT_PAYLOAD_CLEAR)
+
+/* Sample all performance counters, writing them out to memory */
+#define GPU_COMMAND_PRFCNT_SAMPLE \
+	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_PRFCNT, GPU_COMMAND_PRFCNT_PAYLOAD_SAMPLE)
+
+/* Starts the cycle counter, and system timestamp propagation */
+#define GPU_COMMAND_CYCLE_COUNT_START \
+	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_TIME, GPU_COMMAND_TIME_ENABLE)
+
+/* Stops the cycle counter, and system timestamp propagation */
+#define GPU_COMMAND_CYCLE_COUNT_STOP \
+	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_TIME, GPU_COMMAND_TIME_DISABLE)
+
+/* Clean all caches */
+#define GPU_COMMAND_CLEAN_CACHES \
+	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_FLUSH_CACHES, GPU_COMMAND_FLUSH_PAYLOAD_CLEAN)
+
+/* Clean and invalidate all caches */
+#define GPU_COMMAND_CLEAN_INV_CACHES \
+	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_FLUSH_CACHES, GPU_COMMAND_FLUSH_PAYLOAD_CLEAN_INVALIDATE)
+
+/* Places the GPU in protected mode */
+#define GPU_COMMAND_SET_PROTECTED_MODE \
+	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_SET_PROTECTED_MODE, 0)
+
+/* Halt CSF */
+#define GPU_COMMAND_FINISH_HALT \
+	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_FINISH_HALT, 0)
+#else
 /* GPU_COMMAND values */
 #define GPU_COMMAND_NOP                0x00 /* No operation, nothing happens */
 #define GPU_COMMAND_SOFT_RESET         0x01 /* Stop all external bus interfaces, and then reset the entire GPU. */
@@ -336,6 +426,8 @@
 #define GPU_COMMAND_CLEAN_CACHES       0x07 /* Clean all caches */
 #define GPU_COMMAND_CLEAN_INV_CACHES   0x08 /* Clean and invalidate all caches */
 #define GPU_COMMAND_SET_PROTECTED_MODE 0x09 /* Places the GPU in protected mode */
+#endif
+
 
 /* End Command Values */
 

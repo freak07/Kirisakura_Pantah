@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -67,7 +67,11 @@ kbase_fence_fence_value_str(struct fence *fence, char *str, int size)
 kbase_fence_fence_value_str(struct dma_fence *fence, char *str, int size)
 #endif
 {
+#if (KERNEL_VERSION(5, 1, 0) > LINUX_VERSION_CODE)
 	snprintf(str, size, "%u", fence->seqno);
+#else
+	snprintf(str, size, "%llu", fence->seqno);
+#endif
 }
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0))

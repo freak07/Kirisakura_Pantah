@@ -663,43 +663,8 @@ typedef u32 base_jd_core_req;
 #define BASE_JD_REQ_SOFT_FENCE_TRIGGER          (BASE_JD_REQ_SOFT_JOB | 0x2)
 #define BASE_JD_REQ_SOFT_FENCE_WAIT             (BASE_JD_REQ_SOFT_JOB | 0x3)
 
-/**
- * SW Only requirement : Replay job.
- *
- * If the preceding job fails, the replay job will cause the jobs specified in
- * the list of base_jd_replay_payload pointed to by the jc pointer to be
- * replayed.
- *
- * A replay job will only cause jobs to be replayed up to BASEP_JD_REPLAY_LIMIT
- * times. If a job fails more than BASEP_JD_REPLAY_LIMIT times then the replay
- * job is failed, as well as any following dependencies.
- *
- * The replayed jobs will require a number of atom IDs. If there are not enough
- * free atom IDs then the replay job will fail.
- *
- * If the preceding job does not fail, then the replay job is returned as
- * completed.
- *
- * The replayed jobs will never be returned to userspace. The preceding failed
- * job will be returned to userspace as failed; the status of this job should
- * be ignored. Completion should be determined by the status of the replay soft
- * job.
- *
- * In order for the jobs to be replayed, the job headers will have to be
- * modified. The Status field will be reset to NOT_STARTED. If the Job Type
- * field indicates a Vertex Shader Job then it will be changed to Null Job.
- *
- * The replayed jobs have the following assumptions :
- *
- * - No external resources. Any required external resources will be held by the
- *   replay atom.
- * - Pre-dependencies are created based on job order.
- * - Atom numbers are automatically assigned.
- * - device_nr is set to 0. This is not relevant as
- *   BASE_JD_REQ_SPECIFIC_COHERENT_GROUP should not be set.
- * - Priority is inherited from the replay job.
- */
-#define BASE_JD_REQ_SOFT_REPLAY                 (BASE_JD_REQ_SOFT_JOB | 0x4)
+/* 0x4 RESERVED for now */
+
 /**
  * SW only requirement: event wait/trigger job.
  *
@@ -1226,7 +1191,6 @@ typedef enum base_jd_event_code {
 	BASE_JD_EVENT_JOB_CANCELLED	= BASE_JD_SW_EVENT | BASE_JD_SW_EVENT_JOB | 0x002,
 	BASE_JD_EVENT_JOB_INVALID	= BASE_JD_SW_EVENT | BASE_JD_SW_EVENT_JOB | 0x003,
 	BASE_JD_EVENT_PM_EVENT		= BASE_JD_SW_EVENT | BASE_JD_SW_EVENT_JOB | 0x004,
-	BASE_JD_EVENT_FORCE_REPLAY	= BASE_JD_SW_EVENT | BASE_JD_SW_EVENT_JOB | 0x005,
 
 	BASE_JD_EVENT_BAG_INVALID	= BASE_JD_SW_EVENT | BASE_JD_SW_EVENT_BAG | 0x003,
 
@@ -1785,76 +1749,6 @@ static inline int base_context_mmu_group_id_get(
  * @addtogroup base_api Base APIs
  * @{
  */
-
-/**
- * @brief The payload for a replay job. This must be in GPU memory.
- */
-typedef struct base_jd_replay_payload {
-	/**
-	 * Pointer to the first entry in the base_jd_replay_jc list.  These
-	 * will be replayed in @b reverse order (so that extra ones can be added
-	 * to the head in future soft jobs without affecting this soft job)
-	 */
-	u64 tiler_jc_list;
-
-	/**
-	 * Pointer to the fragment job chain.
-	 */
-	u64 fragment_jc;
-
-	/**
-	 * Pointer to the tiler heap free FBD field to be modified.
-	 */
-	u64 tiler_heap_free;
-
-	/**
-	 * Hierarchy mask for the replayed fragment jobs. May be zero.
-	 */
-	u16 fragment_hierarchy_mask;
-
-	/**
-	 * Hierarchy mask for the replayed tiler jobs. May be zero.
-	 */
-	u16 tiler_hierarchy_mask;
-
-	/**
-	 * Default weight to be used for hierarchy levels not in the original
-	 * mask.
-	 */
-	u32 hierarchy_default_weight;
-
-	/**
-	 * Core requirements for the tiler job chain
-	 */
-	base_jd_core_req tiler_core_req;
-
-	/**
-	 * Core requirements for the fragment job chain
-	 */
-	base_jd_core_req fragment_core_req;
-} base_jd_replay_payload;
-
-/**
- * @brief An entry in the linked list of job chains to be replayed. This must
- *        be in GPU memory.
- */
-typedef struct base_jd_replay_jc {
-	/**
-	 * Pointer to next entry in the list. A setting of NULL indicates the
-	 * end of the list.
-	 */
-	u64 next;
-
-	/**
-	 * Pointer to the job chain.
-	 */
-	u64 jc;
-
-} base_jd_replay_jc;
-
-/* Maximum number of jobs allowed in a fragment chain in the payload of a
- * replay job */
-#define BASE_JD_REPLAY_F_CHAIN_JOB_LIMIT 256
 
 /** @} end group base_api */
 

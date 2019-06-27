@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -274,87 +274,6 @@ void kbase_jm_wait_for_zero_jobs(struct kbase_context *kctx);
  * Return: the current flush ID to be recorded for each job chain
  */
 u32 kbase_backend_get_current_flush_id(struct kbase_device *kbdev);
-
-/**
- * kbase_prepare_to_reset_gpu - Prepare for resetting the GPU.
- * @kbdev: Device pointer
- *
- * This function just soft-stops all the slots to ensure that as many jobs as
- * possible are saved.
- *
- * Return: a boolean which should be interpreted as follows:
- * - true  - Prepared for reset, kbase_reset_gpu should be called.
- * - false - Another thread is performing a reset, kbase_reset_gpu should
- *                not be called.
- */
-bool kbase_prepare_to_reset_gpu(struct kbase_device *kbdev);
-
-/**
- * kbase_reset_gpu - Reset the GPU
- * @kbdev: Device pointer
- *
- * This function should be called after kbase_prepare_to_reset_gpu if it returns
- * true. It should never be called without a corresponding call to
- * kbase_prepare_to_reset_gpu.
- *
- * After this function is called (or not called if kbase_prepare_to_reset_gpu
- * returned false), the caller should wait for kbdev->reset_waitq to be
- * signalled to know when the reset has completed.
- */
-void kbase_reset_gpu(struct kbase_device *kbdev);
-
-/**
- * kbase_prepare_to_reset_gpu_locked - Prepare for resetting the GPU.
- * @kbdev: Device pointer
- *
- * This function just soft-stops all the slots to ensure that as many jobs as
- * possible are saved.
- *
- * Return: a boolean which should be interpreted as follows:
- * - true  - Prepared for reset, kbase_reset_gpu should be called.
- * - false - Another thread is performing a reset, kbase_reset_gpu should
- *                not be called.
- */
-bool kbase_prepare_to_reset_gpu_locked(struct kbase_device *kbdev);
-
-/**
- * kbase_reset_gpu_locked - Reset the GPU
- * @kbdev: Device pointer
- *
- * This function should be called after kbase_prepare_to_reset_gpu if it
- * returns true. It should never be called without a corresponding call to
- * kbase_prepare_to_reset_gpu.
- *
- * After this function is called (or not called if kbase_prepare_to_reset_gpu
- * returned false), the caller should wait for kbdev->reset_waitq to be
- * signalled to know when the reset has completed.
- */
-void kbase_reset_gpu_locked(struct kbase_device *kbdev);
-
-/**
- * kbase_reset_gpu_silent - Reset the GPU silently
- * @kbdev: Device pointer
- *
- * Reset the GPU without trying to cancel jobs and don't emit messages into
- * the kernel log while doing the reset.
- *
- * This function should be used in cases where we are doing a controlled reset
- * of the GPU as part of normal processing (e.g. exiting protected mode) where
- * the driver will have ensured the scheduler has been idled and all other
- * users of the GPU (e.g. instrumentation) have been suspended.
- *
- * Return: 0 if the reset was started successfully
- *         -EAGAIN if another reset is currently in progress
- */
-int kbase_reset_gpu_silent(struct kbase_device *kbdev);
-
-/**
- * kbase_reset_gpu_active - Reports if the GPU is being reset
- * @kbdev: Device pointer
- *
- * Return: True if the GPU is in the process of being reset.
- */
-bool kbase_reset_gpu_active(struct kbase_device *kbdev);
 
 /**
  * kbase_job_slot_hardstop - Hard-stop the specified job slot

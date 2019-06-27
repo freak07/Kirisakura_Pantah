@@ -156,6 +156,9 @@ config MALI_NO_MALI
 	  All calls to the simulated hardware will complete immediately as if the hardware
 	  completed the task.
 
+config MALI_REAL_HW
+	def_bool !MALI_NO_MALI
+
 config MALI_ERROR_INJECT
 	bool "Error injection"
 	depends on MALI_MIDGARD && MALI_EXPERT && MALI_NO_MALI
@@ -208,7 +211,7 @@ config MALI_MEMORY_FULLY_BACKED
 
 config MALI_DMA_BUF_MAP_ON_DEMAND
 	bool "Map imported dma-bufs on demand"
-	depends on DMA_SHARED_BUFFER && MALI_MIDGARD && MALI_EXPERT
+	depends on DMA_SHARED_BUFFER && MALI_MIDGARD
 	default n
 	help
 	  This option caused kbase to set up the GPU mapping of imported
@@ -220,7 +223,7 @@ config MALI_DMA_BUF_MAP_ON_DEMAND
 config MALI_DMA_BUF_LEGACY_COMPAT
 	bool "Enable legacy compatibility cache flush on dma-buf map"
 	depends on MALI_MIDGARD && !MALI_DMA_BUF_MAP_ON_DEMAND
-	default n
+	default y
 	help
 	  This option enables compatibility with legacy dma-buf mapping
 	  behavior, then the dma-buf is mapped on import, by adding cache

@@ -31,7 +31,6 @@
 #include <linux/atomic.h>
 #include <linux/file.h>
 #include <linux/mutex.h>
-#include <linux/poll.h>
 #include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/stringify.h>
@@ -71,7 +70,8 @@ static void kbasep_timeline_autoflush_timer_callback(struct timer_list *timer)
 
 	CSTD_UNUSED(timer);
 
-	for (stype = 0; stype < TL_STREAM_TYPE_COUNT; stype++) {
+	for (stype = (enum tl_stream_type)0; stype < TL_STREAM_TYPE_COUNT;
+			stype++) {
 		struct kbase_tlstream *stream = &timeline->streams[stype];
 
 		int af_cnt = atomic_read(&stream->autoflush_counter);
@@ -142,7 +142,7 @@ void kbase_timeline_term(struct kbase_timeline *timeline)
 	if (!timeline)
 		return;
 
-	for (i = 0; i < TL_STREAM_TYPE_COUNT; i++)
+	for (i = (enum tl_stream_type)0; i < TL_STREAM_TYPE_COUNT; i++)
 		kbase_tlstream_term(&timeline->streams[i]);
 
 	kfree(timeline);
@@ -332,7 +332,8 @@ void kbase_timeline_stats(struct kbase_timeline *timeline,
 
 	/* Accumulate bytes generated per stream  */
 	*bytes_generated = 0;
-	for (stype = 0; stype < TL_STREAM_TYPE_COUNT; stype++)
+	for (stype = (enum tl_stream_type)0; stype < TL_STREAM_TYPE_COUNT;
+			stype++)
 		*bytes_generated += atomic_read(
 			&timeline->streams[stype].bytes_generated);
 

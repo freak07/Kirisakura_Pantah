@@ -221,6 +221,7 @@ static int kbasep_jd_debugfs_atoms_open(struct inode *in, struct file *file)
 }
 
 static const struct file_operations kbasep_jd_debugfs_atoms_fops = {
+	.owner = THIS_MODULE,
 	.open = kbasep_jd_debugfs_atoms_open,
 	.read = seq_read,
 	.llseek = seq_lseek,

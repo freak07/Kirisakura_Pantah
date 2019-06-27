@@ -37,6 +37,7 @@ static int kbasep_timeline_io_release(struct inode *inode, struct file *filp);
 
 /* The timeline stream file operations structure. */
 const struct file_operations kbasep_tlstream_fops = {
+	.owner = THIS_MODULE,
 	.release = kbasep_timeline_io_release,
 	.read    = kbasep_timeline_io_read,
 	.poll    = kbasep_timeline_io_poll,
@@ -60,12 +61,12 @@ static int kbasep_timeline_io_packet_pending(
 		struct kbase_tlstream **ready_stream,
 		unsigned int           *rb_idx_raw)
 {
-	enum tl_stream_type i = 0;
+	enum tl_stream_type i;
 
 	KBASE_DEBUG_ASSERT(ready_stream);
 	KBASE_DEBUG_ASSERT(rb_idx_raw);
 
-	for (i = 0; i < TL_STREAM_TYPE_COUNT; ++i) {
+	for (i = (enum tl_stream_type)0; i < TL_STREAM_TYPE_COUNT; ++i) {
 		struct kbase_tlstream *stream = &timeline->streams[i];
 		*rb_idx_raw = atomic_read(&stream->rbi);
 		/* Read buffer index may be updated by writer in case of

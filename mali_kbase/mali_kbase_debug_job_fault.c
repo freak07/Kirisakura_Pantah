@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2012-2016, 2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2012-2016, 2018-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -86,6 +86,20 @@ static bool kbase_ctx_has_no_event_pending(struct kbase_context *kctx)
 	return true;
 }
 
+static int wait_for_job_fault(struct kbase_device *kbdev)
+{
+#if KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE && \
+		KERNEL_VERSION(4, 15, 0) > LINUX_VERSION_CODE
+	if (!kbase_is_job_fault_event_pending(kbdev))
+		return -EAGAIN;
+	else
+		return 0;
+#else
+	return wait_event_interruptible(kbdev->job_fault_wq,
+			kbase_is_job_fault_event_pending(kbdev));
+#endif
+}
+
 /* wait until the fault happen and copy the event */
 static int kbase_job_fault_event_wait(struct kbase_device *kbdev,
 		struct base_job_fault_event *event)
@@ -96,10 +110,14 @@ static int kbase_job_fault_event_wait(struct kbase_device *kbdev,
 
 	spin_lock_irqsave(&kbdev->job_fault_event_lock, flags);
 	while (list_empty(event_list)) {
+		int err;
+
 		spin_unlock_irqrestore(&kbdev->job_fault_event_lock, flags);
-		if (wait_event_interruptible(kbdev->job_fault_wq,
-				 kbase_is_job_fault_event_pending(kbdev)))
-			return -ERESTARTSYS;
+
+		err = wait_for_job_fault(kbdev);
+		if (err)
+			return err;
+
 		spin_lock_irqsave(&kbdev->job_fault_event_lock, flags);
 	}
 
@@ -440,6 +458,7 @@ static int debug_job_fault_release(struct inode *in, struct file *file)
 }
 
 static const struct file_operations kbasep_debug_job_fault_fops = {
+	.owner = THIS_MODULE,
 	.open = debug_job_fault_open,
 	.read = seq_read,
 	.llseek = seq_lseek,

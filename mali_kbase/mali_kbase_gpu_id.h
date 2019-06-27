@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2015-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2015-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -109,8 +109,6 @@
 #define GPU_ID2_PRODUCT_TDVX              GPU_ID2_MODEL_MAKE(7, 3)
 #define GPU_ID2_PRODUCT_TNOX              GPU_ID2_MODEL_MAKE(7, 1)
 #define GPU_ID2_PRODUCT_TGOX              GPU_ID2_MODEL_MAKE(7, 2)
-#define GPU_ID2_PRODUCT_TKAX              GPU_ID2_MODEL_MAKE(8, 0)
-#define GPU_ID2_PRODUCT_TBOX              GPU_ID2_MODEL_MAKE(8, 2)
 #define GPU_ID2_PRODUCT_TEGX              GPU_ID2_MODEL_MAKE(8, 3)
 #define GPU_ID2_PRODUCT_TTRX              GPU_ID2_MODEL_MAKE(9, 0)
 #define GPU_ID2_PRODUCT_TNAX              GPU_ID2_MODEL_MAKE(9, 1)
@@ -119,6 +117,7 @@
 #define GPU_ID2_PRODUCT_TDUX              GPU_ID2_MODEL_MAKE(10, 1)
 #define GPU_ID2_PRODUCT_TIDX              GPU_ID2_MODEL_MAKE(10, 3)
 #define GPU_ID2_PRODUCT_TVAX              GPU_ID2_MODEL_MAKE(10, 4)
+#define GPU_ID2_PRODUCT_TODX              GPU_ID2_MODEL_MAKE(10, 8)
 
 /* Values for GPU_ID_VERSION_STATUS field for PRODUCT_ID GPU_ID_PI_T60X */
 #define GPU_ID_S_15DEV0                   0x1
@@ -131,5 +130,9 @@
 		(((u32)major) << GPU_ID_VERSION_MAJOR_SHIFT) |   \
 		(((u32)minor) << GPU_ID_VERSION_MINOR_SHIFT) |   \
 		(((u32)status) << GPU_ID_VERSION_STATUS_SHIFT))
+
+/* Statically set to 0 because the HW revision cannot be seen at compile time
+ * by the build system */
+#define GPU_HAS_CSF_VERSION_10_REVISION_2 (0)
 
 #endif /* _KBASE_GPU_ID_H_ */

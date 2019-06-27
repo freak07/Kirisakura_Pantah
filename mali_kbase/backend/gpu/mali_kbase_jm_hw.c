@@ -30,6 +30,7 @@
 #include <mali_kbase_tracepoints.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_hwaccess_jm.h>
+#include <mali_kbase_reset_gpu.h>
 #include <mali_kbase_ctx_sched.h>
 #include <mali_kbase_hwcnt_context.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
@@ -39,9 +40,7 @@
 #define beenthere(kctx, f, a...) \
 			dev_dbg(kctx->kbdev->dev, "%s:" f, __func__, ##a)
 
-static void kbasep_try_reset_gpu_early(struct kbase_device *kbdev);
-static void kbasep_reset_timeout_worker(struct work_struct *data);
-static enum hrtimer_restart kbasep_reset_timer_callback(struct hrtimer *timer);
+static void kbasep_try_reset_gpu_early_locked(struct kbase_device *kbdev);
 
 static inline int kbasep_jm_is_js_free(struct kbase_device *kbdev, int js,
 						struct kbase_context *kctx)
@@ -270,16 +269,17 @@ static void kbasep_trace_tl_event_lpu_softstop(struct kbase_device *kbdev,
 
 void kbase_job_done(struct kbase_device *kbdev, u32 done)
 {
-	unsigned long flags;
 	int i;
 	u32 count = 0;
-	ktime_t end_timestamp = ktime_get();
+	ktime_t end_timestamp;
+
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	KBASE_DEBUG_ASSERT(kbdev);
 
 	KBASE_TRACE_ADD(kbdev, JM_IRQ, NULL, NULL, 0, done);
 
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	end_timestamp = ktime_get();
 
 	while (done) {
 		u32 failed = done >> 16;
@@ -338,9 +338,8 @@ void kbase_job_done(struct kbase_device *kbdev, u32 done)
 				 * allowing any other jobs on the slot to continue. */
 				if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TTRX_3076)) {
 					if (completion_code == BASE_JD_EVENT_JOB_BUS_FAULT) {
-						if (kbase_prepare_to_reset_gpu_locked(kbdev)) {
+						if (kbase_prepare_to_reset_gpu_locked(kbdev))
 							kbase_reset_gpu_locked(kbdev);
-						}
 					}
 				}
 			}
@@ -468,18 +467,16 @@ void kbase_job_done(struct kbase_device *kbdev, u32 done)
 								end_timestamp);
 	}
 
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 	if (atomic_read(&kbdev->hwaccess.backend.reset_gpu) ==
 						KBASE_RESET_GPU_COMMITTED) {
 		/* If we're trying to reset the GPU then we might be able to do
 		 * it early (without waiting for a timeout) because some jobs
 		 * have completed
 		 */
-		kbasep_try_reset_gpu_early(kbdev);
+		kbasep_try_reset_gpu_early_locked(kbdev);
 	}
 	KBASE_TRACE_ADD(kbdev, JM_IRQ_END, NULL, NULL, 0, count);
 }
-KBASE_EXPORT_TEST_API(kbase_job_done);
 
 static bool kbasep_soft_stop_allowed(struct kbase_device *kbdev,
 					struct kbase_jd_atom *katom)
@@ -732,11 +729,14 @@ void kbase_backend_jm_kill_jobs_from_kctx(struct kbase_context *kctx)
 	mutex_lock(&kctx->jctx.lock);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
-	/* Invalidate all jobs in context, to prevent re-submitting */
+	/* Invalidate all incomplete jobs in context to prevent resubmitting */
 	for (i = 0; i < BASE_JD_ATOM_COUNT; i++) {
-		if (!work_pending(&kctx->jctx.atoms[i].work))
-			kctx->jctx.atoms[i].event_code =
-						BASE_JD_EVENT_JOB_CANCELLED;
+		struct kbase_jd_atom *katom = &kctx->jctx.atoms[i];
+
+		if ((katom->status != KBASE_JD_ATOM_STATE_COMPLETED) &&
+				(katom->status !=
+				KBASE_JD_ATOM_STATE_HW_COMPLETED))
+			katom->event_code = BASE_JD_EVENT_JOB_CANCELLED;
 	}
 
 	for (i = 0; i < kbdev->gpu_props.num_job_slots; i++)
@@ -811,9 +811,7 @@ void kbase_jm_wait_for_zero_jobs(struct kbase_context *kctx)
 	}
 
 	/* Wait for the reset to complete */
-	wait_event(kbdev->hwaccess.backend.reset_wait,
-			atomic_read(&kbdev->hwaccess.backend.reset_gpu)
-			== KBASE_RESET_GPU_NOT_PENDING);
+	kbase_reset_gpu_wait(kbdev);
 exit:
 	dev_dbg(kbdev->dev, "Zap: Finished Context %p", kctx);
 
@@ -841,19 +839,7 @@ u32 kbase_backend_get_current_flush_id(struct kbase_device *kbdev)
 
 int kbase_job_slot_init(struct kbase_device *kbdev)
 {
-	kbdev->hwaccess.backend.reset_workq = alloc_workqueue(
-						"Mali reset workqueue", 0, 1);
-	if (NULL == kbdev->hwaccess.backend.reset_workq)
-		return -EINVAL;
-
-	INIT_WORK(&kbdev->hwaccess.backend.reset_work,
-						kbasep_reset_timeout_worker);
-
-	hrtimer_init(&kbdev->hwaccess.backend.reset_timer, CLOCK_MONOTONIC,
-							HRTIMER_MODE_REL);
-	kbdev->hwaccess.backend.reset_timer.function =
-						kbasep_reset_timer_callback;
-
+	CSTD_UNUSED(kbdev);
 	return 0;
 }
 KBASE_EXPORT_TEST_API(kbase_job_slot_init);
@@ -865,7 +851,7 @@ void kbase_job_slot_halt(struct kbase_device *kbdev)
 
 void kbase_job_slot_term(struct kbase_device *kbdev)
 {
-	destroy_workqueue(kbdev->hwaccess.backend.reset_workq);
+	CSTD_UNUSED(kbdev);
 }
 KBASE_EXPORT_TEST_API(kbase_job_slot_term);
 
@@ -1460,7 +1446,7 @@ int kbase_reset_gpu_silent(struct kbase_device *kbdev)
 	return 0;
 }
 
-bool kbase_reset_gpu_active(struct kbase_device *kbdev)
+bool kbase_reset_gpu_is_active(struct kbase_device *kbdev)
 {
 	if (atomic_read(&kbdev->hwaccess.backend.reset_gpu) ==
 			KBASE_RESET_GPU_NOT_PENDING)
@@ -1468,3 +1454,37 @@ bool kbase_reset_gpu_active(struct kbase_device *kbdev)
 
 	return true;
 }
+
+int kbase_reset_gpu_wait(struct kbase_device *kbdev)
+{
+	wait_event(kbdev->hwaccess.backend.reset_wait,
+			atomic_read(&kbdev->hwaccess.backend.reset_gpu)
+			== KBASE_RESET_GPU_NOT_PENDING);
+
+	return 0;
+}
+KBASE_EXPORT_TEST_API(kbase_reset_gpu_wait);
+
+int kbase_reset_gpu_init(struct kbase_device *kbdev)
+{
+	kbdev->hwaccess.backend.reset_workq = alloc_workqueue(
+						"Mali reset workqueue", 0, 1);
+	if (kbdev->hwaccess.backend.reset_workq == NULL)
+		return -ENOMEM;
+
+	INIT_WORK(&kbdev->hwaccess.backend.reset_work,
+						kbasep_reset_timeout_worker);
+
+	hrtimer_init(&kbdev->hwaccess.backend.reset_timer, CLOCK_MONOTONIC,
+							HRTIMER_MODE_REL);
+	kbdev->hwaccess.backend.reset_timer.function =
+						kbasep_reset_timer_callback;
+
+	return 0;
+}
+
+void kbase_reset_gpu_term(struct kbase_device *kbdev)
+{
+	destroy_workqueue(kbdev->hwaccess.backend.reset_workq);
+}
+

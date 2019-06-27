@@ -109,7 +109,9 @@ enum tl_msg_id_obj {
 	KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END,
 	KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END,
 	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_FREE_START,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_FREE_END,
+	KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END,
+	KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END,
+	KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END,
 	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_ERRORBARRIER,
 	KBASE_OBJ_MSG_COUNT,
 };
@@ -224,8 +226,8 @@ enum tl_msg_id_aux {
 		"atom") \
 	TP_DESC(KBASE_TL_ATTRIB_ATOM_JIT, \
 		"jit done for atom", \
-		"@pLLLI", \
-		"atom,edit_addr,new_addr,jit_flags,j_id") \
+		"@pLLILILLL", \
+		"atom,edit_addr,new_addr,jit_flags,mem_flags,j_id,com_pgs,extent,va_pgs") \
 	TP_DESC(KBASE_TL_JIT_USEDPAGES, \
 		"used pages for jit", \
 		"@LI", \
@@ -233,7 +235,7 @@ enum tl_msg_id_aux {
 	TP_DESC(KBASE_TL_ATTRIB_ATOM_JITALLOCINFO, \
 		"Information about JIT allocations", \
 		"@pLLLIIIII", \
-		"atom,va_pgs,com_pgs,extent,j_id,bin_id,max_allocs,flags,usg_id") \
+		"atom,va_pgs,com_pgs,extent,j_id,bin_id,max_allocs,jit_flags,usg_id") \
 	TP_DESC(KBASE_TL_ATTRIB_ATOM_JITFREEINFO, \
 		"Information about JIT frees", \
 		"@pI", \
@@ -424,8 +426,8 @@ enum tl_msg_id_aux {
 		"kcpu_queue") \
 	TP_DESC(KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
 		"Array item of KCPU Queue ends an array of JIT Allocs", \
-		"@pLLL", \
-		"kcpu_queue,jit_alloc_gpu_alloc_addr,jit_alloc_mmu_flags,jit_alloc_pages_allocated") \
+		"@pLL", \
+		"kcpu_queue,jit_alloc_gpu_alloc_addr,jit_alloc_mmu_flags") \
 	TP_DESC(KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
 		"End array of KCPU Queue ends an array of JIT Allocs", \
 		"@p", \
@@ -434,8 +436,16 @@ enum tl_msg_id_aux {
 		"KCPU Queue starts an array of JIT Frees", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
-		"KCPU Queue ends an array of JIT Frees", \
+	TP_DESC(KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
+		"Begin array of KCPU Queue ends an array of JIT Frees", \
+		"@p", \
+		"kcpu_queue") \
+	TP_DESC(KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
+		"Array item of KCPU Queue ends an array of JIT Frees", \
+		"@pL", \
+		"kcpu_queue,jit_free_pages_used") \
+	TP_DESC(KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
+		"End array of KCPU Queue ends an array of JIT Frees", \
 		"@p", \
 		"kcpu_queue") \
 	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_ERRORBARRIER, \
@@ -1122,8 +1132,12 @@ void __kbase_tlstream_tl_attrib_atom_jit(
 	const void *atom,
 	u64 edit_addr,
 	u64 new_addr,
-	u64 jit_flags,
-	u32 j_id)
+	u32 jit_flags,
+	u64 mem_flags,
+	u32 j_id,
+	u64 com_pgs,
+	u64 extent,
+	u64 va_pgs)
 {
 	const u32 msg_id = KBASE_TL_ATTRIB_ATOM_JIT;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
@@ -1131,7 +1145,11 @@ void __kbase_tlstream_tl_attrib_atom_jit(
 		+ sizeof(edit_addr)
 		+ sizeof(new_addr)
 		+ sizeof(jit_flags)
+		+ sizeof(mem_flags)
 		+ sizeof(j_id)
+		+ sizeof(com_pgs)
+		+ sizeof(extent)
+		+ sizeof(va_pgs)
 		;
 	char *buffer;
 	unsigned long acq_flags;
@@ -1150,7 +1168,15 @@ void __kbase_tlstream_tl_attrib_atom_jit(
 	pos = kbasep_serialize_bytes(buffer,
 		pos, &jit_flags, sizeof(jit_flags));
 	pos = kbasep_serialize_bytes(buffer,
+		pos, &mem_flags, sizeof(mem_flags));
+	pos = kbasep_serialize_bytes(buffer,
 		pos, &j_id, sizeof(j_id));
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &com_pgs, sizeof(com_pgs));
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &extent, sizeof(extent));
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &va_pgs, sizeof(va_pgs));
 
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
@@ -1190,7 +1216,7 @@ void __kbase_tlstream_tl_attrib_atom_jitallocinfo(
 	u32 j_id,
 	u32 bin_id,
 	u32 max_allocs,
-	u32 flags,
+	u32 jit_flags,
 	u32 usg_id)
 {
 	const u32 msg_id = KBASE_TL_ATTRIB_ATOM_JITALLOCINFO;
@@ -1202,7 +1228,7 @@ void __kbase_tlstream_tl_attrib_atom_jitallocinfo(
 		+ sizeof(j_id)
 		+ sizeof(bin_id)
 		+ sizeof(max_allocs)
-		+ sizeof(flags)
+		+ sizeof(jit_flags)
 		+ sizeof(usg_id)
 		;
 	char *buffer;
@@ -1228,7 +1254,7 @@ void __kbase_tlstream_tl_attrib_atom_jitallocinfo(
 	pos = kbasep_serialize_bytes(buffer,
 		pos, &max_allocs, sizeof(max_allocs));
 	pos = kbasep_serialize_bytes(buffer,
-		pos, &flags, sizeof(flags));
+		pos, &jit_flags, sizeof(jit_flags));
 	pos = kbasep_serialize_bytes(buffer,
 		pos, &usg_id, sizeof(usg_id));
 
@@ -2645,15 +2671,13 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_alloc_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 jit_alloc_gpu_alloc_addr,
-	u64 jit_alloc_mmu_flags,
-	u64 jit_alloc_pages_allocated)
+	u64 jit_alloc_mmu_flags)
 {
 	const u32 msg_id = KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(jit_alloc_gpu_alloc_addr)
 		+ sizeof(jit_alloc_mmu_flags)
-		+ sizeof(jit_alloc_pages_allocated)
 		;
 	char *buffer;
 	unsigned long acq_flags;
@@ -2669,8 +2693,6 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_alloc_end(
 		pos, &jit_alloc_gpu_alloc_addr, sizeof(jit_alloc_gpu_alloc_addr));
 	pos = kbasep_serialize_bytes(buffer,
 		pos, &jit_alloc_mmu_flags, sizeof(jit_alloc_mmu_flags));
-	pos = kbasep_serialize_bytes(buffer,
-		pos, &jit_alloc_pages_allocated, sizeof(jit_alloc_pages_allocated));
 
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
@@ -2719,11 +2741,59 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_jit_free_start(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_jit_free_end(
+void __kbase_tlstream_tl_event_array_begin_kcpuqueue_execute_jit_free_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_FREE_END;
+	const u32 msg_id = KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END;
+	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
+		+ sizeof(kcpu_queue)
+		;
+	char *buffer;
+	unsigned long acq_flags;
+	size_t pos = 0;
+
+	buffer = kbase_tlstream_msgbuf_acquire(stream, msg_size, &acq_flags);
+
+	pos = kbasep_serialize_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_serialize_timestamp(buffer, pos);
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kcpu_queue, sizeof(kcpu_queue));
+
+	kbase_tlstream_msgbuf_release(stream, acq_flags);
+}
+
+void __kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_free_end(
+	struct kbase_tlstream *stream,
+	const void *kcpu_queue,
+	u64 jit_free_pages_used)
+{
+	const u32 msg_id = KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END;
+	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
+		+ sizeof(kcpu_queue)
+		+ sizeof(jit_free_pages_used)
+		;
+	char *buffer;
+	unsigned long acq_flags;
+	size_t pos = 0;
+
+	buffer = kbase_tlstream_msgbuf_acquire(stream, msg_size, &acq_flags);
+
+	pos = kbasep_serialize_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_serialize_timestamp(buffer, pos);
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kcpu_queue, sizeof(kcpu_queue));
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &jit_free_pages_used, sizeof(jit_free_pages_used));
+
+	kbase_tlstream_msgbuf_release(stream, acq_flags);
+}
+
+void __kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_free_end(
+	struct kbase_tlstream *stream,
+	const void *kcpu_queue)
+{
+	const u32 msg_id = KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;

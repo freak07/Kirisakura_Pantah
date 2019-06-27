@@ -245,10 +245,17 @@ static void kbase_gpuprops_calculate_props(base_gpu_props * const gpu_props, str
 		gpu_props->thread_props.tls_alloc =
 				gpu_props->raw_props.thread_tls_alloc;
 
+#if GPU_HAS_CSF_VERSION_10_REVISION_2
+	gpu_props->thread_props.max_registers = KBASE_UBFX32(gpu_props->raw_props.thread_features, 0U, 22);
+	gpu_props->thread_props.impl_tech = KBASE_UBFX32(gpu_props->raw_props.thread_features, 22U, 2);
+	gpu_props->thread_props.max_task_queue = KBASE_UBFX32(gpu_props->raw_props.thread_features, 24U, 8);
+	gpu_props->thread_props.max_thread_group_split = 0;
+#else
 	gpu_props->thread_props.max_registers = KBASE_UBFX32(gpu_props->raw_props.thread_features, 0U, 16);
 	gpu_props->thread_props.max_task_queue = KBASE_UBFX32(gpu_props->raw_props.thread_features, 16U, 8);
 	gpu_props->thread_props.max_thread_group_split = KBASE_UBFX32(gpu_props->raw_props.thread_features, 24U, 6);
 	gpu_props->thread_props.impl_tech = KBASE_UBFX32(gpu_props->raw_props.thread_features, 30U, 2);
+#endif
 
 	/* If values are not specified, then use defaults */
 	if (gpu_props->thread_props.max_registers == 0) {

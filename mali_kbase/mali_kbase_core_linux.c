@@ -48,8 +48,8 @@
 #include <mali_kbase_hwaccess_backend.h>
 #include <mali_kbase_hwaccess_jm.h>
 #include <mali_kbase_ctx_sched.h>
+#include <mali_kbase_reset_gpu.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
-#include <backend/gpu/mali_kbase_pm_internal.h>
 #include "mali_kbase_ioctl.h"
 #include "mali_kbase_hwcnt_context.h"
 #include "mali_kbase_hwcnt_virtualizer.h"
@@ -83,6 +83,7 @@
 #include <mali_kbase_sync.h>
 #endif /* CONFIG_SYNC || CONFIG_SYNC_FILE */
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/delay.h>
 #include <linux/log2.h>
 
@@ -467,6 +468,7 @@ void kbase_release_device(struct kbase_device *kbdev)
 }
 EXPORT_SYMBOL(kbase_release_device);
 
+#ifdef CONFIG_DEBUG_FS
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 0) && \
 		!(LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 28) && \
 		LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0))
@@ -521,6 +523,7 @@ static ssize_t read_ctx_infinite_cache(struct file *f, char __user *ubuf, size_t
 }
 
 static const struct file_operations kbase_infinite_cache_fops = {
+	.owner = THIS_MODULE,
 	.open = simple_open,
 	.write = write_ctx_infinite_cache,
 	.read = read_ctx_infinite_cache,
@@ -570,10 +573,12 @@ static ssize_t read_ctx_force_same_va(struct file *f, char __user *ubuf,
 }
 
 static const struct file_operations kbase_force_same_va_fops = {
+	.owner = THIS_MODULE,
 	.open = simple_open,
 	.write = write_ctx_force_same_va,
 	.read = read_ctx_force_same_va,
 };
+#endif /* CONFIG_DEBUG_FS */
 
 static int kbase_file_create_kctx(struct kbase_file *const kfile,
 	base_context_create_flags const flags)
@@ -1291,6 +1296,7 @@ static int kbase_api_tlstream_stats(struct kbase_context *kctx,
 		int ret, err;                                      \
 		BUILD_BUG_ON(_IOC_DIR(cmd) != _IOC_READ);          \
 		BUILD_BUG_ON(sizeof(param) != _IOC_SIZE(cmd));     \
+		memset(&param, 0, sizeof(param));                  \
 		ret = function(arg, &param);                       \
 		err = copy_to_user(uarg, &param, sizeof(param));   \
 		if (err)                                           \
@@ -2320,109 +2326,6 @@ static ssize_t show_js_scheduling_period(struct device *dev,
 static DEVICE_ATTR(js_scheduling_period, S_IRUGO | S_IWUSR,
 		show_js_scheduling_period, set_js_scheduling_period);
 
-#if !MALI_CUSTOMER_RELEASE
-/**
- * set_force_replay - Store callback for the force_replay sysfs file.
- *
- * @dev:	The device with sysfs file is for
- * @attr:	The attributes of the sysfs file
- * @buf:	The value written to the sysfs file
- * @count:	The number of bytes written to the sysfs file
- *
- * Return: @count if the function succeeded. An error code on failure.
- */
-static ssize_t set_force_replay(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct kbase_device *kbdev;
-
-	kbdev = to_kbase_device(dev);
-	if (!kbdev)
-		return -ENODEV;
-
-	if (!strncmp("limit=", buf, MIN(6, count))) {
-		int force_replay_limit;
-		int items = sscanf(buf, "limit=%u", &force_replay_limit);
-
-		if (items == 1) {
-			kbdev->force_replay_random = false;
-			kbdev->force_replay_limit = force_replay_limit;
-			kbdev->force_replay_count = 0;
-
-			return count;
-		}
-	} else if (!strncmp("random_limit", buf, MIN(12, count))) {
-		kbdev->force_replay_random = true;
-		kbdev->force_replay_count = 0;
-
-		return count;
-	} else if (!strncmp("norandom_limit", buf, MIN(14, count))) {
-		kbdev->force_replay_random = false;
-		kbdev->force_replay_limit = KBASEP_FORCE_REPLAY_DISABLED;
-		kbdev->force_replay_count = 0;
-
-		return count;
-	} else if (!strncmp("core_req=", buf, MIN(9, count))) {
-		unsigned int core_req;
-		int items = sscanf(buf, "core_req=%x", &core_req);
-
-		if (items == 1) {
-			kbdev->force_replay_core_req = (base_jd_core_req)core_req;
-
-			return count;
-		}
-	}
-	dev_err(kbdev->dev, "Couldn't process force_replay write operation.\nPossible settings: limit=<limit>, random_limit, norandom_limit, core_req=<core_req>\n");
-	return -EINVAL;
-}
-
-/**
- * show_force_replay - Show callback for the force_replay sysfs file.
- *
- * This function is called to get the contents of the force_replay sysfs
- * file. It returns the last set value written to the force_replay sysfs file.
- * If the file didn't get written yet, the values will be 0.
- *
- * @dev:	The device this sysfs file is for
- * @attr:	The attributes of the sysfs file
- * @buf:	The output buffer for the sysfs file contents
- *
- * Return: The number of bytes output to @buf.
- */
-static ssize_t show_force_replay(struct device *dev,
-		struct device_attribute *attr, char * const buf)
-{
-	struct kbase_device *kbdev;
-	ssize_t ret;
-
-	kbdev = to_kbase_device(dev);
-	if (!kbdev)
-		return -ENODEV;
-
-	if (kbdev->force_replay_random)
-		ret = scnprintf(buf, PAGE_SIZE,
-				"limit=0\nrandom_limit\ncore_req=%x\n",
-				kbdev->force_replay_core_req);
-	else
-		ret = scnprintf(buf, PAGE_SIZE,
-				"limit=%u\nnorandom_limit\ncore_req=%x\n",
-				kbdev->force_replay_limit,
-				kbdev->force_replay_core_req);
-
-	if (ret >= PAGE_SIZE) {
-		buf[PAGE_SIZE - 2] = '\n';
-		buf[PAGE_SIZE - 1] = '\0';
-		ret = PAGE_SIZE - 1;
-	}
-
-	return ret;
-}
-
-/*
- * The sysfs file force_replay.
- */
-static DEVICE_ATTR(force_replay, S_IRUGO | S_IWUSR, show_force_replay,
-		set_force_replay);
-#endif /* !MALI_CUSTOMER_RELEASE */
 
 #ifdef CONFIG_MALI_DEBUG
 static ssize_t set_js_softstop_always(struct device *dev,
@@ -2626,6 +2529,8 @@ static ssize_t kbase_show_gpuinfo(struct device *dev,
 		  .name = "Mali-G31" },
 		{ .id = GPU_ID2_PRODUCT_TGOX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
 		  .name = "Mali-G52" },
+		{ .id = GPU_ID2_PRODUCT_TTRX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
+		  .name = "Mali-G77" },
 	};
 	const char *product_name = "(Unknown Mali GPU)";
 	struct kbase_device *kbdev;
@@ -3141,6 +3046,8 @@ static ssize_t set_js_ctx_scheduling_mode(struct device *dev,
 static DEVICE_ATTR(js_ctx_scheduling_mode, S_IRUGO | S_IWUSR,
 		show_js_ctx_scheduling_mode,
 		set_js_ctx_scheduling_mode);
+
+#ifdef MALI_KBASE_BUILD
 #ifdef CONFIG_DEBUG_FS
 
 /* Number of entries in serialize_jobs_settings[] */
@@ -3257,6 +3164,7 @@ static int kbasep_serialize_jobs_debugfs_open(struct inode *in,
 }
 
 static const struct file_operations kbasep_serialize_jobs_debugfs_fops = {
+	.owner = THIS_MODULE,
 	.open = kbasep_serialize_jobs_debugfs_open,
 	.read = seq_read,
 	.write = kbasep_serialize_jobs_debugfs_write,
@@ -3265,6 +3173,7 @@ static const struct file_operations kbasep_serialize_jobs_debugfs_fops = {
 };
 
 #endif /* CONFIG_DEBUG_FS */
+#endif /* MALI_KBASE_BUILD */
 
 static void kbasep_protected_mode_hwcnt_disable_worker(struct work_struct *data)
 {
@@ -3462,109 +3371,174 @@ static void registers_unmap(struct kbase_device *kbdev)
 
 static int power_control_init(struct platform_device *pdev)
 {
+#if KERNEL_VERSION(3, 18, 0) > LINUX_VERSION_CODE || !defined(CONFIG_OF)
+	/* Power control initialization requires at least the capability to get
+	 * regulators and clocks from the device tree, as well as parsing
+	 * arrays of unsigned integer values.
+	 *
+	 * The whole initialization process shall simply be skipped if the
+	 * minimum capability is not available.
+	 */
+	return 0;
+#else
 	struct kbase_device *kbdev = to_kbase_device(&pdev->dev);
 	int err = 0;
+	unsigned int i;
+#if defined(CONFIG_REGULATOR)
+	static const char *regulator_names[] = {
+		"mali", "shadercores"
+	};
+	BUILD_BUG_ON(ARRAY_SIZE(regulator_names) < BASE_MAX_NR_CLOCKS_REGULATORS);
+#endif /* CONFIG_REGULATOR */
 
 	if (!kbdev)
 		return -ENODEV;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 12, 0)) && defined(CONFIG_OF) \
-			&& defined(CONFIG_REGULATOR)
-	kbdev->regulator = regulator_get_optional(kbdev->dev, "mali");
-	if (IS_ERR_OR_NULL(kbdev->regulator)) {
-		err = PTR_ERR(kbdev->regulator);
-		kbdev->regulator = NULL;
-		if (err == -EPROBE_DEFER) {
-			dev_err(&pdev->dev, "Failed to get regulator\n");
-			return err;
+#if defined(CONFIG_REGULATOR)
+	/* Since the error code EPROBE_DEFER causes the entire probing
+	 * procedure to be restarted from scratch at a later time,
+	 * all regulators will be released before returning.
+	 *
+	 * Any other error is ignored and the driver will continue
+	 * operating with a partial initialization of regulators.
+	 */
+	for (i = 0; i < BASE_MAX_NR_CLOCKS_REGULATORS; i++) {
+		kbdev->regulators[i] = regulator_get_optional(kbdev->dev,
+			regulator_names[i]);
+		if (IS_ERR_OR_NULL(kbdev->regulators[i])) {
+			err = PTR_ERR(kbdev->regulators[i]);
+			kbdev->regulators[i] = NULL;
+			break;
 		}
-		dev_info(kbdev->dev,
-			"Continuing without Mali regulator control\n");
-		/* Allow probe to continue without regulator */
 	}
-#endif /* LINUX_VERSION_CODE >= 3, 12, 0 */
+	if (err == -EPROBE_DEFER) {
+		while ((i > 0) && (i < BASE_MAX_NR_CLOCKS_REGULATORS))
+			regulator_put(kbdev->regulators[--i]);
+		return err;
+	}
 
-	kbdev->clock = of_clk_get(kbdev->dev->of_node, 0);
-	if (IS_ERR_OR_NULL(kbdev->clock)) {
-		err = PTR_ERR(kbdev->clock);
-		kbdev->clock = NULL;
-		if (err == -EPROBE_DEFER) {
-			dev_err(&pdev->dev, "Failed to get clock\n");
-			goto fail;
+	kbdev->nr_regulators = i;
+	dev_dbg(&pdev->dev, "Regulators probed: %u\n", kbdev->nr_regulators);
+#endif
+
+	/* Having more clocks than regulators is acceptable, while the
+	 * opposite shall not happen.
+	 *
+	 * Since the error code EPROBE_DEFER causes the entire probing
+	 * procedure to be restarted from scratch at a later time,
+	 * all clocks and regulators will be released before returning.
+	 *
+	 * Any other error is ignored and the driver will continue
+	 * operating with a partial initialization of clocks.
+	 */
+	for (i = 0; i < BASE_MAX_NR_CLOCKS_REGULATORS; i++) {
+		kbdev->clocks[i] = of_clk_get(kbdev->dev->of_node, i);
+		if (IS_ERR_OR_NULL(kbdev->clocks[i])) {
+			err = PTR_ERR(kbdev->clocks[i]);
+			kbdev->clocks[i] = NULL;
+			break;
 		}
-		dev_info(kbdev->dev, "Continuing without Mali clock control\n");
-		/* Allow probe to continue without clock. */
-	} else {
-		err = clk_prepare_enable(kbdev->clock);
+
+		err = clk_prepare_enable(kbdev->clocks[i]);
 		if (err) {
 			dev_err(kbdev->dev,
 				"Failed to prepare and enable clock (%d)\n",
 				err);
-			goto fail;
+			clk_put(kbdev->clocks[i]);
+			break;
 		}
 	}
+	if (err == -EPROBE_DEFER) {
+		while ((i > 0) && (i < BASE_MAX_NR_CLOCKS_REGULATORS)) {
+			clk_disable_unprepare(kbdev->clocks[--i]);
+			clk_put(kbdev->clocks[i]);
+		}
+		goto clocks_probe_defer;
+	}
 
-#if defined(CONFIG_OF) && defined(CONFIG_PM_OPP)
-	/* Register the OPPs if they are available in device tree */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)) \
-	|| defined(LSK_OPPV2_BACKPORT)
-	err = dev_pm_opp_of_add_table(kbdev->dev);
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
+	kbdev->nr_clocks = i;
+	dev_dbg(&pdev->dev, "Clocks probed: %u\n", kbdev->nr_clocks);
+
+	/* Any error in parsing the OPP table from the device file
+	 * shall be ignored. The fact that the table may be absent or wrong
+	 * on the device tree of the platform shouldn't prevent the driver
+	 * from completing its initialization.
+	 */
+#if (KERNEL_VERSION(4, 4, 0) > LINUX_VERSION_CODE && \
+	!defined(LSK_OPPV2_BACKPORT))
 	err = of_init_opp_table(kbdev->dev);
+	CSTD_UNUSED(err);
 #else
-	err = 0;
-#endif /* LINUX_VERSION_CODE */
-	if (err)
-		dev_dbg(kbdev->dev, "OPP table not found\n");
-#endif /* CONFIG_OF && CONFIG_PM_OPP */
 
+#if defined(CONFIG_PM_OPP)
+#if ((KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE) && \
+	defined(CONFIG_REGULATOR))
+	if (kbdev->nr_regulators > 0) {
+		kbdev->opp_table = dev_pm_opp_set_regulators(kbdev->dev,
+			regulator_names, BASE_MAX_NR_CLOCKS_REGULATORS);
+	}
+#endif /* (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE */
+	err = dev_pm_opp_of_add_table(kbdev->dev);
+	CSTD_UNUSED(err);
+#endif /* CONFIG_PM_OPP */
+
+#endif /* KERNEL_VERSION(4, 4, 0) > LINUX_VERSION_CODE */
 	return 0;
 
-fail:
-
-if (kbdev->clock != NULL) {
-	clk_put(kbdev->clock);
-	kbdev->clock = NULL;
-}
-
-#ifdef CONFIG_REGULATOR
-	if (NULL != kbdev->regulator) {
-		regulator_put(kbdev->regulator);
-		kbdev->regulator = NULL;
-	}
+clocks_probe_defer:
+#if defined(CONFIG_REGULATOR)
+	for (i = 0; i < BASE_MAX_NR_CLOCKS_REGULATORS; i++)
+		regulator_put(kbdev->regulators[i]);
 #endif
-
 	return err;
+#endif /* KERNEL_VERSION(3, 18, 0) > LINUX_VERSION_CODE */
 }
 
 static void power_control_term(struct kbase_device *kbdev)
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)) || \
-		defined(LSK_OPPV2_BACKPORT)
-	dev_pm_opp_of_remove_table(kbdev->dev);
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
+	unsigned int i;
+
+#if (KERNEL_VERSION(4, 4, 0) > LINUX_VERSION_CODE && \
+	!defined(LSK_OPPV2_BACKPORT))
+#if KERNEL_VERSION(3, 19, 0) <= LINUX_VERSION_CODE
 	of_free_opp_table(kbdev->dev);
 #endif
+#else
 
-	if (kbdev->clock) {
-		clk_disable_unprepare(kbdev->clock);
-		clk_put(kbdev->clock);
-		kbdev->clock = NULL;
+#if defined(CONFIG_PM_OPP)
+	dev_pm_opp_of_remove_table(kbdev->dev);
+#if ((KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE) && \
+	defined(CONFIG_REGULATOR))
+	if (!IS_ERR_OR_NULL(kbdev->opp_table))
+		dev_pm_opp_put_regulators(kbdev->opp_table);
+#endif /* (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE */
+#endif /* CONFIG_PM_OPP */
+
+#endif /* KERNEL_VERSION(4, 4, 0) > LINUX_VERSION_CODE */
+
+	for (i = 0; i < BASE_MAX_NR_CLOCKS_REGULATORS; i++) {
+		if (kbdev->clocks[i]) {
+			if (__clk_is_enabled(kbdev->clocks[i]))
+				clk_disable_unprepare(kbdev->clocks[i]);
+			clk_put(kbdev->clocks[i]);
+			kbdev->clocks[i] = NULL;
+		} else
+			break;
 	}
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 12, 0)) && defined(CONFIG_OF) \
 			&& defined(CONFIG_REGULATOR)
-	if (kbdev->regulator) {
-		regulator_put(kbdev->regulator);
-		kbdev->regulator = NULL;
+	for (i = 0; i < BASE_MAX_NR_CLOCKS_REGULATORS; i++) {
+		if (kbdev->regulators[i]) {
+			regulator_put(kbdev->regulators[i]);
+			kbdev->regulators[i] = NULL;
+		}
 	}
 #endif /* LINUX_VERSION_CODE >= 3, 12, 0 */
 }
 
 #ifdef MALI_KBASE_BUILD
 #ifdef CONFIG_DEBUG_FS
-
-#include <mali_kbase_hwaccess_jm.h>
 
 static void trigger_quirks_reload(struct kbase_device *kbdev)
 {
@@ -3637,6 +3611,7 @@ static ssize_t debugfs_protected_debug_mode_read(struct file *file,
  * Contains the file operations for the "protected_debug_mode" debugfs file
  */
 static const struct file_operations fops_protected_debug_mode = {
+	.owner = THIS_MODULE,
 	.open = simple_open,
 	.read = debugfs_protected_debug_mode_read,
 	.llseek = default_llseek,
@@ -3764,11 +3739,10 @@ static int kbase_device_debugfs_init(struct kbase_device *kbdev)
 #endif /* CONFIG_DEVFREQ_THERMAL */
 #endif /* CONFIG_MALI_DEVFREQ */
 
-#ifdef CONFIG_DEBUG_FS
 	debugfs_create_file("serialize_jobs", S_IRUGO | S_IWUSR,
 			kbdev->mali_debugfs_directory, kbdev,
 			&kbasep_serialize_jobs_debugfs_fops);
-#endif /* CONFIG_DEBUG_FS */
+
 
 	return 0;
 
@@ -3867,9 +3841,6 @@ static struct attribute *kbase_attrs[] = {
 #ifdef CONFIG_MALI_DEBUG
 	&dev_attr_debug_command.attr,
 	&dev_attr_js_softstop_always.attr,
-#endif
-#if !MALI_CUSTOMER_RELEASE
-	&dev_attr_force_replay.attr,
 #endif
 	&dev_attr_js_timeouts.attr,
 	&dev_attr_soft_job_timeout.attr,

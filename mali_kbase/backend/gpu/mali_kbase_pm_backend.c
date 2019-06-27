@@ -1,4 +1,4 @@
-/*
+ /*
  *
  * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
@@ -150,7 +150,6 @@ int kbase_hwaccess_pm_early_init(struct kbase_device *kbdev)
 	kbdev->pm.active_count = 0;
 
 	spin_lock_init(&kbdev->pm.backend.gpu_cycle_counter_requests_lock);
-	spin_lock_init(&kbdev->pm.backend.gpu_powered_lock);
 
 	init_waitqueue_head(&kbdev->pm.backend.poweroff_wait);
 
@@ -333,13 +332,8 @@ void kbase_pm_do_poweroff(struct kbase_device *kbdev, bool is_suspend)
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
-	spin_lock(&kbdev->pm.backend.gpu_powered_lock);
-	if (!kbdev->pm.backend.gpu_powered) {
-		spin_unlock(&kbdev->pm.backend.gpu_powered_lock);
+	if (!kbdev->pm.backend.gpu_powered)
 		goto unlock_hwaccess;
-	} else {
-		spin_unlock(&kbdev->pm.backend.gpu_powered_lock);
-	}
 
 	if (kbdev->pm.backend.poweroff_wait_in_progress)
 		goto unlock_hwaccess;
@@ -426,9 +420,7 @@ int kbase_hwaccess_pm_powerup(struct kbase_device *kbdev,
 	/* We are ready to receive IRQ's now as power policy is set up, so
 	 * enable them now. */
 #ifdef CONFIG_MALI_DEBUG
-	spin_lock_irqsave(&kbdev->pm.backend.gpu_powered_lock, irq_flags);
 	kbdev->pm.backend.driver_ready_for_irqs = true;
-	spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock, irq_flags);
 #endif
 	kbase_pm_enable_interrupts(kbdev);
 

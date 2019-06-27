@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2016,2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2016,2018-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -49,12 +49,11 @@ static irqreturn_t kbase_job_irq_handler(int irq, void *data)
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
 
-	spin_lock_irqsave(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	if (!kbdev->pm.backend.gpu_powered) {
 		/* GPU is turned off - IRQ is not for us */
-		spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock,
-									flags);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 		return IRQ_NONE;
 	}
 
@@ -65,14 +64,17 @@ static irqreturn_t kbase_job_irq_handler(int irq, void *data)
 		dev_warn(kbdev->dev, "%s: irq %d irqstatus 0x%x before driver is ready\n",
 				__func__, irq, val);
 #endif /* CONFIG_MALI_DEBUG */
-	spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock, flags);
 
-	if (!val)
+	if (!val) {
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 		return IRQ_NONE;
+	}
 
 	dev_dbg(kbdev->dev, "%s: irq %d irqstatus 0x%x\n", __func__, irq, val);
 
 	kbase_job_done(kbdev, val);
+
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	return IRQ_HANDLED;
 }
@@ -85,12 +87,11 @@ static irqreturn_t kbase_mmu_irq_handler(int irq, void *data)
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
 
-	spin_lock_irqsave(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	if (!kbdev->pm.backend.gpu_powered) {
 		/* GPU is turned off - IRQ is not for us */
-		spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock,
-									flags);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 		return IRQ_NONE;
 	}
 
@@ -103,7 +104,7 @@ static irqreturn_t kbase_mmu_irq_handler(int irq, void *data)
 		dev_warn(kbdev->dev, "%s: irq %d irqstatus 0x%x before driver is ready\n",
 				__func__, irq, val);
 #endif /* CONFIG_MALI_DEBUG */
-	spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	if (!val) {
 		atomic_dec(&kbdev->faults_pending);
@@ -125,12 +126,11 @@ static irqreturn_t kbase_gpu_irq_handler(int irq, void *data)
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
 
-	spin_lock_irqsave(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	if (!kbdev->pm.backend.gpu_powered) {
 		/* GPU is turned off - IRQ is not for us */
-		spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock,
-									flags);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 		return IRQ_NONE;
 	}
 
@@ -141,7 +141,7 @@ static irqreturn_t kbase_gpu_irq_handler(int irq, void *data)
 		dev_dbg(kbdev->dev, "%s: irq %d irqstatus 0x%x before driver is ready\n",
 				__func__, irq, val);
 #endif /* CONFIG_MALI_DEBUG */
-	spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	if (!val)
 		return IRQ_NONE;
@@ -230,18 +230,17 @@ static irqreturn_t kbase_job_irq_test_handler(int irq, void *data)
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
 
-	spin_lock_irqsave(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	if (!kbdev->pm.backend.gpu_powered) {
 		/* GPU is turned off - IRQ is not for us */
-		spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock,
-									flags);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 		return IRQ_NONE;
 	}
 
 	val = kbase_reg_read(kbdev, JOB_CONTROL_REG(JOB_IRQ_STATUS));
 
-	spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	if (!val)
 		return IRQ_NONE;
@@ -262,18 +261,17 @@ static irqreturn_t kbase_mmu_irq_test_handler(int irq, void *data)
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
 
-	spin_lock_irqsave(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	if (!kbdev->pm.backend.gpu_powered) {
 		/* GPU is turned off - IRQ is not for us */
-		spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock,
-									flags);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 		return IRQ_NONE;
 	}
 
 	val = kbase_reg_read(kbdev, MMU_REG(MMU_IRQ_STATUS));
 
-	spin_unlock_irqrestore(&kbdev->pm.backend.gpu_powered_lock, flags);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	if (!val)
 		return IRQ_NONE;

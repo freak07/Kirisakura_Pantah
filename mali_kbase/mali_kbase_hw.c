@@ -62,9 +62,6 @@ void kbase_hw_set_features_mask(struct kbase_device *kbdev)
 		case GPU_ID2_PRODUCT_TGOX:
 			features = base_hw_features_tGOx;
 			break;
-		case GPU_ID2_PRODUCT_TKAX:
-			features = base_hw_features_tKAx;
-			break;
 		case GPU_ID2_PRODUCT_TEGX:
 			features = base_hw_features_tEGx;
 			break;
@@ -83,8 +80,8 @@ void kbase_hw_set_features_mask(struct kbase_device *kbdev)
 		case GPU_ID2_PRODUCT_TDUX:
 			features = base_hw_features_tDUx;
 			break;
-		case GPU_ID2_PRODUCT_TBOX:
-			features = base_hw_features_tBOx;
+		case GPU_ID2_PRODUCT_TODX:
+			features = base_hw_features_tODx;
 			break;
 		case GPU_ID2_PRODUCT_TIDX:
 			features = base_hw_features_tIDx;
@@ -213,10 +210,6 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 		  {GPU_ID2_VERSION_MAKE(1, 0, 0), base_hw_issues_tGOx_r1p0},
 		  {U32_MAX, NULL} } },
 
-		{GPU_ID2_PRODUCT_TKAX,
-		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tKAx_r0p0},
-		  {U32_MAX, NULL} } },
-
 		{GPU_ID2_PRODUCT_TEGX,
 		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tEGx_r0p0},
 		  {U32_MAX, NULL} } },
@@ -249,8 +242,8 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tDUx_r0p0},
 		  {U32_MAX, NULL} } },
 
-		{GPU_ID2_PRODUCT_TBOX,
-		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tBOx_r0p0},
+		{GPU_ID2_PRODUCT_TODX,
+		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tODx_r0p0},
 		  {U32_MAX, NULL} } },
 
 		{GPU_ID2_PRODUCT_TIDX,
@@ -489,9 +482,6 @@ int kbase_hw_set_issues_mask(struct kbase_device *kbdev)
 			case GPU_ID2_PRODUCT_TGOX:
 				issues = base_hw_issues_model_tGOx;
 				break;
-			case GPU_ID2_PRODUCT_TKAX:
-				issues = base_hw_issues_model_tKAx;
-				break;
 			case GPU_ID2_PRODUCT_TEGX:
 				issues = base_hw_issues_model_tEGx;
 				break;
@@ -510,8 +500,8 @@ int kbase_hw_set_issues_mask(struct kbase_device *kbdev)
 			case GPU_ID2_PRODUCT_TDUX:
 				issues = base_hw_issues_model_tDUx;
 				break;
-			case GPU_ID2_PRODUCT_TBOX:
-				issues = base_hw_issues_model_tBOx;
+			case GPU_ID2_PRODUCT_TODX:
+				issues = base_hw_issues_model_tODx;
 				break;
 			case GPU_ID2_PRODUCT_TIDX:
 				issues = base_hw_issues_model_tIDx;

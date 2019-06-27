@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -40,7 +40,8 @@ static inline void kbase_gpu_gwt_setup_page_permission(
 			err = kbase_mmu_update_pages(kctx, reg->start_pfn,
 					kbase_get_gpu_phy_pages(reg),
 					reg->gpu_alloc->nents,
-					reg->flags & flag);
+					reg->flags & flag,
+					reg->gpu_alloc->group_id);
 			if (err)
 				dev_warn(kctx->kbdev->dev, "kbase_mmu_update_pages failure\n");
 		}

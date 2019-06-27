@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2016,2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2016, 2018-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -29,7 +29,6 @@
 #include <backend/gpu/mali_kbase_pm_internal.h>
 
 #include <backend/gpu/mali_kbase_device_internal.h>
-#include <mali_kbase_config_defaults.h>
 
 #if !defined(CONFIG_MALI_NO_MALI)
 
@@ -326,15 +325,25 @@ void kbase_gpu_interrupt(struct kbase_device *kbdev, u32 val)
 	if (val & CLEAN_CACHES_COMPLETED)
 		kbase_clean_caches_done(kbdev);
 
-	/* When 'platform_power_down_only' is enabled, the L2 cache is not
-	 * powered down, but flushed before the GPU power down (which is done
-	 * by the platform code). So the L2 state machine requests a cache
-	 * flush. And when that flush completes, the L2 state machine needs to
-	 * be re-invoked to proceed with the GPU power down.
-	 */
-	if (val & POWER_CHANGED_ALL ||
-			(platform_power_down_only && (val & CLEAN_CACHES_COMPLETED)))
+	if (val & POWER_CHANGED_ALL) {
 		kbase_pm_power_changed(kbdev);
+	} else if (val & CLEAN_CACHES_COMPLETED) {
+		/* When 'platform_power_down_only' is enabled, the L2 cache is
+		 * not powered down, but flushed before the GPU power down
+		 * (which is done by the platform code). So the L2 state machine
+		 * requests a cache flush. And when that flush completes, the L2
+		 * state machine needs to be re-invoked to proceed with the GPU
+		 * power down.
+		 * If cache line evict messages can be lost when shader cores
+		 * power down then we need to flush the L2 cache before powering
+		 * down cores. When the flush completes, the shaders' state
+		 * machine needs to be re-invoked to proceed with powering down
+		 * cores.
+		 */
+		if (platform_power_down_only ||
+				kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TTRX_921))
+			kbase_pm_power_changed(kbdev);
+	}
 
 	KBASE_TRACE_ADD(kbdev, CORE_GPU_IRQ_DONE, NULL, NULL, 0u, val);
 }

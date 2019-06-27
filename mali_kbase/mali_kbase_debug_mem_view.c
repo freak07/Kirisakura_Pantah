@@ -284,6 +284,7 @@ static int debug_mem_release(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations kbase_debug_mem_view_fops = {
+	.owner = THIS_MODULE,
 	.open = debug_mem_open,
 	.release = debug_mem_release,
 	.read = seq_read,

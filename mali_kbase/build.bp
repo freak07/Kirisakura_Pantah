@@ -19,6 +19,9 @@ bob_defaults {
     no_mali: {
         kbuild_options: ["CONFIG_MALI_NO_MALI=y"],
     },
+    mali_real_hw: {
+        kbuild_options: ["CONFIG_MALI_REAL_HW=y"],
+    },
     mali_devfreq: {
         kbuild_options: ["CONFIG_MALI_DEVFREQ=y"],
     },
@@ -55,12 +58,13 @@ bob_defaults {
     mali_dma_buf_map_on_demand: {
         kbuild_options: ["CONFIG_MALI_DMA_BUF_MAP_ON_DEMAND=y"],
     },
+    mali_dma_buf_legacy_compat: {
+        kbuild_options: ["CONFIG_MALI_DMA_BUF_LEGACY_COMPAT=y"],
+    },
     kbuild_options: [
         "MALI_UNIT_TEST={{.unit_test_code}}",
         "MALI_CUSTOMER_RELEASE={{.release}}",
         "MALI_USE_CSF={{.gpu_has_csf}}",
-        /* MALI_CSF_LT_V10: Temporary for hybrid integration config */
-        "MALI_CSF_LT_V10={{.base_hybrid_csf_lt_v10}}",
         "MALI_KERNEL_TEST_API={{.debug}}",
     ],
     defaults: ["kernel_defaults"],

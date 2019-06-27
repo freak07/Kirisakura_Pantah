@@ -24,10 +24,8 @@
 #include "mali_kbase_hwcnt_gpu.h"
 #include "mali_kbase_hwcnt_types.h"
 #include "mali_kbase.h"
-#include "mali_kbase_pm_policy.h"
 #include "mali_kbase_pm_ca.h"
 #include "mali_kbase_hwaccess_instr.h"
-#include "mali_kbase_tracepoints.h"
 #ifdef CONFIG_MALI_NO_MALI
 #include "backend/gpu/mali_kbase_model_dummy.h"
 #endif

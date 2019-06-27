@@ -165,11 +165,6 @@
 #include "mali_kbase_js_defs.h"
 #include "mali_kbase_hwaccess_defs.h"
 
-#define KBASEP_FORCE_REPLAY_DISABLED 0
-
-/* Maximum force replay limit when randomization is enabled */
-#define KBASEP_FORCE_REPLAY_RANDOM_LIMIT 16
-
 /* Maximum number of pages of memory that require a permanent mapping, per
  * kbase_context
  */
@@ -237,6 +232,18 @@
  * the accumulated counter values for that client will be returned instead.
  */
 #define KBASE_HWCNT_GPU_VIRTUALIZER_DUMP_THRESHOLD_NS (200 * NSEC_PER_USEC)
+
+/* Maximum number of clock/regulator pairs that may be referenced by
+ * the device node.
+ * This is dependent on support for of_property_read_u64_array() in the
+ * kernel.
+ */
+#if (KERNEL_VERSION(4, 0, 0) <= LINUX_VERSION_CODE) || \
+			defined(LSK_OPPV2_BACKPORT)
+#define BASE_MAX_NR_CLOCKS_REGULATORS (2)
+#else
+#define BASE_MAX_NR_CLOCKS_REGULATORS (1)
+#endif
 
 /* Forward declarations */
 struct kbase_context;
@@ -549,8 +556,6 @@ struct kbase_ext_res {
  * @slot_nr:               Job slot chosen for the atom.
  * @atom_flags:            bitmask of KBASE_KATOM_FLAG* flags capturing the exact
  *                         low level state of the atom.
- * @retry_count:           Number of times this atom has been retried. Used by replay
- *                         soft job.
  * @gpu_rb_state:          bitmnask of KBASE_ATOM_GPU_RB_* flags, precisely tracking
  *                         atom's state after it has entered Job scheduler on becoming
  *                         runnable. Atom could be blocked due to cross slot dependency
@@ -1164,15 +1169,17 @@ struct kbase_mem_pool_group_config {
 
 /**
  * struct kbase_devfreq_opp - Lookup table for converting between nominal OPP
- *                            frequency, and real frequency and core mask
+ *                            frequency, real frequencies and core mask
+ * @real_freqs: Real GPU frequencies.
+ * @opp_volts: OPP voltages.
  * @opp_freq:  Nominal OPP frequency
- * @real_freq: Real GPU frequency
  * @core_mask: Shader core mask
  */
 struct kbase_devfreq_opp {
 	u64 opp_freq;
-	u64 real_freq;
 	u64 core_mask;
+	u64 real_freqs[BASE_MAX_NR_CLOCKS_REGULATORS];
+	u32 opp_volts[BASE_MAX_NR_CLOCKS_REGULATORS];
 };
 
 /* MMU mode flags */
@@ -1205,10 +1212,10 @@ struct kbase_mmu_mode {
 			struct kbase_mmu_setup * const setup);
 	void (*disable_as)(struct kbase_device *kbdev, int as_nr);
 	phys_addr_t (*pte_to_phy_addr)(u64 entry);
-	int (*ate_is_valid)(u64 ate, unsigned int level);
-	int (*pte_is_valid)(u64 pte, unsigned int level);
+	int (*ate_is_valid)(u64 ate, int level);
+	int (*pte_is_valid)(u64 pte, int level);
 	void (*entry_set_ate)(u64 *entry, struct tagged_addr phy,
-			unsigned long flags, unsigned int level);
+			unsigned long flags, int level);
 	void (*entry_set_pte)(u64 *entry, phys_addr_t phy);
 	void (*entry_invalidate)(u64 *entry);
 	unsigned long flags;
@@ -1278,10 +1285,15 @@ struct kbase_devfreq_queue_info {
  * @irqs:                  Array containing IRQ resource info for 3 types of
  *                         interrupts : Job scheduling, MMU & GPU events (like
  *                         power management, cache etc.)
- * @clock:                 Pointer to the input clock resource (having an id of 0),
- *                         referenced by the GPU device node.
- * @regulator:             Pointer to the struct corresponding to the regulator
- *                         for GPU device
+ * @clocks:                Pointer to the input clock resources referenced by
+ *                         the GPU device node.
+ * @nr_clocks:             Number of clocks set in the clocks array.
+ * @regulators:            Pointer to the structs corresponding to the
+ *                         regulators referenced by the GPU device node.
+ * @nr_regulators:         Number of regulators set in the regulators array.
+ * @opp_table:             Pointer to the device OPP structure maintaining the
+ *                         link to OPPs attached to a device. This is obtained
+ *                         after setting regulator names for the device.
  * @devname:               string containing the name used for GPU device instance,
  *                         miscellaneous device is registered using the same name.
  * @id:                    Unique identifier for the device, indicates the number of
@@ -1377,24 +1389,27 @@ struct kbase_devfreq_queue_info {
  *                         GPU device.
  * @devfreq:               Pointer to devfreq structure for Mali GPU device,
  *                         returned on the call to devfreq_add_device().
- * @current_freq:          The real frequency, corresponding to @current_nominal_freq,
- *                         at which the Mali GPU device is currently operating, as
- *                         retrieved from @opp_table in the target callback of
+ * @current_freqs:         The real frequencies, corresponding to
+ *                         @current_nominal_freq, at which the Mali GPU device
+ *                         is currently operating, as retrieved from
+ *                         @devfreq_table in the target callback of
  *                         @devfreq_profile.
  * @current_nominal_freq:  The nominal frequency currently used for the Mali GPU
  *                         device as retrieved through devfreq_recommended_opp()
  *                         using the freq value passed as an argument to target
  *                         callback of @devfreq_profile
- * @current_voltage:       The voltage corresponding to @current_nominal_freq, as
- *                         retrieved through dev_pm_opp_get_voltage().
+ * @current_voltages:      The voltages corresponding to @current_nominal_freq,
+ *                         as retrieved from @devfreq_table in the target
+ *                         callback of @devfreq_profile.
  * @current_core_mask:     bitmask of shader cores that are currently desired &
  *                         enabled, corresponding to @current_nominal_freq as
- *                         retrieved from @opp_table in the target callback of
- *                         @devfreq_profile.
- * @opp_table:             Pointer to the lookup table for converting between nominal
- *                         OPP (operating performance point) frequency, and real
- *                         frequency and core mask. This table is constructed according
- *                         to operating-points-v2-mali table in devicetree.
+ *                         retrieved from @devfreq_table in the target callback
+ *                         of @devfreq_profile.
+ * @devfreq_table:         Pointer to the lookup table for converting between
+ *                         nominal OPP (operating performance point) frequency,
+ *                         and real frequency and core mask. This table is
+ *                         constructed according to operating-points-v2-mali
+ *                         table in devicetree.
  * @num_opps:              Number of operating performance points available for the Mali
  *                         GPU device.
  * @devfreq_queue:         Per device object for storing data that manages devfreq
@@ -1428,18 +1443,6 @@ struct kbase_devfreq_queue_info {
  * @job_fault_event_lock:  Lock to protect concurrent accesses to @job_fault_event_list
  * @regs_dump_debugfs_data: Contains the offset of register to be read through debugfs
  *                         file "read_register".
- * @force_replay_limit:    Number of gpu jobs, having replay atoms associated with them,
- *                         that are run before a job is forced to fail and replay.
- *                         Set to 0 to disable forced failures.
- * @force_replay_count:    Count of gpu jobs, having replay atoms associated with them,
- *                         between forced failures. Incremented on each gpu job which
- *                         has replay atoms dependent on it. A gpu job is forced to
- *                         fail once this is greater than or equal to @force_replay_limit
- * @force_replay_core_req: Core requirements, set through the sysfs file, for the replay
- *                         job atoms to consider the associated gpu job for forceful
- *                         failure and replay. May be zero
- * @force_replay_random:   Set to 1 to randomize the @force_replay_limit, in the
- *                         range of 1 - KBASEP_FORCE_REPLAY_RANDOM_LIMIT.
  * @ctx_num:               Total number of contexts created for the device.
  * @io_history:            Pointer to an object keeping a track of all recent
  *                         register accesses. The history of register accesses
@@ -1520,10 +1523,15 @@ struct kbase_device {
 		int flags;
 	} irqs[3];
 
-	struct clk *clock;
+	struct clk *clocks[BASE_MAX_NR_CLOCKS_REGULATORS];
+	unsigned int nr_clocks;
 #ifdef CONFIG_REGULATOR
-	struct regulator *regulator;
-#endif
+	struct regulator *regulators[BASE_MAX_NR_CLOCKS_REGULATORS];
+	unsigned int nr_regulators;
+#if (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
+	struct opp_table *opp_table;
+#endif /* (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE */
+#endif /* CONFIG_REGULATOR */
 	char devname[DEVNAME_SIZE];
 	u32  id;
 
@@ -1604,11 +1612,11 @@ struct kbase_device {
 #ifdef CONFIG_MALI_DEVFREQ
 	struct devfreq_dev_profile devfreq_profile;
 	struct devfreq *devfreq;
-	unsigned long current_freq;
+	unsigned long current_freqs[BASE_MAX_NR_CLOCKS_REGULATORS];
 	unsigned long current_nominal_freq;
-	unsigned long current_voltage;
+	unsigned long current_voltages[BASE_MAX_NR_CLOCKS_REGULATORS];
 	u64 current_core_mask;
-	struct kbase_devfreq_opp *opp_table;
+	struct kbase_devfreq_opp *devfreq_table;
 	int num_opps;
 	struct kbasep_pm_metrics last_devfreq_metrics;
 
@@ -1665,14 +1673,6 @@ struct kbase_device {
 	} regs_dump_debugfs_data;
 #endif /* !MALI_CUSTOMER_RELEASE */
 #endif /* CONFIG_DEBUG_FS */
-
-
-#if MALI_CUSTOMER_RELEASE == 0
-	int force_replay_limit;
-	int force_replay_count;
-	base_jd_core_req force_replay_core_req;
-	bool force_replay_random;
-#endif
 
 	atomic_t ctx_num;
 
@@ -1923,8 +1923,7 @@ struct kbase_sub_alloc {
  *                        should stop posting events and also inform event handling
  *                        thread that context termination is in progress.
  * @event_workq:          Workqueue for processing work items corresponding to atoms
- *                        that do not return an event to Userspace or have to perform
- *                        a replay job
+ *                        that do not return an event to userspace.
  * @event_count:          Count of the posted events to be consumed by Userspace.
  * @event_coalesce_count: Count of the events present in @event_coalesce_list.
  * @flags:                bitmap of enums from kbase_context_flags, indicating the
@@ -2349,9 +2348,6 @@ static inline bool kbase_device_is_cpu_coherent(struct kbase_device *kbdev)
 #define KBASE_CLEAN_CACHE_MAX_LOOPS     100000
 /* Maximum number of loops polling the GPU for an AS command to complete before we assume the GPU has hung */
 #define KBASE_AS_INACTIVE_MAX_LOOPS     100000
-
-/* Maximum number of times a job can be replayed */
-#define BASEP_JD_REPLAY_LIMIT 15
 
 /* JobDescriptorHeader - taken from the architecture specifications, the layout
  * is currently identical for all GPU archs. */

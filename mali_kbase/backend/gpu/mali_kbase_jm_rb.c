@@ -32,6 +32,7 @@
 #include <mali_kbase_tracepoints.h>
 #include <mali_kbase_hwcnt_context.h>
 #include <mali_kbase_10969_workaround.h>
+#include <mali_kbase_reset_gpu.h>
 #include <backend/gpu/mali_kbase_cache_policy_backend.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_jm_internal.h>
@@ -344,14 +345,18 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 				(katom->protected_state.enter !=
 				KBASE_ATOM_ENTER_PROTECTED_CHECK) &&
 				(katom->protected_state.enter !=
-				KBASE_ATOM_ENTER_PROTECTED_HWCNT))
+				KBASE_ATOM_ENTER_PROTECTED_HWCNT)) {
 			kbase_pm_protected_override_disable(kbdev);
+			kbase_pm_update_cores_state_nolock(kbdev);
+		}
 		if (!kbase_jd_katom_is_protected(katom) &&
 				(katom->protected_state.exit !=
 				KBASE_ATOM_EXIT_PROTECTED_CHECK) &&
 				(katom->protected_state.exit !=
-				KBASE_ATOM_EXIT_PROTECTED_RESET_WAIT))
+				KBASE_ATOM_EXIT_PROTECTED_RESET_WAIT)) {
 			kbase_pm_protected_override_disable(kbdev);
+			kbase_pm_update_cores_state_nolock(kbdev);
+		}
 
 		if (katom->protected_state.enter !=
 				KBASE_ATOM_ENTER_PROTECTED_CHECK ||
@@ -849,7 +854,7 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-	if (kbase_reset_gpu_active(kbdev))
+	if (kbase_reset_gpu_is_active(kbdev))
 		return;
 
 	for (js = 0; js < kbdev->gpu_props.num_job_slots; js++) {
@@ -1012,7 +1017,7 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 
 				if ((kbdev->serialize_jobs &
 						KBASE_SERIALIZE_RESET) &&
-						kbase_reset_gpu_active(kbdev))
+						kbase_reset_gpu_is_active(kbdev))
 					break;
 
 				/* Check if this job needs the cycle counter

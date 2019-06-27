@@ -1160,15 +1160,15 @@ static int kbase_jit_allocate_process(struct kbase_jd_atom *katom)
 		 * Retrieve the mmu flags for JIT allocation
 		 * only if dumping is enabled
 		 */
-		kctx->kbdev->mmu_mode->entry_set_ate(&entry_mmu_flags,
-			(struct tagged_addr){ 0 },
-			reg->flags,
-			MIDGARD_MMU_BOTTOMLEVEL);
+		entry_mmu_flags = kbase_mmu_create_ate(kbdev,
+			(struct tagged_addr){ 0 }, reg->flags,
+			 MIDGARD_MMU_BOTTOMLEVEL, kctx->jit_group_id);
 #endif
 
 		KBASE_TLSTREAM_TL_ATTRIB_ATOM_JIT(kbdev, katom,
-			info->gpu_alloc_addr,
-			new_addr, entry_mmu_flags, info->id);
+			info->gpu_alloc_addr, new_addr, info->flags,
+			entry_mmu_flags, info->id, info->commit_pages,
+			info->extent, info->va_pages);
 		kbase_vunmap(kctx, &mapping);
 	}
 
@@ -1503,10 +1503,6 @@ int kbase_process_soft_job(struct kbase_jd_atom *katom)
 		break;
 	}
 #endif
-
-	case BASE_JD_REQ_SOFT_REPLAY:
-		ret = kbase_replay_process(katom);
-		break;
 	case BASE_JD_REQ_SOFT_EVENT_WAIT:
 		ret = kbasep_soft_event_wait(katom);
 		break;
@@ -1621,8 +1617,6 @@ int kbase_prepare_soft_job(struct kbase_jd_atom *katom)
 #endif /* CONFIG_SYNC || CONFIG_SYNC_FILE */
 	case BASE_JD_REQ_SOFT_JIT_ALLOC:
 		return kbase_jit_allocate_prepare(katom);
-	case BASE_JD_REQ_SOFT_REPLAY:
-		break;
 	case BASE_JD_REQ_SOFT_JIT_FREE:
 		return kbase_jit_free_prepare(katom);
 	case BASE_JD_REQ_SOFT_EVENT_WAIT:
@@ -1715,12 +1709,7 @@ void kbase_resume_suspended_soft_jobs(struct kbase_device *kbdev)
 		if (kbase_process_soft_job(katom_iter) == 0) {
 			kbase_finish_soft_job(katom_iter);
 			resched |= jd_done_nolock(katom_iter, NULL);
-		} else {
-			KBASE_DEBUG_ASSERT((katom_iter->core_req &
-					BASE_JD_REQ_SOFT_JOB_TYPE)
-					!= BASE_JD_REQ_SOFT_REPLAY);
 		}
-
 		mutex_unlock(&kctx->jctx.lock);
 	}
 

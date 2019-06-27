@@ -58,6 +58,7 @@ static int kbasep_mem_profile_debugfs_open(struct inode *in, struct file *file)
 }
 
 static const struct file_operations kbasep_mem_profile_debugfs_fops = {
+	.owner = THIS_MODULE,
 	.open = kbasep_mem_profile_debugfs_open,
 	.read = seq_read,
 	.llseek = seq_lseek,

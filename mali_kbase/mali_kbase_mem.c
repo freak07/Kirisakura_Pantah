@@ -769,12 +769,8 @@ static int kbase_region_tracker_init_jit_64(struct kbase_context *kctx,
 {
 	struct kbase_va_region *same_va;
 	struct kbase_va_region *custom_va_reg;
-	u64 same_va_bits = kbase_get_same_va_bits(kctx);
-	u64 total_va_size;
 
 	lockdep_assert_held(&kctx->reg_lock);
-
-	total_va_size = (1ULL << (same_va_bits - PAGE_SHIFT)) - 1;
 
 	/* First verify that a JIT_VA zone has not been created already. */
 	if (kctx->jit_va)
@@ -971,6 +967,11 @@ int kbase_mem_init(struct kbase_device *kbdev)
 				dev_info(kbdev->dev,
 					"Memory group manager is not ready\n");
 				err = -EPROBE_DEFER;
+			} else if (!try_module_get(kbdev->mgm_dev->owner)) {
+				dev_err(kbdev->dev,
+					"Failed to get memory group manger module\n");
+				err = -ENODEV;
+				kbdev->mgm_dev = NULL;
 			}
 		}
 		of_node_put(mgm_node);
@@ -1009,6 +1010,9 @@ void kbase_mem_term(struct kbase_device *kbdev)
 		dev_warn(kbdev->dev, "%s: %d pages in use!\n", __func__, pages);
 
 	kbase_mem_pool_group_term(&kbdev->mem_pools);
+
+	if (kbdev->mgm_dev)
+		module_put(kbdev->mgm_dev->owner);
 }
 
 KBASE_EXPORT_TEST_API(kbase_mem_term);
@@ -1174,6 +1178,8 @@ int kbase_gpu_mmap(struct kbase_context *kctx, struct kbase_va_region *reg, u64 
 	unsigned long attr;
 	unsigned long mask = ~KBASE_REG_MEMATTR_MASK;
 	unsigned long gwt_mask = ~0;
+	int group_id;
+	struct kbase_mem_phy_alloc *alloc;
 
 #ifdef CONFIG_MALI_CINSTR_GWT
 	if (kctx->gwt_enabled)
@@ -1193,12 +1199,12 @@ int kbase_gpu_mmap(struct kbase_context *kctx, struct kbase_va_region *reg, u64 
 	if (err)
 		return err;
 
-	if (reg->gpu_alloc->type == KBASE_MEM_TYPE_ALIAS) {
-		u64 stride;
-		struct kbase_mem_phy_alloc *alloc;
+	alloc = reg->gpu_alloc;
+	group_id = alloc->group_id;
 
-		alloc = reg->gpu_alloc;
-		stride = alloc->imported.alias.stride;
+	if (reg->gpu_alloc->type == KBASE_MEM_TYPE_ALIAS) {
+		u64 const stride = alloc->imported.alias.stride;
+
 		KBASE_DEBUG_ASSERT(alloc->imported.alias.aliased);
 		for (i = 0; i < alloc->imported.alias.nents; i++) {
 			if (alloc->imported.alias.aliased[i].alloc) {
@@ -1208,7 +1214,8 @@ int kbase_gpu_mmap(struct kbase_context *kctx, struct kbase_va_region *reg, u64 
 						alloc->imported.alias.aliased[i].alloc->pages + alloc->imported.alias.aliased[i].offset,
 						alloc->imported.alias.aliased[i].length,
 						reg->flags & gwt_mask,
-						kctx->as_nr);
+						kctx->as_nr,
+						group_id);
 				if (err)
 					goto bad_insert;
 
@@ -1218,7 +1225,8 @@ int kbase_gpu_mmap(struct kbase_context *kctx, struct kbase_va_region *reg, u64 
 					reg->start_pfn + i * stride,
 					kctx->aliasing_sink_page,
 					alloc->imported.alias.aliased[i].length,
-					(reg->flags & mask & gwt_mask) | attr);
+					(reg->flags & mask & gwt_mask) | attr,
+					group_id);
 
 				if (err)
 					goto bad_insert;
@@ -1231,10 +1239,11 @@ int kbase_gpu_mmap(struct kbase_context *kctx, struct kbase_va_region *reg, u64 
 				kbase_get_gpu_phy_pages(reg),
 				kbase_reg_current_backed_size(reg),
 				reg->flags & gwt_mask,
-				kctx->as_nr);
+				kctx->as_nr,
+				group_id);
 		if (err)
 			goto bad_insert;
-		kbase_mem_phy_alloc_gpu_mapped(reg->gpu_alloc);
+		kbase_mem_phy_alloc_gpu_mapped(alloc);
 	}
 
 	if (reg->flags & KBASE_REG_IMPORT_PAD &&
@@ -1256,7 +1265,8 @@ int kbase_gpu_mmap(struct kbase_context *kctx, struct kbase_va_region *reg, u64 
 				kctx->aliasing_sink_page,
 				reg->nr_pages - reg->gpu_alloc->nents,
 				(reg->flags | KBASE_REG_GPU_RD) &
-				~KBASE_REG_GPU_WR);
+				~KBASE_REG_GPU_WR,
+				KBASE_MEM_GROUP_SINK);
 		if (err)
 			goto bad_insert;
 	}
@@ -1268,11 +1278,11 @@ bad_insert:
 				 reg->start_pfn, reg->nr_pages,
 				 kctx->as_nr);
 
-	if (reg->gpu_alloc->type == KBASE_MEM_TYPE_ALIAS) {
-		KBASE_DEBUG_ASSERT(reg->gpu_alloc->imported.alias.aliased);
+	if (alloc->type == KBASE_MEM_TYPE_ALIAS) {
+		KBASE_DEBUG_ASSERT(alloc->imported.alias.aliased);
 		while (i--)
-			if (reg->gpu_alloc->imported.alias.aliased[i].alloc)
-				kbase_mem_phy_alloc_gpu_unmapped(reg->gpu_alloc->imported.alias.aliased[i].alloc);
+			if (alloc->imported.alias.aliased[i].alloc)
+				kbase_mem_phy_alloc_gpu_unmapped(alloc->imported.alias.aliased[i].alloc);
 	}
 
 	kbase_remove_va_region(reg);
@@ -2444,11 +2454,6 @@ void kbase_free_phy_pages_helper_locked(struct kbase_mem_phy_alloc *alloc,
 	}
 }
 
-/**
- * kbase_jd_user_buf_unpin_pages - Release the pinned pages of a user buffer.
- * @alloc: The allocation for the imported user buffer.
- */
-static void kbase_jd_user_buf_unpin_pages(struct kbase_mem_phy_alloc *alloc);
 
 void kbase_mem_kref_free(struct kref *kref)
 {
@@ -2516,7 +2521,6 @@ void kbase_mem_kref_free(struct kref *kref)
 		break;
 #endif
 	case KBASE_MEM_TYPE_IMPORTED_USER_BUF:
-		kbase_jd_user_buf_unpin_pages(alloc);
 		if (alloc->imported.user_buf.mm)
 			mmdrop(alloc->imported.user_buf.mm);
 		if (alloc->properties & KBASE_MEM_PHY_ALLOC_LARGE)
@@ -3530,24 +3534,6 @@ bool kbase_has_exec_va_zone(struct kbase_context *kctx)
 	return has_exec_va_zone;
 }
 
-static void kbase_jd_user_buf_unpin_pages(struct kbase_mem_phy_alloc *alloc)
-{
-	if (alloc->nents) {
-		struct page **pages = alloc->imported.user_buf.pages;
-		long i;
-
-		WARN_ON(alloc->nents != alloc->imported.user_buf.nr_pages);
-
-		for (i = 0; i < alloc->nents; i++) {
-			/* Shall come to this point only if the userbuf pages
-			 * were pinned but weren't mapped on the GPU side. If
-			 * they were mapped then pages would have got unpinned
-			 * before kbase_mem_kref_free() was called.
-			 */
-			put_page(pages[i]);
-		}
-	}
-}
 
 int kbase_jd_user_buf_pin_pages(struct kbase_context *kctx,
 		struct kbase_va_region *reg)
@@ -3626,14 +3612,13 @@ static int kbase_jd_user_buf_map(struct kbase_context *kctx,
 	struct page **pages;
 	struct tagged_addr *pa;
 	long i;
-	int err = -ENOMEM;
 	unsigned long address;
 	struct device *dev;
 	unsigned long offset;
 	unsigned long local_size;
 	unsigned long gwt_mask = ~0;
+	int err = kbase_jd_user_buf_pin_pages(kctx, reg);
 
-	err = kbase_jd_user_buf_pin_pages(kctx, reg);
 	if (err)
 		return err;
 
@@ -3671,7 +3656,8 @@ static int kbase_jd_user_buf_map(struct kbase_context *kctx,
 
 	err = kbase_mmu_insert_pages(kctx->kbdev, &kctx->mmu, reg->start_pfn,
 			pa, kbase_reg_current_backed_size(reg),
-			reg->flags & gwt_mask, kctx->as_nr);
+			reg->flags & gwt_mask, kctx->as_nr,
+			alloc->group_id);
 	if (err == 0)
 		return 0;
 
@@ -3692,9 +3678,9 @@ unwind:
 	return err;
 }
 
-/* This function also performs the work of kbase_jd_user_buf_unpin_pages()
- * which implies that a call to kbase_jd_user_buf_pin_pages() may NOT
- * necessarily have a corresponding call to kbase_jd_user_buf_unpin_pages().
+/* This function would also perform the work of unpinning pages on Job Manager
+ * GPUs, which implies that a call to kbase_jd_user_buf_pin_pages() will NOT
+ * have a corresponding call to kbase_jd_user_buf_unpin_pages().
  */
 static void kbase_jd_user_buf_unmap(struct kbase_context *kctx,
 		struct kbase_mem_phy_alloc *alloc, bool writeable)

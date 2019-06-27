@@ -27,7 +27,6 @@
 #include <mali_kbase.h>
 #include <mali_midg_regmap.h>
 #include <mali_kbase_pm.h>
-#include <mali_kbase_config_defaults.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 
 static const struct kbase_pm_policy *const all_policy_list[] = {

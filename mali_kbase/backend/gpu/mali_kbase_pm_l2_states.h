@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2012-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -21,29 +21,16 @@
  */
 
 /*
- * @file mali_kbase_sync_common.c
- *
- * Common code for our explicit fence functionality
+ * Backend-specific Power Manager level 2 cache state definitions.
+ * The function-like macro KBASEP_L2_STATE() must be defined before including
+ * this header file. This header file can be included multiple times in the
+ * same compilation unit with different definitions of KBASEP_L2_STATE().
  */
-
-#include <linux/workqueue.h>
-#include "mali_kbase.h"
-#include "mali_kbase_sync.h"
-
-void kbase_sync_fence_wait_worker(struct work_struct *data)
-{
-	struct kbase_jd_atom *katom;
-
-	katom = container_of(data, struct kbase_jd_atom, work);
-	kbase_soft_event_wait_callback(katom);
-}
-
-const char *kbase_sync_status_string(int status)
-{
-	if (status == 0)
-		return "active";
-	else if (status > 0)
-		return "signaled";
-	else
-		return "error";
-}
+KBASEP_L2_STATE(OFF)
+KBASEP_L2_STATE(PEND_ON)
+KBASEP_L2_STATE(ON_HWCNT_ENABLE)
+KBASEP_L2_STATE(ON)
+KBASEP_L2_STATE(ON_HWCNT_DISABLE)
+KBASEP_L2_STATE(POWER_DOWN)
+KBASEP_L2_STATE(PEND_OFF)
+KBASEP_L2_STATE(RESET_WAIT)

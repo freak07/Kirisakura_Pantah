@@ -147,7 +147,7 @@ int kbase_debugfs_helper_seq_write(struct file *const file,
 		return -EINVAL;
 
 	buf = kmalloc(count + 1, GFP_KERNEL);
-	if (ZERO_OR_NULL_PTR(buf))
+	if (buf == NULL)
 		return -ENOMEM;
 
 	if (copy_from_user(buf, ubuf, count)) {

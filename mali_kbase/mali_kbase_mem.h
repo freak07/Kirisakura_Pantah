@@ -1036,25 +1036,45 @@ int kbase_mmu_init(struct kbase_device *kbdev, struct kbase_mmu_table *mmut,
  */
 void kbase_mmu_term(struct kbase_device *kbdev, struct kbase_mmu_table *mmut);
 
+/**
+ * kbase_mmu_create_ate - Create an address translation entry
+ *
+ * @kbdev:    Instance of GPU platform device, allocated from the probe method.
+ * @phy:      Physical address of the page to be mapped for GPU access.
+ * @flags:    Bitmask of attributes of the GPU memory region being mapped.
+ * @level:    Page table level for which to build an address translation entry.
+ * @group_id: The physical memory group in which the page was allocated.
+ *            Valid range is 0..(MEMORY_GROUP_MANAGER_NR_GROUPS-1).
+ *
+ * This function creates an address translation entry to encode the physical
+ * address of a page to be mapped for access by the GPU, along with any extra
+ * attributes required for the GPU memory region.
+ *
+ * Return: An address translation entry, either in LPAE or AArch64 format
+ *         (depending on the driver's configuration).
+ */
+u64 kbase_mmu_create_ate(struct kbase_device *kbdev,
+	struct tagged_addr phy, unsigned long flags, int level, int group_id);
+
 int kbase_mmu_insert_pages_no_flush(struct kbase_device *kbdev,
 				    struct kbase_mmu_table *mmut,
 				    const u64 start_vpfn,
 				    struct tagged_addr *phys, size_t nr,
-				    unsigned long flags);
+				    unsigned long flags, int group_id);
 int kbase_mmu_insert_pages(struct kbase_device *kbdev,
 			   struct kbase_mmu_table *mmut, u64 vpfn,
 			   struct tagged_addr *phys, size_t nr,
-			   unsigned long flags, int as_nr);
+			   unsigned long flags, int as_nr, int group_id);
 int kbase_mmu_insert_single_page(struct kbase_context *kctx, u64 vpfn,
 					struct tagged_addr phys, size_t nr,
-					unsigned long flags);
+					unsigned long flags, int group_id);
 
 int kbase_mmu_teardown_pages(struct kbase_device *kbdev,
 			     struct kbase_mmu_table *mmut, u64 vpfn,
 			     size_t nr, int as_nr);
 int kbase_mmu_update_pages(struct kbase_context *kctx, u64 vpfn,
 			   struct tagged_addr *phys, size_t nr,
-			   unsigned long flags);
+			   unsigned long flags, int const group_id);
 
 /**
  * @brief Register region and map it on the GPU.
@@ -1386,6 +1406,7 @@ static inline void kbase_clear_dma_addr(struct page *p)
 void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
 		struct kbase_context *kctx, struct kbase_as *as,
 		struct kbase_fault *fault);
+
 
 /**
  * @brief Process a page fault.

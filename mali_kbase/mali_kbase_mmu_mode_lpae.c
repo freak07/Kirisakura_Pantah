@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -130,12 +130,12 @@ static phys_addr_t pte_to_phy_addr(u64 entry)
 	return entry & ~0xFFF;
 }
 
-static int ate_is_valid(u64 ate, unsigned int level)
+static int ate_is_valid(u64 ate, int const level)
 {
 	return ((ate & ENTRY_TYPE_MASK) == ENTRY_IS_ATE);
 }
 
-static int pte_is_valid(u64 pte, unsigned int level)
+static int pte_is_valid(u64 pte, int const level)
 {
 	return ((pte & ENTRY_TYPE_MASK) == ENTRY_IS_PTE);
 }
@@ -179,7 +179,7 @@ static u64 get_mmu_flags(unsigned long flags)
 static void entry_set_ate(u64 *entry,
 		struct tagged_addr phy,
 		unsigned long flags,
-		unsigned int level)
+		int const level)
 {
 	page_table_entry_set(entry, as_phys_addr_t(phy) | get_mmu_flags(flags) |
 			     ENTRY_IS_ATE);
