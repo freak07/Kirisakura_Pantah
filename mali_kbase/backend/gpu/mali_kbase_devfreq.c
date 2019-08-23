@@ -208,6 +208,13 @@ kbase_devfreq_target(struct device *dev, unsigned long *target_freq, u32 flags)
 	return 0;
 }
 
+void kbase_devfreq_force_freq(struct kbase_device *kbdev, unsigned long freq)
+{
+	unsigned long target_freq = freq;
+
+	kbase_devfreq_target(kbdev->dev, &target_freq, 0);
+}
+
 static int
 kbase_devfreq_cur_freq(struct device *dev, unsigned long *freq)
 {
@@ -280,6 +287,20 @@ static int kbase_devfreq_init_freq_table(struct kbase_device *kbdev,
 
 	dp->max_state = i;
 
+	/* Have the lowest clock as suspend clock.
+	 * It may be overridden by 'opp-mali-errata-1485982'.
+	 */
+	if (kbdev->pm.backend.gpu_clock_slow_down_wa) {
+		freq = 0;
+		opp = dev_pm_opp_find_freq_ceil(kbdev->dev, &freq);
+		if (IS_ERR(opp)) {
+			dev_err(kbdev->dev, "failed to find slowest clock");
+			return 0;
+		}
+		dev_info(kbdev->dev, "suspend clock %lu from slowest", freq);
+		kbdev->pm.backend.gpu_clock_suspend_freq = freq;
+	}
+
 	return 0;
 }
 
@@ -300,6 +321,40 @@ static void kbase_devfreq_exit(struct device *dev)
 	struct kbase_device *kbdev = dev_get_drvdata(dev);
 
 	kbase_devfreq_term_freq_table(kbdev);
+}
+
+static void kbasep_devfreq_read_suspend_clock(struct kbase_device *kbdev,
+		struct device_node *node)
+{
+	u64 freq = 0;
+	int err = 0;
+
+	/* Check if this node is the opp entry having 'opp-mali-errata-1485982'
+	 * to get the suspend clock, otherwise skip it.
+	 */
+	if (!of_property_read_bool(node, "opp-mali-errata-1485982"))
+		return;
+
+	/* In kbase DevFreq, the clock will be read from 'opp-hz'
+	 * and translated into the actual clock by opp_translate.
+	 *
+	 * In customer DVFS, the clock will be read from 'opp-hz-real'
+	 * for clk driver. If 'opp-hz-real' does not exist,
+	 * read from 'opp-hz'.
+	 */
+	if (IS_ENABLED(CONFIG_MALI_DEVFREQ))
+		err = of_property_read_u64(node, "opp-hz", &freq);
+	else {
+		if (of_property_read_u64(node, "opp-hz-real", &freq))
+			err = of_property_read_u64(node, "opp-hz", &freq);
+	}
+
+	if (WARN_ON(err || !freq))
+		return;
+
+	kbdev->pm.backend.gpu_clock_suspend_freq = freq;
+	dev_info(kbdev->dev,
+		"suspend clock %llu by opp-mali-errata-1485982", freq);
 }
 
 static int kbase_devfreq_init_core_mask_table(struct kbase_device *kbdev)
@@ -340,6 +395,10 @@ static int kbase_devfreq_init_core_mask_table(struct kbase_device *kbdev)
 #ifdef CONFIG_REGULATOR
 		u32 opp_volts[BASE_MAX_NR_CLOCKS_REGULATORS];
 #endif
+
+		/* Read suspend clock from opp table */
+		if (kbdev->pm.backend.gpu_clock_slow_down_wa)
+			kbasep_devfreq_read_suspend_clock(kbdev, node);
 
 		err = of_property_read_u64(node, "opp-hz", &opp_freq);
 		if (err) {

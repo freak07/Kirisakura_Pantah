@@ -73,11 +73,14 @@ enum kbase_pm_core_type {
  *
  * @KBASE_L2_OFF: The L2 cache and tiler are off
  * @KBASE_L2_PEND_ON: The L2 cache and tiler are powering on
+ * @KBASE_L2_RESTORE_CLOCKS: The GPU clock is restored. Conditionally used.
  * @KBASE_L2_ON_HWCNT_ENABLE: The L2 cache and tiler are on, and hwcnt is being
  *                            enabled
  * @KBASE_L2_ON: The L2 cache and tiler are on, and hwcnt is enabled
  * @KBASE_L2_ON_HWCNT_DISABLE: The L2 cache and tiler are on, and hwcnt is being
  *                             disabled
+ * @KBASE_L2_SLOW_DOWN_CLOCKS: The GPU clock is set to appropriate or lowest
+ *                             clock. Conditionally used.
  * @KBASE_L2_POWER_DOWN: The L2 cache and tiler are about to be powered off
  * @KBASE_L2_PEND_OFF: The L2 cache and tiler are powering off
  * @KBASE_L2_RESET_WAIT: The GPU is resetting, L2 cache and tiler power state
@@ -159,8 +162,7 @@ struct kbasep_pm_metrics {
  *           not. Updated when the job scheduler informs us a job in submitted
  *           or removed from a GPU slot.
  *  @active_cl_ctx: number of CL jobs active on the GPU. Array is per-device.
- *  @active_gl_ctx: number of GL jobs active on the GPU. Array is per-slot. As
- *           GL jobs never run on slot 2 this slot is not recorded.
+ *  @active_gl_ctx: number of GL jobs active on the GPU. Array is per-slot.
  *  @lock: spinlock protecting the kbasep_pm_metrics_data structure
  *  @platform_data: pointer to data controlled by platform specific code
  *  @kbdev: pointer to kbase device for which metrics are collected
@@ -177,7 +179,7 @@ struct kbasep_pm_metrics_state {
 	ktime_t time_period_start;
 	bool gpu_active;
 	u32 active_cl_ctx[2];
-	u32 active_gl_ctx[2]; /* GL jobs can only run on 2 of the 3 job slots */
+	u32 active_gl_ctx[3];
 	spinlock_t lock;
 
 	void *platform_data;
@@ -291,10 +293,11 @@ union kbase_pm_policy_data {
  * @callback_power_runtime_idle: Optional callback when the GPU may be idle. See
  *                              &struct kbase_pm_callback_conf
  * @ca_cores_enabled: Cores that are currently available
- * @l2_state: The current state of the L2 cache state machine. See
- *            &enum kbase_l2_core_state
- * @l2_desired: True if the L2 cache should be powered on by the L2 cache state
- *              machine
+ * @l2_state:     The current state of the L2 cache state machine. See
+ *                &enum kbase_l2_core_state
+ * @l2_desired:   True if the L2 cache should be powered on by the L2 cache state
+ *                machine
+ * @l2_always_on: If true, disable powering down of l2 cache.
  * @shaders_state: The current state of the shader state machine.
  * @shaders_avail: This is updated by the state machine when it is in a state
  *                 where it can handle changes to the core availability. This
@@ -308,6 +311,10 @@ union kbase_pm_policy_data {
  *                   that the policy doesn't change its mind in the mean time).
  * @in_reset: True if a GPU is resetting and normal power manager operation is
  *            suspended
+ * @protected_entry_transition_override : True if GPU reset is being used
+ *                                  before entering the protected mode and so
+ *                                  the reset handling behaviour is being
+ *                                  overridden.
  * @protected_transition_override : True if a protected mode transition is in
  *                                  progress and is overriding power manager
  *                                  behaviour.
@@ -318,6 +325,22 @@ union kbase_pm_policy_data {
  * @hwcnt_disabled: True if GPU hardware counters are not enabled.
  * @hwcnt_disable_work: Work item to disable GPU hardware counters, used if
  *                      atomic disable is not possible.
+ * @gpu_clock_suspend_freq: 'opp-mali-errata-1485982' clock in opp table
+ *                          for safe L2 power cycle.
+ *                          If no opp-mali-errata-1485982 specified,
+ *                          the slowest clock will be taken.
+ * @gpu_clock_slow_down_wa: If true, slow down GPU clock during L2 power cycle.
+ * @gpu_clock_slow_down_desired: True if we want lower GPU clock
+ *                             for safe L2 power cycle. False if want GPU clock
+ *                             to back to normalized one. This is updated only
+ *                             in L2 state machine, kbase_pm_l2_update_state.
+ * @gpu_clock_slowed_down: During L2 power cycle,
+ *                         True if gpu clock is set at lower frequency
+ *                         for safe L2 power down, False if gpu clock gets
+ *                         restored to previous speed. This is updated only in
+ *                         work function, kbase_pm_gpu_clock_control_worker.
+ * @gpu_clock_control_work: work item to set GPU clock during L2 power cycle
+ *                          using gpu_clock_control
  *
  * Note:
  * During an IRQ, @pm_current_policy can be NULL when the policy is being
@@ -374,16 +397,24 @@ struct kbase_pm_backend_data {
 	enum kbase_shader_core_state shaders_state;
 	u64 shaders_avail;
 	bool l2_desired;
+	bool l2_always_on;
 	bool shaders_desired;
 
 	bool in_reset;
 
+	bool protected_entry_transition_override;
 	bool protected_transition_override;
 	int protected_l2_override;
 
 	bool hwcnt_desired;
 	bool hwcnt_disabled;
 	struct work_struct hwcnt_disable_work;
+
+	u64 gpu_clock_suspend_freq;
+	bool gpu_clock_slow_down_wa;
+	bool gpu_clock_slow_down_desired;
+	bool gpu_clock_slowed_down;
+	struct work_struct gpu_clock_control_work;
 };
 
 

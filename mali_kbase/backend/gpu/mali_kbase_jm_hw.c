@@ -715,35 +715,15 @@ void kbasep_job_slot_soft_or_hard_stop_do_action(struct kbase_device *kbdev,
 #endif
 }
 
-void kbase_backend_jm_kill_jobs_from_kctx(struct kbase_context *kctx)
+void kbase_backend_jm_kill_running_jobs_from_kctx(struct kbase_context *kctx)
 {
-	unsigned long flags;
-	struct kbase_device *kbdev;
+	struct kbase_device *kbdev = kctx->kbdev;
 	int i;
 
-	KBASE_DEBUG_ASSERT(kctx != NULL);
-	kbdev = kctx->kbdev;
-	KBASE_DEBUG_ASSERT(kbdev != NULL);
-
-	/* Cancel any remaining running jobs for this kctx  */
-	mutex_lock(&kctx->jctx.lock);
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-
-	/* Invalidate all incomplete jobs in context to prevent resubmitting */
-	for (i = 0; i < BASE_JD_ATOM_COUNT; i++) {
-		struct kbase_jd_atom *katom = &kctx->jctx.atoms[i];
-
-		if ((katom->status != KBASE_JD_ATOM_STATE_COMPLETED) &&
-				(katom->status !=
-				KBASE_JD_ATOM_STATE_HW_COMPLETED))
-			katom->event_code = BASE_JD_EVENT_JOB_CANCELLED;
-	}
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	for (i = 0; i < kbdev->gpu_props.num_job_slots; i++)
 		kbase_job_slot_hardstop(kctx, i, NULL);
-
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-	mutex_unlock(&kctx->jctx.lock);
 }
 
 void kbase_job_slot_ctx_priority_check_locked(struct kbase_context *kctx,
@@ -1197,7 +1177,8 @@ static void kbasep_reset_timeout_worker(struct work_struct *data)
 	/* Complete any jobs that were still on the GPU */
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	kbdev->protected_mode = false;
-	kbase_backend_reset(kbdev, &end_timestamp);
+	if (!kbdev->pm.backend.protected_entry_transition_override)
+		kbase_backend_reset(kbdev, &end_timestamp);
 	kbase_pm_metrics_update(kbdev, NULL);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
@@ -1300,7 +1281,7 @@ static void kbasep_try_reset_gpu_early_locked(struct kbase_device *kbdev)
 	/* To prevent getting incorrect registers when dumping failed job,
 	 * skip early reset.
 	 */
-	if (kbdev->job_fault_debug != false)
+	if (atomic_read(&kbdev->job_fault_debug) > 0)
 		return;
 
 	/* Check that the reset has been committed to (i.e. kbase_reset_gpu has

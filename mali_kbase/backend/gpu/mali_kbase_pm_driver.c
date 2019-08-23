@@ -97,6 +97,9 @@ static u64 kbase_pm_get_state(
 
 static bool kbase_pm_is_l2_desired(struct kbase_device *kbdev)
 {
+	if (kbdev->pm.backend.protected_entry_transition_override)
+		return false;
+
 	if (kbdev->pm.backend.protected_transition_override &&
 			kbdev->pm.backend.protected_l2_override)
 		return true;
@@ -119,6 +122,44 @@ void kbase_pm_protected_override_disable(struct kbase_device *kbdev)
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	kbdev->pm.backend.protected_transition_override = false;
+}
+
+int kbase_pm_protected_entry_override_enable(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	WARN_ON(!kbdev->protected_mode_transition);
+
+	if (kbdev->pm.backend.l2_always_on &&
+	    (kbdev->system_coherency == COHERENCY_ACE)) {
+		WARN_ON(kbdev->pm.backend.protected_entry_transition_override);
+
+		/*
+		 * If there is already a GPU reset pending then wait for it to
+		 * complete before initiating a special reset for protected
+		 * mode entry.
+		 */
+		if (kbase_reset_gpu_silent(kbdev))
+			return -EAGAIN;
+
+		kbdev->pm.backend.protected_entry_transition_override = true;
+	}
+
+	return 0;
+}
+
+void kbase_pm_protected_entry_override_disable(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	WARN_ON(!kbdev->protected_mode_transition);
+
+	if (kbdev->pm.backend.l2_always_on &&
+	    (kbdev->system_coherency == COHERENCY_ACE)) {
+		WARN_ON(!kbdev->pm.backend.protected_entry_transition_override);
+
+		kbdev->pm.backend.protected_entry_transition_override = false;
+	}
 }
 
 void kbase_pm_protected_l2_override(struct kbase_device *kbdev, bool override)
@@ -487,6 +528,15 @@ static void kbase_pm_l2_config_override(struct kbase_device *kbdev)
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(L2_CONFIG), val);
 }
 
+static void kbase_pm_control_gpu_clock(struct kbase_device *kbdev)
+{
+	struct kbase_pm_backend_data *const backend = &kbdev->pm.backend;
+
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	queue_work(system_wq, &backend->gpu_clock_control_work);
+}
+
 static const char *kbase_l2_core_state_to_string(enum kbase_l2_core_state state)
 {
 	const char *const strings[] = {
@@ -571,7 +621,12 @@ static u64 kbase_pm_l2_update_state(struct kbase_device *kbdev)
 				/* With the L2 enabled, we can now enable
 				 * hardware counters.
 				 */
-				backend->l2_state = KBASE_L2_ON_HWCNT_ENABLE;
+				if (kbdev->pm.backend.gpu_clock_slow_down_wa)
+					backend->l2_state =
+						KBASE_L2_RESTORE_CLOCKS;
+				else
+					backend->l2_state =
+						KBASE_L2_ON_HWCNT_ENABLE;
 
 				/* Now that the L2 is on, the shaders can start
 				 * powering on if they're required. The obvious
@@ -588,6 +643,28 @@ static u64 kbase_pm_l2_update_state(struct kbase_device *kbdev)
 				 * when the shaders power down.
 				 */
 			}
+			break;
+
+		case KBASE_L2_RESTORE_CLOCKS:
+			/* We always assume only GPUs being affected by
+			 * BASE_HW_ISSUE_GPU2017_1336 fall into this state
+			 */
+			WARN_ON_ONCE(!kbdev->pm.backend.gpu_clock_slow_down_wa);
+
+			/* If L2 not needed, we need to make sure cancellation
+			 * of any previously issued work to restore GPU clock.
+			 * For it, move to KBASE_L2_SLOW_DOWN_CLOCKS state.
+			 */
+			if (!kbase_pm_is_l2_desired(kbdev)) {
+				backend->l2_state = KBASE_L2_SLOW_DOWN_CLOCKS;
+				break;
+			}
+
+			backend->gpu_clock_slow_down_desired = false;
+			if (backend->gpu_clock_slowed_down)
+				kbase_pm_control_gpu_clock(kbdev);
+			else
+				backend->l2_state = KBASE_L2_ON_HWCNT_ENABLE;
 			break;
 
 		case KBASE_L2_ON_HWCNT_ENABLE:
@@ -653,12 +730,41 @@ static u64 kbase_pm_l2_update_state(struct kbase_device *kbdev)
 				kbase_pm_trigger_hwcnt_disable(kbdev);
 			}
 
-			if (backend->hwcnt_disabled)
+			if (backend->hwcnt_disabled) {
+				if (kbdev->pm.backend.gpu_clock_slow_down_wa)
+					backend->l2_state =
+						KBASE_L2_SLOW_DOWN_CLOCKS;
+				else
+					backend->l2_state = KBASE_L2_POWER_DOWN;
+			}
+			break;
+
+		case KBASE_L2_SLOW_DOWN_CLOCKS:
+			/* We always assume only GPUs being affected by
+			 * BASE_HW_ISSUE_GPU2017_1336 fall into this state
+			 */
+			WARN_ON_ONCE(!kbdev->pm.backend.gpu_clock_slow_down_wa);
+
+			/* L2 needs to be powered up. And we need to make sure
+			 * cancellation of any previously issued work to slow
+			 * down GPU clock. For it, we move to the state,
+			 * KBASE_L2_RESTORE_CLOCKS.
+			 */
+			if (kbase_pm_is_l2_desired(kbdev)) {
+				backend->l2_state = KBASE_L2_RESTORE_CLOCKS;
+				break;
+			}
+
+			backend->gpu_clock_slow_down_desired = true;
+			if (!backend->gpu_clock_slowed_down)
+				kbase_pm_control_gpu_clock(kbdev);
+			else
 				backend->l2_state = KBASE_L2_POWER_DOWN;
+
 			break;
 
 		case KBASE_L2_POWER_DOWN:
-			if (!platform_power_down_only)
+			if (!platform_power_down_only && !backend->l2_always_on)
 				/* Powering off the L2 will also power off the
 				 * tiler.
 				 */
@@ -681,7 +787,7 @@ static u64 kbase_pm_l2_update_state(struct kbase_device *kbdev)
 			break;
 
 		case KBASE_L2_PEND_OFF:
-			if (!platform_power_down_only) {
+			if (!platform_power_down_only && !backend->l2_always_on) {
 				/* We only need to check the L2 here - if the L2
 				 * is off then the tiler is definitely also off.
 				 */
@@ -1244,8 +1350,15 @@ void kbase_pm_reset_complete(struct kbase_device *kbdev)
 	struct kbase_pm_backend_data *backend = &kbdev->pm.backend;
 	unsigned long flags;
 
+	WARN_ON(!kbase_reset_gpu_is_active(kbdev));
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
+	/* As GPU has just been reset, that results in implicit flush of L2
+	 * cache, can safely mark the pending cache flush operation (if there
+	 * was any) as complete and unblock the waiter.
+	 * No work can be submitted whilst GPU reset is ongoing.
+	 */
+	kbase_gpu_cache_clean_wait_complete(kbdev);
 	backend->in_reset = false;
 	kbase_pm_update_state(kbdev);
 
@@ -1553,35 +1666,72 @@ static enum hrtimer_restart kbasep_reset_timeout(struct hrtimer *timer)
 	return HRTIMER_NORESTART;
 }
 
-static void kbase_pm_hw_issues_detect(struct kbase_device *kbdev)
+static void kbase_set_jm_quirks(struct kbase_device *kbdev, const u32 prod_id)
 {
-	struct device_node *np = kbdev->dev->of_node;
-	const u32 gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
-	const u32 prod_id = (gpu_id & GPU_ID_VERSION_PRODUCT_ID) >>
-		GPU_ID_VERSION_PRODUCT_ID_SHIFT;
-	const u32 major = (gpu_id & GPU_ID_VERSION_MAJOR) >>
-		GPU_ID_VERSION_MAJOR_SHIFT;
+	kbdev->hw_quirks_jm = kbase_reg_read(kbdev,
+				GPU_CONTROL_REG(JM_CONFIG));
+	if (GPU_ID2_MODEL_MATCH_VALUE(prod_id) == GPU_ID2_PRODUCT_TMIX) {
+		/* Only for tMIx */
+		u32 coherency_features;
 
-	kbdev->hw_quirks_sc = 0;
+		coherency_features = kbase_reg_read(kbdev,
+					GPU_CONTROL_REG(COHERENCY_FEATURES));
 
-	/* Needed due to MIDBASE-1494: LS_PAUSEBUFFER_DISABLE. See PRLAM-8443.
-	 * and needed due to MIDGLES-3539. See PRLAM-11035 */
+		/* (COHERENCY_ACE_LITE | COHERENCY_ACE) was incorrectly
+		 * documented for tMIx so force correct value here.
+		 */
+		if (coherency_features ==
+				COHERENCY_FEATURE_BIT(COHERENCY_ACE)) {
+			kbdev->hw_quirks_jm |= (COHERENCY_ACE_LITE |
+					COHERENCY_ACE) <<
+					JM_FORCE_COHERENCY_FEATURES_SHIFT;
+		}
+	}
+	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_IDVS_GROUP_SIZE)) {
+		int default_idvs_group_size = 0xF;
+		u32 tmp;
+
+		if (of_property_read_u32(kbdev->dev->of_node,
+					"idvs-group-size", &tmp))
+			tmp = default_idvs_group_size;
+
+		if (tmp > JM_MAX_IDVS_GROUP_SIZE) {
+			dev_err(kbdev->dev,
+				"idvs-group-size of %d is too large. Maximum value is %d",
+				tmp, JM_MAX_IDVS_GROUP_SIZE);
+			tmp = default_idvs_group_size;
+		}
+
+		kbdev->hw_quirks_jm |= tmp << JM_IDVS_GROUP_SIZE_SHIFT;
+	}
+
+#define MANUAL_POWER_CONTROL ((u32)(1 << 8))
+	if (corestack_driver_control)
+		kbdev->hw_quirks_jm |= MANUAL_POWER_CONTROL;
+}
+
+static void kbase_set_sc_quirks(struct kbase_device *kbdev, const u32 prod_id)
+{
+	kbdev->hw_quirks_sc = kbase_reg_read(kbdev,
+					GPU_CONTROL_REG(SHADER_CONFIG));
+
+	/* Needed due to MIDBASE-1494: LS_PAUSEBUFFER_DISABLE.
+	 * See PRLAM-8443 and needed due to MIDGLES-3539.
+	 * See PRLAM-11035.
+	 */
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8443) ||
 			kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_11035))
 		kbdev->hw_quirks_sc |= SC_LS_PAUSEBUFFER_DISABLE;
 
-	/* Needed due to MIDBASE-2054: SDC_DISABLE_OQ_DISCARD. See PRLAM-10327.
+	/* Needed due to MIDBASE-2054: SDC_DISABLE_OQ_DISCARD.
+	 * See PRLAM-10327.
 	 */
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_10327))
 		kbdev->hw_quirks_sc |= SC_SDC_DISABLE_OQ_DISCARD;
 
-#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY
-	/* Enable alternative hardware counter selection if configured. */
-	if (!GPU_ID_IS_NEW_FORMAT(prod_id))
-		kbdev->hw_quirks_sc |= SC_ALT_COUNTERS;
-#endif
-
-	/* Needed due to MIDBASE-2795. ENABLE_TEXGRD_FLAGS. See PRLAM-10797. */
+	/* Needed due to MIDBASE-2795. ENABLE_TEXGRD_FLAGS.
+	 * See PRLAM-10797.
+	 */
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_10797))
 		kbdev->hw_quirks_sc |= SC_ENABLE_TEXGRD_FLAGS;
 
@@ -1595,104 +1745,66 @@ static void kbase_pm_hw_issues_detect(struct kbase_device *kbdev)
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TTRX_2968_TTRX_3162))
 		kbdev->hw_quirks_sc |= SC_VAR_ALGORITHM;
 
-	if (!kbdev->hw_quirks_sc)
-		kbdev->hw_quirks_sc = kbase_reg_read(kbdev,
-				GPU_CONTROL_REG(SHADER_CONFIG));
+	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_TLS_HASHING))
+		kbdev->hw_quirks_sc |= SC_TLS_HASH_ENABLE;
+}
 
+static void kbase_set_tiler_quirks(struct kbase_device *kbdev)
+{
 	kbdev->hw_quirks_tiler = kbase_reg_read(kbdev,
-			GPU_CONTROL_REG(TILER_CONFIG));
-
+					GPU_CONTROL_REG(TILER_CONFIG));
 	/* Set tiler clock gate override if required */
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_T76X_3953))
 		kbdev->hw_quirks_tiler |= TC_CLOCK_GATE_OVERRIDE;
+}
 
-	/* Limit the GPU bus bandwidth if the platform needs this. */
-	kbase_set_mmu_quirks(kbdev);
-
-	if (kbdev->system_coherency == COHERENCY_ACE) {
-		/* Allow memory configuration disparity to be ignored, we
-		 * optimize the use of shared memory and thus we expect
-		 * some disparity in the memory configuration */
-		kbdev->hw_quirks_mmu |= L2_MMU_CONFIG_ALLOW_SNOOP_DISPARITY;
-	}
+static void kbase_pm_hw_issues_detect(struct kbase_device *kbdev)
+{
+	struct device_node *np = kbdev->dev->of_node;
+	const u32 gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
+	const u32 prod_id = (gpu_id & GPU_ID_VERSION_PRODUCT_ID) >>
+				GPU_ID_VERSION_PRODUCT_ID_SHIFT;
 
 	kbdev->hw_quirks_jm = 0;
-	/* Only for T86x/T88x-based products after r2p0 */
-	if (prod_id >= 0x860 && prod_id <= 0x880 && major >= 2) {
-		u32 jm_values[4] = {0u, 0u, 0u, JM_MAX_JOB_THROTTLE_LIMIT};
+	kbdev->hw_quirks_sc = 0;
+	kbdev->hw_quirks_tiler = 0;
+	kbdev->hw_quirks_mmu = 0;
 
-		/* If entry not in device tree (return value of this func != 0),
-		 * use defaults from jm_values[]'s initializer
-		 */
-		(void)of_property_read_u32_array(np,
-					"jm_config",
-					&jm_values[0],
-					ARRAY_SIZE(jm_values));
-
-		/* Limit throttle limit to 6 bits*/
-		if (jm_values[3] > JM_MAX_JOB_THROTTLE_LIMIT) {
-			dev_dbg(kbdev->dev, "JOB_THROTTLE_LIMIT supplied in device tree is too large. Limiting to MAX (63).");
-			jm_values[3] = JM_MAX_JOB_THROTTLE_LIMIT;
-		}
-
-		/* Aggregate to one integer. */
-		kbdev->hw_quirks_jm |= (jm_values[0] ?
-				JM_TIMESTAMP_OVERRIDE : 0);
-		kbdev->hw_quirks_jm |= (jm_values[1] ?
-				JM_CLOCK_GATE_OVERRIDE : 0);
-		kbdev->hw_quirks_jm |= (jm_values[2] ?
-				JM_JOB_THROTTLE_ENABLE : 0);
-		kbdev->hw_quirks_jm |= (jm_values[3] <<
-				JM_JOB_THROTTLE_LIMIT_SHIFT);
-
-	} else if (GPU_ID_IS_NEW_FORMAT(prod_id) &&
-			   (GPU_ID2_MODEL_MATCH_VALUE(prod_id) ==
-					   GPU_ID2_PRODUCT_TMIX)) {
-		/* Only for tMIx */
-		u32 coherency_features;
-
-		coherency_features = kbase_reg_read(kbdev,
-				GPU_CONTROL_REG(COHERENCY_FEATURES));
-
-		/* (COHERENCY_ACE_LITE | COHERENCY_ACE) was incorrectly
-		 * documented for tMIx so force correct value here.
-		 */
-		if (coherency_features ==
-				COHERENCY_FEATURE_BIT(COHERENCY_ACE)) {
-			kbdev->hw_quirks_jm |=
-				(COHERENCY_ACE_LITE | COHERENCY_ACE) <<
-				JM_FORCE_COHERENCY_FEATURES_SHIFT;
-		}
+	if (!of_property_read_u32(np, "quirks_jm",
+				&kbdev->hw_quirks_jm)) {
+		dev_info(kbdev->dev,
+			"Found quirks_jm = [0x%x] in Devicetree\n",
+			kbdev->hw_quirks_jm);
+	} else {
+		kbase_set_jm_quirks(kbdev, prod_id);
 	}
 
-	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_TLS_HASHING))
-		kbdev->hw_quirks_sc |= SC_TLS_HASH_ENABLE;
-
-	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_IDVS_GROUP_SIZE)) {
-		int default_idvs_group_size = 0xF;
-		u32 tmp;
-
-		if (of_property_read_u32(kbdev->dev->of_node,
-					  "idvs-group-size", &tmp))
-			tmp = default_idvs_group_size;
-
-		if (tmp > JM_MAX_IDVS_GROUP_SIZE) {
-			dev_err(kbdev->dev,
-				"idvs-group-size of %d is too large. Maximum value is %d",
-				tmp, JM_MAX_IDVS_GROUP_SIZE);
-			tmp = default_idvs_group_size;
-		}
-
-		kbdev->hw_quirks_jm |= tmp << JM_IDVS_GROUP_SIZE_SHIFT;
+	if (!of_property_read_u32(np, "quirks_sc",
+				&kbdev->hw_quirks_sc)) {
+		dev_info(kbdev->dev,
+			"Found quirks_sc = [0x%x] in Devicetree\n",
+			kbdev->hw_quirks_sc);
+	} else {
+		kbase_set_sc_quirks(kbdev, prod_id);
 	}
 
-	if (!kbdev->hw_quirks_jm)
-		kbdev->hw_quirks_jm = kbase_reg_read(kbdev,
-				GPU_CONTROL_REG(JM_CONFIG));
+	if (!of_property_read_u32(np, "quirks_tiler",
+				&kbdev->hw_quirks_tiler)) {
+		dev_info(kbdev->dev,
+			"Found quirks_tiler = [0x%x] in Devicetree\n",
+			kbdev->hw_quirks_tiler);
+	} else {
+		kbase_set_tiler_quirks(kbdev);
+	}
 
-#define MANUAL_POWER_CONTROL ((u32)(1 << 8))
-	if (corestack_driver_control)
-		kbdev->hw_quirks_jm |= MANUAL_POWER_CONTROL;
+	if (!of_property_read_u32(np, "quirks_mmu",
+				&kbdev->hw_quirks_mmu)) {
+		dev_info(kbdev->dev,
+			"Found quirks_mmu = [0x%x] in Devicetree\n",
+			kbdev->hw_quirks_mmu);
+	} else {
+		kbase_set_mmu_quirks(kbdev);
+	}
 }
 
 static void kbase_pm_hw_issues_apply(struct kbase_device *kbdev)
@@ -1705,10 +1817,8 @@ static void kbase_pm_hw_issues_apply(struct kbase_device *kbdev)
 
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(L2_MMU_CONFIG),
 			kbdev->hw_quirks_mmu);
-
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(JM_CONFIG),
 			kbdev->hw_quirks_jm);
-
 }
 
 void kbase_pm_cache_snoop_enable(struct kbase_device *kbdev)
@@ -1736,6 +1846,19 @@ void kbase_pm_cache_snoop_disable(struct kbase_device *kbdev)
 		dev_dbg(kbdev->dev, "MALI - CCI Snoops Disabled\n");
 		kbdev->cci_snoop_enabled = false;
 	}
+}
+
+static void reenable_protected_mode_hwcnt(struct kbase_device *kbdev)
+{
+	unsigned long irq_flags;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, irq_flags);
+	kbdev->protected_mode_hwcnt_desired = true;
+	if (kbdev->protected_mode_hwcnt_disabled) {
+		kbase_hwcnt_context_enable(kbdev->hwcnt_gpu_ctx);
+		kbdev->protected_mode_hwcnt_disabled = false;
+	}
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, irq_flags);
 }
 
 static int kbase_pm_do_reset(struct kbase_device *kbdev)
@@ -1923,16 +2046,13 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 		kbase_pm_enable_interrupts(kbdev);
 
 exit:
-	/* Re-enable GPU hardware counters if we're resetting from protected
-	 * mode.
-	 */
-	spin_lock_irqsave(&kbdev->hwaccess_lock, irq_flags);
-	kbdev->protected_mode_hwcnt_desired = true;
-	if (kbdev->protected_mode_hwcnt_disabled) {
-		kbase_hwcnt_context_enable(kbdev->hwcnt_gpu_ctx);
-		kbdev->protected_mode_hwcnt_disabled = false;
+	if (!kbdev->pm.backend.protected_entry_transition_override) {
+		/* Re-enable GPU hardware counters if we're resetting from
+		 * protected mode.
+		 */
+		reenable_protected_mode_hwcnt(kbdev);
 	}
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, irq_flags);
+
 	return err;
 }
 

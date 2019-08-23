@@ -39,9 +39,7 @@
 	(LINUX_VERSION_CODE < KERNEL_VERSION(4, 8, 0))
 #include <linux/dma-attrs.h>
 #endif /* LINUX_VERSION_CODE >= 3.5.0 && < 4.8.0 */
-#ifdef CONFIG_DMA_SHARED_BUFFER
 #include <linux/dma-buf.h>
-#endif				/* defined(CONFIG_DMA_SHARED_BUFFER) */
 #include <linux/shrinker.h>
 #include <linux/cache.h>
 #include <linux/memory_group_manager.h>
@@ -51,19 +49,37 @@
 #include <mali_kbase_tracepoints.h>
 #include <mali_kbase_ioctl.h>
 
-#if KERNEL_VERSION(4, 17, 2) > LINUX_VERSION_CODE
-/* Enable workaround for ion for versions prior to v4.17.2 to avoid the potentially
+#if ((KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE) || \
+	(KERNEL_VERSION(5, 0, 0) > LINUX_VERSION_CODE))
+/* Enable workaround for ion for kernels prior to v5.0.0 and from v5.3.0
+ * onwards.
+ *
+ * For kernels prior to v4.12, workaround is needed as ion lacks the cache
+ * maintenance in begin_cpu_access and end_cpu_access methods.
+ *
+ * For kernels prior to v4.17.2, workaround is needed to avoid the potentially
  * disruptive warnings which can come if begin_cpu_access and end_cpu_access
  * methods are not called in pairs.
+ * Note that some long term maintenance kernel versions (e.g. 4.9.x, 4.14.x)
+ * only require this workaround on their earlier releases. However it is still
+ * safe to use it on such releases, and it simplifies the version check.
  *
- * dma_sync_sg_for_* calls will be made directly as a workaround.
+ * For kernels later than v4.17.2, workaround is needed as ion can potentially
+ * end up calling dma_sync_sg_for_* for a dma-buf importer that hasn't mapped
+ * the attachment. This would result in a kernel panic as ion populates the
+ * dma_address when the attachment is mapped and kernel derives the physical
+ * address for cache maintenance from the dma_address.
+ * With some multi-threaded tests it has been seen that the same dma-buf memory
+ * gets imported twice on Mali DDK side and so the problem of sync happening
+ * with an importer having an unmapped attachment comes at the time of 2nd
+ * import. The same problem can if there is another importer of dma-buf
+ * memory.
  *
- * Note that some long term maintenance kernel versions (e.g. 4.9.x, 4.14.x) only require this
- * workaround on their earlier releases. However it is still safe to use it on such releases, and
- * it simplifies the version check.
+ * Workaround can be safely disabled for kernels between v5.0.0 and v5.2.2,
+ * as all the above stated issues are not there.
  *
- * This will also address the case on kernels prior to 4.12, where ion lacks
- * the cache maintenance in begin_cpu_access and end_cpu_access methods.
+ * dma_sync_sg_for_* calls will be made directly as a workaround using the
+ * Kbase's attachment to dma-buf that was previously mapped.
  */
 #define KBASE_MEM_ION_SYNC_WORKAROUND
 #endif
@@ -139,11 +155,11 @@ static int kbase_phy_alloc_mapping_init(struct kbase_context *kctx,
 		return -EINVAL;
 
 	if (size > (KBASE_PERMANENTLY_MAPPED_MEM_LIMIT_PAGES -
-			kctx->permanent_mapped_pages)) {
-		dev_warn(kctx->kbdev->dev, "Request for %llu more pages mem needing a permanent mapping would breach limit %lu, currently at %lu pages",
+			atomic_read(&kctx->permanent_mapped_pages))) {
+		dev_warn(kctx->kbdev->dev, "Request for %llu more pages mem needing a permanent mapping would breach limit %lu, currently at %d pages",
 				(u64)size,
 				KBASE_PERMANENTLY_MAPPED_MEM_LIMIT_PAGES,
-				kctx->permanent_mapped_pages);
+				atomic_read(&kctx->permanent_mapped_pages));
 		return -ENOMEM;
 	}
 
@@ -159,7 +175,7 @@ static int kbase_phy_alloc_mapping_init(struct kbase_context *kctx,
 	reg->flags &= ~KBASE_REG_GROWABLE;
 
 	reg->cpu_alloc->permanent_map = kern_mapping;
-	kctx->permanent_mapped_pages += size;
+	atomic_add(size, &kctx->permanent_mapped_pages);
 
 	return 0;
 vmap_fail:
@@ -180,8 +196,8 @@ void kbase_phy_alloc_mapping_term(struct kbase_context *kctx,
 	 * this being reduced a second time if a separate gpu_alloc is
 	 * freed
 	 */
-	WARN_ON(alloc->nents > kctx->permanent_mapped_pages);
-	kctx->permanent_mapped_pages -= alloc->nents;
+	WARN_ON(alloc->nents > atomic_read(&kctx->permanent_mapped_pages));
+	atomic_sub(alloc->nents, &kctx->permanent_mapped_pages);
 }
 
 void *kbase_phy_alloc_mapping_get(struct kbase_context *kctx,
@@ -368,11 +384,7 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 
 	/* mmap needed to setup VA? */
 	if (*flags & BASE_MEM_SAME_VA) {
-		unsigned long prot = PROT_NONE;
-		unsigned long va_size = va_pages << PAGE_SHIFT;
-		unsigned long va_map = va_size;
 		unsigned long cookie, cookie_nr;
-		unsigned long cpu_addr;
 
 		/* Bind to a cookie */
 		if (!kctx->cookies) {
@@ -390,64 +402,7 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 		cookie = cookie_nr + PFN_DOWN(BASE_MEM_COOKIE_BASE);
 		cookie <<= PAGE_SHIFT;
 
-		/*
-		 * 10.1-10.4 UKU userland relies on the kernel to call mmap.
-		 * For all other versions we can just return the cookie
-		 */
-		if (kctx->api_version < KBASE_API_VERSION(10, 1) ||
-		    kctx->api_version > KBASE_API_VERSION(10, 4)) {
-			*gpu_va = (u64) cookie;
-			kbase_gpu_vm_unlock(kctx);
-			return reg;
-		}
-
-		kbase_va_region_alloc_get(kctx, reg);
-		kbase_gpu_vm_unlock(kctx);
-
-		if (*flags & BASE_MEM_PROT_CPU_RD)
-			prot |= PROT_READ;
-		if (*flags & BASE_MEM_PROT_CPU_WR)
-			prot |= PROT_WRITE;
-
-		cpu_addr = vm_mmap(kctx->filp, 0, va_map, prot,
-				MAP_SHARED, cookie);
-
-		kbase_gpu_vm_lock(kctx);
-
-		/* Since vm lock was released, check if the region has already
-		 * been freed meanwhile. This could happen if User was able to
-		 * second guess the cookie or the CPU VA and free the region
-		 * through the guessed value.
-		 */
-		if (reg->flags & KBASE_REG_VA_FREED) {
-			kbase_va_region_alloc_put(kctx, reg);
-			reg = NULL;
-		} else if (IS_ERR_VALUE(cpu_addr)) {
-			/* Once the vm lock is released, multiple scenarios can
-			 * arise under which the cookie could get re-assigned
-			 * to some other region.
-			 */
-			if (!WARN_ON(kctx->pending_regions[cookie_nr] &&
-				     (kctx->pending_regions[cookie_nr] != reg))) {
-				kctx->pending_regions[cookie_nr] = NULL;
-				kctx->cookies |= (1UL << cookie_nr);
-			}
-
-			/* Region has not been freed and we can be sure that
-			 * User won't be able to free the region now. So we
-			 * can free it ourselves.
-			 * If the region->start_pfn isn't zero then the
-			 * allocation will also be unmapped from GPU side.
-			 */
-			kbase_mem_free_region(kctx, reg);
-			kbase_va_region_alloc_put(kctx, reg);
-			reg = NULL;
-		} else {
-			kbase_va_region_alloc_put(kctx, reg);
-			*gpu_va = (u64) cpu_addr;
-		}
-
-		kbase_gpu_vm_unlock(kctx);
+		*gpu_va = (u64) cookie;
 	} else /* we control the VA */ {
 		if (kbase_gpu_mmap(kctx, reg, 0, va_pages, 1) != 0) {
 			dev_warn(dev, "Failed to map memory on GPU");
@@ -456,10 +411,9 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 		}
 		/* return real GPU VA */
 		*gpu_va = reg->start_pfn << PAGE_SHIFT;
-
-		kbase_gpu_vm_unlock(kctx);
 	}
 
+	kbase_gpu_vm_unlock(kctx);
 	return reg;
 
 no_mmap:
@@ -542,8 +496,8 @@ int kbase_mem_query(struct kbase_context *kctx,
 			 * for compatibility reasons */
 			if (KBASE_REG_PF_GROW & reg->flags)
 				*out |= BASE_MEM_GROW_ON_GPF;
-			if (KBASE_REG_SECURE & reg->flags)
-				*out |= BASE_MEM_SECURE;
+			if (KBASE_REG_PROTECTED & reg->flags)
+				*out |= BASE_MEM_PROTECTED;
 		}
 		if (KBASE_REG_TILER_ALIGN_TOP & reg->flags)
 			*out |= BASE_MEM_TILER_ALIGN_TOP;
@@ -913,7 +867,6 @@ int kbase_mem_flags_change(struct kbase_context *kctx, u64 gpu_addr, unsigned in
 	new_flags |= real_flags;
 
 	/* Currently supporting only imported memory */
-#ifdef CONFIG_DMA_SHARED_BUFFER
 	if (reg->gpu_alloc->type != KBASE_MEM_TYPE_IMPORTED_UMM) {
 		ret = -EINVAL;
 		goto out_unlock;
@@ -955,10 +908,6 @@ int kbase_mem_flags_change(struct kbase_context *kctx, u64 gpu_addr, unsigned in
 				 ret);
 	} else
 		WARN_ON(!reg->gpu_alloc->imported.umm.current_mapping_usage_count);
-#else
-	/* Reject when dma-buf support is not enabled. */
-	ret = -EINVAL;
-#endif /* CONFIG_DMA_SHARED_BUFFER */
 
 	/* If everything is good, then set the new flags on the region. */
 	if (!ret)
@@ -977,7 +926,6 @@ int kbase_mem_do_sync_imported(struct kbase_context *kctx,
 		struct kbase_va_region *reg, enum kbase_sync_type sync_fn)
 {
 	int ret = -EINVAL;
-#ifdef CONFIG_DMA_SHARED_BUFFER
 	struct dma_buf *dma_buf;
 	enum dma_data_direction dir = DMA_BIDIRECTIONAL;
 
@@ -1065,16 +1013,9 @@ int kbase_mem_do_sync_imported(struct kbase_context *kctx,
 			 "Failed to sync mem region %pK at GPU VA %llx: %d\n",
 			 reg, reg->start_pfn, ret);
 
-#else /* CONFIG_DMA_SHARED_BUFFER */
-	CSTD_UNUSED(kctx);
-	CSTD_UNUSED(reg);
-	CSTD_UNUSED(sync_fn);
-#endif /* CONFIG_DMA_SHARED_BUFFER */
-
 	return ret;
 }
 
-#ifdef CONFIG_DMA_SHARED_BUFFER
 /**
  * kbase_mem_umm_unmap_attachment - Unmap dma-buf attachment
  * @kctx: Pointer to kbase context
@@ -1401,8 +1342,8 @@ static struct kbase_va_region *kbase_mem_from_umm(struct kbase_context *kctx,
 	reg->flags |= KBASE_REG_GPU_NX;	/* UMM is always No eXecute */
 	reg->flags &= ~KBASE_REG_GROWABLE;	/* UMM cannot be grown */
 
-	if (*flags & BASE_MEM_SECURE)
-		reg->flags |= KBASE_REG_SECURE;
+	if (*flags & BASE_MEM_PROTECTED)
+		reg->flags |= KBASE_REG_PROTECTED;
 
 	if (padding)
 		reg->flags |= KBASE_REG_IMPORT_PAD;
@@ -1440,7 +1381,6 @@ no_alloc:
 
 	return NULL;
 }
-#endif  /* CONFIG_DMA_SHARED_BUFFER */
 
 u32 kbase_get_cache_line_alignment(struct kbase_device *kbdev)
 {
@@ -1895,7 +1835,6 @@ int kbase_mem_import(struct kbase_context *kctx, enum base_mem_import_type type,
 	}
 
 	switch (type) {
-#ifdef CONFIG_DMA_SHARED_BUFFER
 	case BASE_MEM_IMPORT_TYPE_UMM: {
 		int fd;
 
@@ -1906,7 +1845,6 @@ int kbase_mem_import(struct kbase_context *kctx, enum base_mem_import_type type,
 					padding);
 	}
 	break;
-#endif /* CONFIG_DMA_SHARED_BUFFER */
 	case BASE_MEM_IMPORT_TYPE_USER_BUFFER: {
 		struct base_mem_import_user_buffer user_buffer;
 		void __user *uptr;
@@ -2678,7 +2616,6 @@ int kbase_context_mmap(struct kbase_context *const kctx,
 				goto out_unlock;
 			}
 
-#ifdef CONFIG_DMA_SHARED_BUFFER
 			if (KBASE_MEM_TYPE_IMPORTED_UMM ==
 							reg->cpu_alloc->type) {
 				if (0 != (vma->vm_pgoff - reg->start_pfn)) {
@@ -2692,7 +2629,6 @@ int kbase_context_mmap(struct kbase_context *const kctx,
 					vma, vma->vm_pgoff - reg->start_pfn);
 				goto out_unlock;
 			}
-#endif /* CONFIG_DMA_SHARED_BUFFER */
 
 			if (reg->cpu_alloc->type == KBASE_MEM_TYPE_ALIAS) {
 				/* initial params check for aliased dumping map */

@@ -140,14 +140,12 @@ struct kbase_mem_phy_alloc {
 	u8 group_id;
 
 	union {
-#if defined(CONFIG_DMA_SHARED_BUFFER)
 		struct {
 			struct dma_buf *dma_buf;
 			struct dma_buf_attachment *dma_attachment;
 			unsigned int current_mapping_usage_count;
 			struct sg_table *sgt;
 		} umm;
-#endif /* defined(CONFIG_DMA_SHARED_BUFFER) */
 		struct {
 			u64 stride;
 			size_t nents;
@@ -292,7 +290,7 @@ struct kbase_va_region {
 #define KBASE_REG_MEMATTR_INDEX(x)  (((x) & 7) << 16)
 #define KBASE_REG_MEMATTR_VALUE(x)  (((x) & KBASE_REG_MEMATTR_MASK) >> 16)
 
-#define KBASE_REG_SECURE            (1ul << 19)
+#define KBASE_REG_PROTECTED         (1ul << 19)
 
 #define KBASE_REG_DONT_NEED         (1ul << 20)
 
@@ -1626,7 +1624,6 @@ static inline void kbase_mem_pool_unlock(struct kbase_mem_pool *pool)
 void kbase_mem_evictable_mark_reclaim(struct kbase_mem_phy_alloc *alloc);
 
 
-#if defined(CONFIG_DMA_SHARED_BUFFER)
 /**
  * kbase_mem_umm_map - Map dma-buf
  * @kctx: Pointer to the kbase context
@@ -1674,6 +1671,5 @@ void kbase_mem_umm_unmap(struct kbase_context *kctx,
  */
 int kbase_mem_do_sync_imported(struct kbase_context *kctx,
 		struct kbase_va_region *reg, enum kbase_sync_type sync_fn);
-#endif /* CONFIG_DMA_SHARED_BUFFER */
 
 #endif				/* _KBASE_MEM_H_ */

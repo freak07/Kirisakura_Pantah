@@ -115,6 +115,7 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 		struct kbase_as *as, const char *reason_str,
 		struct kbase_fault *fault);
 
+
 static int kbase_mmu_update_pages_no_flush(struct kbase_context *kctx, u64 vpfn,
 					struct tagged_addr *phys, size_t nr,
 					unsigned long flags, int group_id);
@@ -2045,23 +2046,20 @@ void *kbase_mmu_dump(struct kbase_context *kctx, int nr_pages)
 		char *mmu_dump_buffer;
 		u64 config[3];
 		size_t dump_size, size = 0;
+		struct kbase_mmu_setup as_setup;
 
 		buffer = (char *)kaddr;
 		mmu_dump_buffer = buffer;
 
-		if (kctx->api_version >= KBASE_API_VERSION(8, 4)) {
-			struct kbase_mmu_setup as_setup;
-
-			kctx->kbdev->mmu_mode->get_as_setup(&kctx->mmu,
-					&as_setup);
-			config[0] = as_setup.transtab;
-			config[1] = as_setup.memattr;
-			config[2] = as_setup.transcfg;
-			memcpy(buffer, &config, sizeof(config));
-			mmu_dump_buffer += sizeof(config);
-			size_left -= sizeof(config);
-			size += sizeof(config);
-		}
+		kctx->kbdev->mmu_mode->get_as_setup(&kctx->mmu,
+				&as_setup);
+		config[0] = as_setup.transtab;
+		config[1] = as_setup.memattr;
+		config[2] = as_setup.transcfg;
+		memcpy(buffer, &config, sizeof(config));
+		mmu_dump_buffer += sizeof(config);
+		size_left -= sizeof(config);
+		size += sizeof(config);
 
 		dump_size = kbasep_mmu_dump_level(kctx,
 				kctx->mmu.pgd,
@@ -2115,8 +2113,9 @@ void bus_fault_worker(struct work_struct *data)
 
 	kbdev = container_of(faulting_as, struct kbase_device, as[as_no]);
 
-	/* Grab the context that was already refcounted in kbase_mmu_interrupt().
-	 * Therefore, it cannot be scheduled out of this AS until we explicitly release it
+	/* Grab the context, already refcounted in kbase_mmu_interrupt() on
+	 * flagging of the bus-fault. Therefore, it cannot be scheduled out of
+	 * this AS until we explicitly release it
 	 */
 	kctx = kbasep_js_runpool_lookup_ctx_noretain(kbdev, as_no);
 	if (WARN_ON(!kctx)) {
@@ -2427,11 +2426,11 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 	 * out/rescheduled - this will occur on releasing the context's refcount */
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	kbasep_js_clear_submit_allowed(js_devdata, kctx);
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	/* Kill any running jobs from the context. Submit is disallowed, so no more jobs from this
 	 * context can appear in the job slots from this point on */
-	kbase_backend_jm_kill_jobs_from_kctx(kctx);
+	kbase_backend_jm_kill_running_jobs_from_kctx(kctx);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	/* AS transaction begin */
 	mutex_lock(&kbdev->mmu_hw_mutex);
@@ -2622,33 +2621,31 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
 		struct kbase_context *kctx, struct kbase_as *as,
 		struct kbase_fault *fault)
 {
-	struct kbasep_js_device_data *js_devdata = &kbdev->js_data;
-
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	if (!kctx) {
 		dev_warn(kbdev->dev, "%s in AS%d at 0x%016llx with no context present! Spurious IRQ or SW Design Error?\n",
-				kbase_as_has_bus_fault(as) ?
+				kbase_as_has_bus_fault(as, fault) ?
 						"Bus error" : "Page fault",
 				as->number, fault->addr);
 
 		/* Since no ctx was found, the MMU must be disabled. */
 		WARN_ON(as->current_setup.transtab);
 
-		if (kbase_as_has_bus_fault(as)) {
+		if (kbase_as_has_bus_fault(as, fault)) {
 			kbase_mmu_hw_clear_fault(kbdev, as,
 					KBASE_MMU_FAULT_TYPE_BUS_UNEXPECTED);
 			kbase_mmu_hw_enable_fault(kbdev, as,
 					KBASE_MMU_FAULT_TYPE_BUS_UNEXPECTED);
-		} else if (kbase_as_has_page_fault(as)) {
+		} else if (kbase_as_has_page_fault(as, fault)) {
 			kbase_mmu_hw_clear_fault(kbdev, as,
 					KBASE_MMU_FAULT_TYPE_PAGE_UNEXPECTED);
 			kbase_mmu_hw_enable_fault(kbdev, as,
 					KBASE_MMU_FAULT_TYPE_PAGE_UNEXPECTED);
 		}
 
-		if (kbase_as_has_bus_fault(as) &&
-				kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245)) {
+		if (kbase_as_has_bus_fault(as, fault) &&
+			    kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245)) {
 			bool reset_status;
 			/*
 			 * Reset the GPU, like in bus_fault_worker, in case an
@@ -2664,7 +2661,9 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
 		return;
 	}
 
-	if (kbase_as_has_bus_fault(as)) {
+	if (kbase_as_has_bus_fault(as, fault)) {
+		struct kbasep_js_device_data *js_devdata = &kbdev->js_data;
+
 		/*
 		 * hw counters dumping in progress, signal the
 		 * other thread that it failed

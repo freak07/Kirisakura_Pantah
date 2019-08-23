@@ -469,4 +469,6 @@ void kbase_synchronize_irqs(struct kbase_device *kbdev)
 	}
 }
 
+KBASE_EXPORT_TEST_API(kbase_synchronize_irqs);
+
 #endif /* !defined(CONFIG_MALI_NO_MALI) */

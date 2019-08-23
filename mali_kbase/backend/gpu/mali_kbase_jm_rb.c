@@ -349,6 +349,10 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 			kbase_pm_protected_override_disable(kbdev);
 			kbase_pm_update_cores_state_nolock(kbdev);
 		}
+		if (kbase_jd_katom_is_protected(katom) &&
+				(katom->protected_state.enter ==
+				KBASE_ATOM_ENTER_PROTECTED_IDLE_L2))
+			kbase_pm_protected_entry_override_disable(kbdev);
 		if (!kbase_jd_katom_is_protected(katom) &&
 				(katom->protected_state.exit !=
 				KBASE_ATOM_EXIT_PROTECTED_CHECK) &&
@@ -648,6 +652,9 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 		 * switched to protected mode or hwcnt
 		 * re-enabled. */
 
+		if (kbase_pm_protected_entry_override_enable(kbdev))
+			return -EAGAIN;
+
 		/*
 		 * Not in correct mode, begin protected mode switch.
 		 * Entering protected mode requires us to power down the L2,
@@ -657,13 +664,28 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 			KBASE_ATOM_ENTER_PROTECTED_IDLE_L2;
 
 		kbase_pm_protected_override_enable(kbdev);
-		kbase_pm_update_cores_state_nolock(kbdev);
+		/*
+		 * Only if the GPU reset hasn't been initiated, there is a need
+		 * to invoke the state machine to explicitly power down the
+		 * shader cores and L2.
+		 */
+		if (!kbdev->pm.backend.protected_entry_transition_override)
+			kbase_pm_update_cores_state_nolock(kbdev);
 
 		/* ***FALLTHROUGH: TRANSITION TO HIGHER STATE*** */
 
 	case KBASE_ATOM_ENTER_PROTECTED_IDLE_L2:
 		/* Avoid unnecessary waiting on non-ACE platforms. */
-		if (kbdev->current_gpu_coherency_mode == COHERENCY_ACE) {
+		if (kbdev->system_coherency == COHERENCY_ACE) {
+			if (kbdev->pm.backend.l2_always_on) {
+				/*
+				 * If the GPU reset hasn't completed, then L2
+				 * could still be powered up.
+				 */
+				if (kbase_reset_gpu_is_active(kbdev))
+					return -EAGAIN;
+			}
+
 			if (kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_L2) ||
 				kbase_pm_get_trans_cores(kbdev, KBASE_PM_CORE_L2)) {
 				/*
@@ -686,6 +708,8 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 		 * ensure that no protected memory can be leaked.
 		 */
 		kbase_gpu_disable_coherent(kbdev);
+
+		kbase_pm_protected_entry_override_disable(kbdev);
 
 		if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TGOX_R1_1234)) {
 			/*
@@ -780,8 +804,7 @@ static int kbase_jm_exit_protected_mode(struct kbase_device *kbdev,
 
 		/* ***FALLTHROUGH: TRANSITION TO HIGHER STATE*** */
 	case KBASE_ATOM_EXIT_PROTECTED_IDLE_L2:
-		if (kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_L2) ||
-				kbase_pm_get_trans_cores(kbdev, KBASE_PM_CORE_L2)) {
+		if (kbdev->pm.backend.l2_state != KBASE_L2_OFF) {
 			/*
 			 * The L2 is still powered, wait for all the users to
 			 * finish with it before doing the actual reset.

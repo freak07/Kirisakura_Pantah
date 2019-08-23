@@ -117,6 +117,12 @@ bob_kernel_module {
     mali_2mb_alloc: {
         kbuild_options: ["CONFIG_MALI_2MB_ALLOC=y"],
     },
+    mali_hw_errata_1485982_not_affected: {
+        kbuild_options: ["CONFIG_MALI_HW_ERRATA_1485982_NOT_AFFECTED=y"],
+    },
+    mali_hw_errata_1485982_use_clock_alternative: {
+        kbuild_options: ["CONFIG_MALI_HW_ERRATA_1485982_USE_CLOCK_ALTERNATIVE=y"],
+    },
     gpu_has_csf: {
         srcs: [
             "csf/*.c",

@@ -46,6 +46,7 @@
 #endif /* !MALI_CUSTOMER_RELEASE */
 #include "mali_kbase_regs_history_debugfs.h"
 #include <mali_kbase_hwaccess_backend.h>
+#include <mali_kbase_hwaccess_time.h>
 #include <mali_kbase_hwaccess_jm.h>
 #include <mali_kbase_ctx_sched.h>
 #include <mali_kbase_reset_gpu.h>
@@ -892,6 +893,37 @@ static int kbase_api_hwcnt_clear(struct kbase_context *kctx)
 	return ret;
 }
 
+static int kbase_api_get_cpu_gpu_timeinfo(struct kbase_context *kctx,
+		union kbase_ioctl_get_cpu_gpu_timeinfo *timeinfo)
+{
+	u32 flags = timeinfo->in.request_flags;
+	struct timespec ts;
+	u64 timestamp;
+	u64 cycle_cnt;
+
+	kbase_pm_context_active(kctx->kbdev);
+
+	kbase_backend_get_gpu_time(kctx->kbdev,
+		(flags & BASE_TIMEINFO_CYCLE_COUNTER_FLAG) ? &cycle_cnt : NULL,
+		(flags & BASE_TIMEINFO_TIMESTAMP_FLAG) ? &timestamp : NULL,
+		(flags & BASE_TIMEINFO_MONOTONIC_FLAG) ? &ts : NULL);
+
+	if (flags & BASE_TIMEINFO_TIMESTAMP_FLAG)
+		timeinfo->out.timestamp = timestamp;
+
+	if (flags & BASE_TIMEINFO_CYCLE_COUNTER_FLAG)
+		timeinfo->out.cycle_counter = cycle_cnt;
+
+	if (flags & BASE_TIMEINFO_MONOTONIC_FLAG) {
+		timeinfo->out.sec = ts.tv_sec;
+		timeinfo->out.nsec = ts.tv_nsec;
+	}
+
+	kbase_pm_context_idle(kctx->kbdev);
+
+	return 0;
+}
+
 #ifdef CONFIG_MALI_NO_MALI
 static int kbase_api_hwcnt_set(struct kbase_context *kctx,
 		struct kbase_ioctl_hwcnt_values *values)
@@ -1532,6 +1564,12 @@ static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	case KBASE_IOCTL_HWCNT_CLEAR:
 		KBASE_HANDLE_IOCTL(KBASE_IOCTL_HWCNT_CLEAR,
 				kbase_api_hwcnt_clear,
+				kctx);
+		break;
+	case KBASE_IOCTL_GET_CPU_GPU_TIMEINFO:
+		KBASE_HANDLE_IOCTL_INOUT(KBASE_IOCTL_GET_CPU_GPU_TIMEINFO,
+				kbase_api_get_cpu_gpu_timeinfo,
+				union kbase_ioctl_get_cpu_gpu_timeinfo,
 				kctx);
 		break;
 #ifdef CONFIG_MALI_NO_MALI
@@ -2509,14 +2547,6 @@ static ssize_t kbase_show_gpuinfo(struct device *dev,
 		unsigned id;
 		char *name;
 	} gpu_product_id_names[] = {
-		{ .id = GPU_ID_PI_T60X, .name = "Mali-T60x" },
-		{ .id = GPU_ID_PI_T62X, .name = "Mali-T62x" },
-		{ .id = GPU_ID_PI_T72X, .name = "Mali-T72x" },
-		{ .id = GPU_ID_PI_T76X, .name = "Mali-T76x" },
-		{ .id = GPU_ID_PI_T82X, .name = "Mali-T82x" },
-		{ .id = GPU_ID_PI_T83X, .name = "Mali-T83x" },
-		{ .id = GPU_ID_PI_T86X, .name = "Mali-T86x" },
-		{ .id = GPU_ID_PI_TFRX, .name = "Mali-T88x" },
 		{ .id = GPU_ID2_PRODUCT_TMIX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
 		  .name = "Mali-G71" },
 		{ .id = GPU_ID2_PRODUCT_THEX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
@@ -2531,13 +2561,22 @@ static ssize_t kbase_show_gpuinfo(struct device *dev,
 		  .name = "Mali-G52" },
 		{ .id = GPU_ID2_PRODUCT_TTRX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
 		  .name = "Mali-G77" },
+		{ .id = GPU_ID2_PRODUCT_TBEX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
+		  .name = "Mali-TBEX" },
+		{ .id = GPU_ID2_PRODUCT_LBEX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
+		  .name = "Mali-LBEX" },
+		{ .id = GPU_ID2_PRODUCT_TNAX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
+		  .name = "Mali-TNAX" },
+		{ .id = GPU_ID2_PRODUCT_TODX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
+		  .name = "Mali-TODX" },
+		{ .id = GPU_ID2_PRODUCT_LODX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
+		  .name = "Mali-LODX" },
 	};
 	const char *product_name = "(Unknown Mali GPU)";
 	struct kbase_device *kbdev;
 	u32 gpu_id;
 	unsigned product_id, product_id_mask;
 	unsigned i;
-	bool is_new_format;
 
 	kbdev = to_kbase_device(dev);
 	if (!kbdev)
@@ -2545,18 +2584,12 @@ static ssize_t kbase_show_gpuinfo(struct device *dev,
 
 	gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
 	product_id = gpu_id >> GPU_ID_VERSION_PRODUCT_ID_SHIFT;
-	is_new_format = GPU_ID_IS_NEW_FORMAT(product_id);
-	product_id_mask =
-		(is_new_format ?
-			GPU_ID2_PRODUCT_MODEL :
-			GPU_ID_VERSION_PRODUCT_ID) >>
-		GPU_ID_VERSION_PRODUCT_ID_SHIFT;
+	product_id_mask = GPU_ID2_PRODUCT_MODEL >> GPU_ID_VERSION_PRODUCT_ID_SHIFT;
 
 	for (i = 0; i < ARRAY_SIZE(gpu_product_id_names); ++i) {
 		const struct gpu_product_id_name *p = &gpu_product_id_names[i];
 
-		if ((GPU_ID_IS_NEW_FORMAT(p->id) == is_new_format) &&
-		    (p->id & product_id_mask) ==
+		if ((p->id & product_id_mask) ==
 		    (product_id & product_id_mask)) {
 			product_name = p->name;
 			break;
@@ -3779,9 +3812,8 @@ static void kbase_device_coherency_init(struct kbase_device *kbdev,
 	 * (COHERENCY_ACE_LITE | COHERENCY_ACE) was incorrectly
 	 * documented for tMIx so force correct value here.
 	 */
-	if (GPU_ID_IS_NEW_FORMAT(prod_id) &&
-		   (GPU_ID2_MODEL_MATCH_VALUE(prod_id) ==
-				   GPU_ID2_PRODUCT_TMIX))
+	if (GPU_ID2_MODEL_MATCH_VALUE(prod_id) ==
+			GPU_ID2_PRODUCT_TMIX)
 		if (supported_coherency_bitmap ==
 				COHERENCY_FEATURE_BIT(COHERENCY_ACE))
 			supported_coherency_bitmap |=

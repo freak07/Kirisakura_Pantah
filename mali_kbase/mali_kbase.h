@@ -375,6 +375,24 @@ static inline bool kbase_pm_is_active(struct kbase_device *kbdev)
 }
 
 /**
+ * kbase_pm_metrics_start - Start the utilization metrics timer
+ * @kbdev: Pointer to the kbase device for which to start the utilization
+ *         metrics calculation thread.
+ *
+ * Start the timer that drives the metrics calculation, runs the custom DVFS.
+ */
+void kbase_pm_metrics_start(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_metrics_stop - Stop the utilization metrics timer
+ * @kbdev: Pointer to the kbase device for which to stop the utilization
+ *         metrics calculation thread.
+ *
+ * Stop the timer that drives the metrics calculation, runs the custom DVFS.
+ */
+void kbase_pm_metrics_stop(struct kbase_device *kbdev);
+
+/**
  * Return the atom's ID, as was originally supplied by userspace in
  * base_jd_atom_v2::atom_number
  */

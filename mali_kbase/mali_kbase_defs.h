@@ -692,6 +692,7 @@ struct kbase_jd_atom {
 	/* Note: refer to kbasep_js_atom_retained_state, which will take a copy of some of the following members */
 	enum base_jd_event_code event_code;
 	base_jd_core_req core_req;
+	u8 jobslot;
 
 	u32 ticks;
 	int sched_priority;
@@ -891,8 +892,6 @@ struct kbase_fault {
  *                     and Page fault handling.
  * @work_pagefault:    Work item for the Page fault handling.
  * @work_busfault:     Work item for the Bus fault handling.
- * @fault_type:        Type of fault which occured for this address space,
- *                     regular/unexpected Bus or Page fault.
  * @pf_data:           Data relating to page fault.
  * @bf_data:           Data relating to bus fault.
  * @current_setup:     Stores the MMU configuration for this address space.
@@ -911,7 +910,6 @@ struct kbase_as {
 	struct workqueue_struct *pf_wq;
 	struct work_struct work_pagefault;
 	struct work_struct work_busfault;
-	enum kbase_mmu_fault_type fault_type;
 	struct kbase_fault pf_data;
 	struct kbase_fault bf_data;
 	struct kbase_mmu_setup current_setup;
@@ -948,14 +946,16 @@ struct kbase_mmu_table {
 	struct kbase_context *kctx;
 };
 
-static inline int kbase_as_has_bus_fault(struct kbase_as *as)
+static inline int kbase_as_has_bus_fault(struct kbase_as *as,
+	struct kbase_fault *fault)
 {
-	return as->fault_type == KBASE_MMU_FAULT_TYPE_BUS;
+	return (fault == &as->bf_data);
 }
 
-static inline int kbase_as_has_page_fault(struct kbase_as *as)
+static inline int kbase_as_has_page_fault(struct kbase_as *as,
+	struct kbase_fault *fault)
 {
-	return as->fault_type == KBASE_MMU_FAULT_TYPE_PAGE;
+	return (fault == &as->pf_data);
 }
 
 struct kbasep_mem_device {
@@ -1422,6 +1422,9 @@ struct kbase_devfreq_queue_info {
  *                         previously entered protected mode.
  * @ipa:                   Top level structure for IPA, containing pointers to both
  *                         configured & fallback models.
+ * @previous_frequency:    Previous frequency of GPU clock used for
+ *                         BASE_HW_ISSUE_GPU2017_1336 workaround, This clock is
+ *                         restored when L2 is powered on.
  * @job_fault_debug:       Flag to control the dumping of debug data for job faults,
  *                         set when the 'job_fault' debugfs file is opened.
  * @mali_debugfs_directory: Root directory for the debugfs files created by the driver
@@ -1650,8 +1653,9 @@ struct kbase_device {
 	} ipa;
 #endif /* CONFIG_DEVFREQ_THERMAL */
 #endif /* CONFIG_MALI_DEVFREQ */
+	unsigned long previous_frequency;
 
-	bool job_fault_debug;
+	atomic_t job_fault_debug;
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *mali_debugfs_directory;
@@ -2169,7 +2173,7 @@ struct kbase_context {
 	struct kbase_jd_context jctx;
 	atomic_t used_pages;
 	atomic_t         nonmapped_pages;
-	unsigned long permanent_mapped_pages;
+	atomic_t permanent_mapped_pages;
 
 	struct kbase_mem_pool_group mem_pools;
 
@@ -2347,7 +2351,7 @@ static inline bool kbase_device_is_cpu_coherent(struct kbase_device *kbdev)
 /* Maximum number of loops polling the GPU for a cache flush before we assume it must have completed */
 #define KBASE_CLEAN_CACHE_MAX_LOOPS     100000
 /* Maximum number of loops polling the GPU for an AS command to complete before we assume the GPU has hung */
-#define KBASE_AS_INACTIVE_MAX_LOOPS     100000
+#define KBASE_AS_INACTIVE_MAX_LOOPS     100000000
 
 /* JobDescriptorHeader - taken from the architecture specifications, the layout
  * is currently identical for all GPU archs. */

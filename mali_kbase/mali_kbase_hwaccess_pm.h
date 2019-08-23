@@ -48,39 +48,16 @@ struct kbase_device;
  *
  * Return: 0 if the power management framework was successfully initialized.
  */
-int kbase_hwaccess_pm_early_init(struct kbase_device *kbdev);
-
-/**
- * Initialize the power management framework.
- *
- * Must be called before any other power management function (except
- * @ref kbase_hwaccess_pm_early_init)
- *
- * @kbdev: The kbase device structure for the device (must be a valid pointer)
- *
- * Return: 0 if the power management framework was successfully initialized.
- */
-int kbase_hwaccess_pm_late_init(struct kbase_device *kbdev);
+int kbase_hwaccess_pm_init(struct kbase_device *kbdev);
 
 /**
  * Terminate the power management framework.
  *
- * No power management functions may be called after this (except
- * @ref kbase_pm_init)
+ * No power management functions may be called after this
  *
  * @kbdev: The kbase device structure for the device (must be a valid pointer)
  */
-void kbase_hwaccess_pm_early_term(struct kbase_device *kbdev);
-
-/**
- * Terminate the power management framework.
- *
- * No power management functions may be called after this (except
- * @ref kbase_hwaccess_pm_early_term or @ref kbase_hwaccess_pm_late_init)
- *
- * @kbdev: The kbase device structure for the device (must be a valid pointer)
- */
-void kbase_hwaccess_pm_late_term(struct kbase_device *kbdev);
+void kbase_hwaccess_pm_term(struct kbase_device *kbdev);
 
 /**
  * kbase_hwaccess_pm_powerup - Power up the GPU.

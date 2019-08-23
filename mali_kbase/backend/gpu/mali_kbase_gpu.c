@@ -57,14 +57,8 @@ int kbase_backend_early_init(struct kbase_device *kbdev)
 	if (err)
 		goto fail_interrupts;
 
-	err = kbase_hwaccess_pm_early_init(kbdev);
-	if (err)
-		goto fail_pm;
-
 	return 0;
 
-fail_pm:
-	kbase_release_interrupts(kbdev);
 fail_interrupts:
 	kbase_pm_runtime_term(kbdev);
 fail_runtime_pm:
@@ -75,7 +69,6 @@ fail_runtime_pm:
 
 void kbase_backend_early_term(struct kbase_device *kbdev)
 {
-	kbase_hwaccess_pm_early_term(kbdev);
 	kbase_release_interrupts(kbdev);
 	kbase_pm_runtime_term(kbdev);
 	kbasep_platform_device_term(kbdev);
@@ -85,7 +78,7 @@ int kbase_backend_late_init(struct kbase_device *kbdev)
 {
 	int err;
 
-	err = kbase_hwaccess_pm_late_init(kbdev);
+	err = kbase_hwaccess_pm_init(kbdev);
 	if (err)
 		return err;
 
@@ -152,7 +145,7 @@ fail_timer:
 fail_pm_powerup:
 	kbase_reset_gpu_term(kbdev);
 fail_reset_gpu_init:
-	kbase_hwaccess_pm_late_term(kbdev);
+	kbase_hwaccess_pm_term(kbdev);
 
 	return err;
 }
@@ -165,5 +158,5 @@ void kbase_backend_late_term(struct kbase_device *kbdev)
 	kbase_backend_timer_term(kbdev);
 	kbase_hwaccess_pm_halt(kbdev);
 	kbase_reset_gpu_term(kbdev);
-	kbase_hwaccess_pm_late_term(kbdev);
+	kbase_hwaccess_pm_term(kbdev);
 }

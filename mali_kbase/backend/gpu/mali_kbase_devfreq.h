@@ -28,6 +28,14 @@ int kbase_devfreq_init(struct kbase_device *kbdev);
 void kbase_devfreq_term(struct kbase_device *kbdev);
 
 /**
+ * kbase_devfreq_force_freq - Set GPU frequency on L2 power on/off.
+ * @kbdev:      Device pointer
+ * @freq:       GPU frequency in HZ to be set when
+ *              MALI_HW_ERRATA_1485982_USE_CLOCK_ALTERNATIVE is enabled
+ */
+void kbase_devfreq_force_freq(struct kbase_device *kbdev, unsigned long freq);
+
+/**
  * kbase_devfreq_enqueue_work - Enqueue a work item for suspend/resume devfreq.
  * @kbdev:      Device pointer
  * @work_type:  The type of the devfreq work item, i.e. suspend or resume

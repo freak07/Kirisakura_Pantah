@@ -23,6 +23,7 @@
 menuconfig MALI_MIDGARD
 	tristate "Mali Midgard series support"
 	select GPU_TRACEPOINTS if ANDROID
+	select DMA_SHARED_BUFFER
 	default n
 	help
 	  Enable this option to build support for a ARM Mali Midgard GPU.
@@ -211,7 +212,7 @@ config MALI_MEMORY_FULLY_BACKED
 
 config MALI_DMA_BUF_MAP_ON_DEMAND
 	bool "Map imported dma-bufs on demand"
-	depends on DMA_SHARED_BUFFER && MALI_MIDGARD
+	depends on MALI_MIDGARD
 	default n
 	help
 	  This option caused kbase to set up the GPU mapping of imported
@@ -229,6 +230,29 @@ config MALI_DMA_BUF_LEGACY_COMPAT
 	  behavior, then the dma-buf is mapped on import, by adding cache
 	  maintenance where MALI_DMA_BUF_MAP_ON_DEMAND would do the mapping,
 	  including a cache flush.
+
+config MALI_HW_ERRATA_1485982_NOT_AFFECTED
+	bool "Disable workaround for BASE_HW_ISSUE_GPU2017_1336"
+	depends on MALI_MIDGARD && MALI_EXPERT
+	default n
+	help
+	  This option disables the default workaround for GPU2017-1336. The
+	  workaround keeps the L2 cache powered up except for powerdown and reset.
+
+	  The workaround introduces a limitation that will prevent the running of
+	  protected mode content on fully coherent platforms, as the switch to IO
+	  coherency mode requires the L2 to be turned off.
+
+config MALI_HW_ERRATA_1485982_USE_CLOCK_ALTERNATIVE
+	bool "Use alternative workaround for BASE_HW_ISSUE_GPU2017_1336"
+	depends on MALI_MIDGARD && MALI_EXPERT && !MALI_HW_ERRATA_1485982_NOT_AFFECTED
+	default n
+	help
+	  This option uses an alternative workaround for GPU2017-1336. Lowering
+	  the GPU clock to a, platform specific, known good frequeuncy before
+	  powering down the L2 cache. The clock can be specified in the device
+	  tree using the property, opp-mali-errata-1485982. Otherwise the
+	  slowest clock will be selected.
 
 # Instrumentation options.
 

@@ -24,10 +24,10 @@
 #define _KBASE_MIPE_PROTO_H
 
 #define _BITFIELD_MASK_FIELD(pos, len) \
-	(((1 << len) - 1) << pos)
+	(((1u << len) - 1) << pos)
 
 #define _BITFIELD_SET_FIELD(pos, len, value) \
-	(_BITFIELD_MASK_FIELD(pos, len) & ((value) << pos))
+	(_BITFIELD_MASK_FIELD(pos, len) & (((u32) value) << pos))
 
 #define BITFIELD_SET(field_name, value) \
 	_BITFIELD_SET_FIELD(field_name ## _POS, field_name ## _LEN, value)

@@ -22,9 +22,7 @@
 
 
 
-#if defined(CONFIG_DMA_SHARED_BUFFER)
 #include <linux/dma-buf.h>
-#endif				/* defined(CONFIG_DMA_SHARED_BUFFER) */
 #ifdef CONFIG_COMPAT
 #include <linux/compat.h>
 #endif
@@ -284,7 +282,7 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 		}
 
 		if (!(katom->core_req & BASE_JD_REQ_SOFT_JOB) &&
-				(reg->flags & KBASE_REG_SECURE)) {
+				(reg->flags & KBASE_REG_PROTECTED)) {
 			katom->atom_flags |= KBASE_KATOM_FLAG_PROTECTED;
 		}
 
@@ -737,6 +735,7 @@ bool jd_submit_atom(struct kbase_context *kctx, const struct base_jd_atom_v2 *us
 	katom->device_nr = user_atom->device_nr;
 	katom->jc = user_atom->jc;
 	katom->core_req = user_atom->core_req;
+	katom->jobslot = user_atom->jobslot;
 	katom->atom_flags = 0;
 	katom->retry_count = 0;
 	katom->need_cache_flush_cores_retained = 0;

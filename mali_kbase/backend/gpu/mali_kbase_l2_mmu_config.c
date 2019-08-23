@@ -57,13 +57,14 @@ struct l2_mmu_config_limit {
 /*
  * Zero represents no limit
  *
- * For TBEX TTRX and TNAX:
+ * For LBEX TBEX TTRX and TNAX:
  *   The value represents the number of outstanding reads (6 bits) or writes (5 bits)
  *
  * For all other GPUS it is a fraction see: mali_kbase_config_defaults.h
  */
 static const struct l2_mmu_config_limit limits[] = {
 	 /* GPU                       read                  write            */
+	 {GPU_ID2_PRODUCT_LBEX, {0, GENMASK(10, 5), 5}, {0, GENMASK(16, 12), 12} },
 	 {GPU_ID2_PRODUCT_TBEX, {0, GENMASK(10, 5), 5}, {0, GENMASK(16, 12), 12} },
 	 {GPU_ID2_PRODUCT_TTRX, {0, GENMASK(12, 7), 7}, {0, GENMASK(17, 13), 13} },
 	 {GPU_ID2_PRODUCT_TNAX, {0, GENMASK(12, 7), 7}, {0, GENMASK(17, 13), 13} },
@@ -90,6 +91,7 @@ void kbase_set_mmu_quirks(struct kbase_device *kbdev)
 	gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
 	product_model = gpu_id & GPU_ID2_PRODUCT_MODEL;
 
+	/* Limit the GPU bus bandwidth if the platform needs this. */
 	for (i = 0; i < ARRAY_SIZE(limits); i++) {
 		if (product_model == limits[i].product_model) {
 			limit = limits[i];
@@ -105,4 +107,12 @@ void kbase_set_mmu_quirks(struct kbase_device *kbdev)
 		      (limit.write.value << limit.write.shift);
 
 	kbdev->hw_quirks_mmu = mmu_config;
+
+	if (kbdev->system_coherency == COHERENCY_ACE) {
+		/* Allow memory configuration disparity to be ignored,
+		 * we optimize the use of shared memory and thus we
+		 * expect some disparity in the memory configuration.
+		 */
+		kbdev->hw_quirks_mmu |= L2_MMU_CONFIG_ALLOW_SNOOP_DISPARITY;
+	}
 }

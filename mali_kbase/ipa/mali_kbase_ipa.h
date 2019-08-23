@@ -209,6 +209,8 @@ extern const struct kbase_ipa_model_ops kbase_g52_ipa_model_ops;
 extern const struct kbase_ipa_model_ops kbase_g52_r1_ipa_model_ops;
 extern const struct kbase_ipa_model_ops kbase_g51_ipa_model_ops;
 extern const struct kbase_ipa_model_ops kbase_g77_ipa_model_ops;
+extern const struct kbase_ipa_model_ops kbase_tnax_ipa_model_ops;
+extern const struct kbase_ipa_model_ops kbase_tbex_ipa_model_ops;
 
 /**
  * kbase_get_real_power() - get the real power consumption of the GPU

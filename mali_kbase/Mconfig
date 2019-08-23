@@ -239,6 +239,30 @@ config MALI_REAL_HW
 	default y
 	default n if NO_MALI
 
+config MALI_HW_ERRATA_1485982_NOT_AFFECTED
+	bool "Disable workaround for BASE_HW_ISSUE_GPU2017_1336"
+	depends on MALI_MIDGARD && MALI_EXPERT
+	default n
+	default y if PLATFORM_JUNO
+	help
+	  This option disables the default workaround for GPU2017-1336. The
+	  workaround keeps the L2 cache powered up except for powerdown and reset.
+
+	  The workaround introduces a limitation that will prevent the running of
+	  protected mode content on fully coherent platforms, as the switch to IO
+	  coherency mode requires the L2 to be turned off.
+
+config MALI_HW_ERRATA_1485982_USE_CLOCK_ALTERNATIVE
+	bool "Use alternative workaround for BASE_HW_ISSUE_GPU2017_1336"
+	depends on MALI_MIDGARD && MALI_EXPERT && !MALI_HW_ERRATA_1485982_NOT_AFFECTED
+	default n
+	help
+	  This option uses an alternative workaround for GPU2017-1336. Lowering
+	  the GPU clock to a, platform specific, known good frequeuncy before
+	  powering down the L2 cache. The clock can be specified in the device
+	  tree using the property, opp-mali-errata-1485982. Otherwise the
+	  slowest clock will be selected.
+
 # Instrumentation options.
 
 # config MALI_JOB_DUMP exists in the Kernel Kconfig but is configured using CINSTR_JOB_DUMP in Mconfig.

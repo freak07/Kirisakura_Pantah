@@ -195,4 +195,16 @@
 #define JM_IDVS_GROUP_SIZE_SHIFT (16)
 #define JM_MAX_IDVS_GROUP_SIZE (0x3F)
 
+/* GPU_COMMAND values */
+#define GPU_COMMAND_NOP                0x00 /* No operation, nothing happens */
+#define GPU_COMMAND_SOFT_RESET         0x01 /* Stop all external bus interfaces, and then reset the entire GPU. */
+#define GPU_COMMAND_HARD_RESET         0x02 /* Immediately reset the entire GPU. */
+#define GPU_COMMAND_PRFCNT_CLEAR       0x03 /* Clear all performance counters, setting them all to zero. */
+#define GPU_COMMAND_PRFCNT_SAMPLE      0x04 /* Sample all performance counters, writing them out to memory */
+#define GPU_COMMAND_CYCLE_COUNT_START  0x05 /* Starts the cycle counter, and system timestamp propagation */
+#define GPU_COMMAND_CYCLE_COUNT_STOP   0x06 /* Stops the cycle counter, and system timestamp propagation */
+#define GPU_COMMAND_CLEAN_CACHES       0x07 /* Clean all caches */
+#define GPU_COMMAND_CLEAN_INV_CACHES   0x08 /* Clean and invalidate all caches */
+#define GPU_COMMAND_SET_PROTECTED_MODE 0x09 /* Places the GPU in protected mode */
+
 #endif /* _MIDG_REGMAP_JM_H_ */

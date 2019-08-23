@@ -32,11 +32,22 @@
 #include <linux/mm.h>
 #include <linux/memory_group_manager.h>
 
-#if (KERNEL_VERSION(4, 17, 0) > LINUX_VERSION_CODE)
-static inline vm_fault_t vmf_insert_pfn(struct vm_area_struct *vma,
-			unsigned long addr, unsigned long pfn)
+#if (KERNEL_VERSION(4, 20, 0) > LINUX_VERSION_CODE)
+static inline vm_fault_t vmf_insert_pfn_prot(struct vm_area_struct *vma,
+			unsigned long addr, unsigned long pfn, pgprot_t pgprot)
 {
-	int err = vm_insert_pfn(vma, addr, pfn);
+	int err;
+
+#if ((KERNEL_VERSION(4, 4, 147) >= LINUX_VERSION_CODE) || \
+		((KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE) && \
+		 (KERNEL_VERSION(4, 5, 0) <= LINUX_VERSION_CODE)))
+	if (pgprot_val(pgprot) != pgprot_val(vma->vm_page_prot))
+		return VM_FAULT_SIGBUS;
+
+	err = vm_insert_pfn(vma, addr, pfn);
+#else
+	err = vm_insert_pfn_prot(vma, addr, pfn, pgprot);
+#endif
 
 	if (unlikely(err == -ENOMEM))
 		return VM_FAULT_OOM;
@@ -44,17 +55,6 @@ static inline vm_fault_t vmf_insert_pfn(struct vm_area_struct *vma,
 		return VM_FAULT_SIGBUS;
 
 	return VM_FAULT_NOPAGE;
-}
-#endif
-
-#if (KERNEL_VERSION(4, 20, 0) > LINUX_VERSION_CODE)
-static inline vm_fault_t vmf_insert_pfn_prot(struct vm_area_struct *vma,
-			unsigned long addr, unsigned long pfn, pgprot_t pgprot)
-{
-	if (pgprot_val(pgprot) != pgprot_val(vma->vm_page_prot))
-		return VM_FAULT_SIGBUS;
-
-	return vmf_insert_pfn(vma, addr, pfn);
 }
 #endif
 
@@ -362,7 +362,7 @@ static vm_fault_t example_mgm_vmf_insert_pfn_prot(
 	dev_dbg(data->dev,
 		"%s(mgm_dev=%p, group_id=%d, vma=%p, addr=0x%lx, pfn=0x%lx, prot=0x%llx)\n",
 		__func__, (void *)mgm_dev, group_id, (void *)vma, addr, pfn,
-		pgprot_val(prot));
+		(unsigned long long int) pgprot_val(prot));
 
 	if (WARN_ON(group_id < 0) ||
 		WARN_ON(group_id >= MEMORY_GROUP_MANAGER_NR_GROUPS))

@@ -27,32 +27,6 @@
 #include <mali_kbase.h>
 #include <mali_kbase_native_mgm.h>
 
-#if (KERNEL_VERSION(4, 17, 0) > LINUX_VERSION_CODE)
-static inline vm_fault_t vmf_insert_pfn(struct vm_area_struct *vma,
-			unsigned long addr, unsigned long pfn)
-{
-	int err = vm_insert_pfn(vma, addr, pfn);
-
-	if (unlikely(err == -ENOMEM))
-		return VM_FAULT_OOM;
-	if (unlikely(err < 0 && err != -EBUSY))
-		return VM_FAULT_SIGBUS;
-
-	return VM_FAULT_NOPAGE;
-}
-#endif
-
-#if (KERNEL_VERSION(4, 20, 0) > LINUX_VERSION_CODE)
-static inline vm_fault_t vmf_insert_pfn_prot(struct vm_area_struct *vma,
-			unsigned long addr, unsigned long pfn, pgprot_t pgprot)
-{
-	if (pgprot_val(pgprot) != pgprot_val(vma->vm_page_prot))
-		return VM_FAULT_SIGBUS;
-
-	return vmf_insert_pfn(vma, addr, pfn);
-}
-#endif
-
 /**
  * kbase_native_mgm_alloc - Native physical memory allocation method
  *

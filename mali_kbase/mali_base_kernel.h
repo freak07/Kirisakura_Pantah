@@ -185,9 +185,9 @@ typedef u32 base_mem_alloc_flags;
  */
 #define BASE_MEM_COHERENT_SYSTEM_REQUIRED ((base_mem_alloc_flags)1 << 15)
 
-/* Secure memory
+/* Protected memory
  */
-#define BASE_MEM_SECURE ((base_mem_alloc_flags)1 << 16)
+#define BASE_MEM_PROTECTED ((base_mem_alloc_flags)1 << 16)
 
 /* Not needed physical memory
  */
@@ -225,12 +225,10 @@ typedef u32 base_mem_alloc_flags;
 /*
  * Bits [22:25] for group_id (0~15).
  *
- * In user space, inline function base_mem_group_id_set() can be used with
- * numeric value (0~15) to generate a specific memory group ID.
- *
- * group_id is packed into in.flags of kbase_ioctl_mem_alloc to be delivered to
- * kernel space via ioctl and then kernel driver can use inline function
- * base_mem_group_id_get() to extract group_id from flags.
+ * base_mem_group_id_set() should be used to pack a memory group ID into a
+ * base_mem_alloc_flags value instead of accessing the bits directly.
+ * base_mem_group_id_get() should be used to extract the memory group ID from
+ * a base_mem_alloc_flags value.
  */
 #define BASEP_MEM_GROUP_ID_SHIFT 22
 #define BASE_MEM_GROUP_ID_MASK \
@@ -383,7 +381,7 @@ struct base_mem_import_user_buffer {
 #define BASE_MEM_TRACE_BUFFER_HANDLE           (2ull  << 12)
 #define BASE_MEM_MAP_TRACKING_HANDLE           (3ull  << 12)
 #define BASEP_MEM_WRITE_ALLOC_PAGES_HANDLE     (4ull  << 12)
-/* reserved handles ..-48<<PAGE_SHIFT> for future special handles */
+/* reserved handles ..-47<<PAGE_SHIFT> for future special handles */
 #define BASE_MEM_COOKIE_BASE                   (64ul  << 12)
 #define BASE_MEM_FIRST_FREE_ADDRESS            ((BITS_PER_LONG << 12) + \
 						BASE_MEM_COOKIE_BASE)
@@ -785,6 +783,14 @@ typedef u32 base_jd_core_req;
 #define BASE_JD_REQ_SKIP_CACHE_END ((base_jd_core_req)1 << 16)
 
 /**
+ * Request the atom be executed on a specific job slot.
+ *
+ * When this flag is specified, it takes precedence over any existing job slot
+ * selection logic.
+ */
+#define BASE_JD_REQ_JOB_SLOT ((base_jd_core_req)1 << 17)
+
+/**
  * These requirement bits are currently unused in base_jd_core_req
  */
 #define BASEP_JD_REQ_RESERVED \
@@ -793,7 +799,8 @@ typedef u32 base_jd_core_req;
 	BASE_JD_REQ_EVENT_COALESCE | \
 	BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_SPECIFIC_COHERENT_GROUP | \
 	BASE_JD_REQ_FS_AFBC | BASE_JD_REQ_PERMON | \
-	BASE_JD_REQ_SKIP_CACHE_START | BASE_JD_REQ_SKIP_CACHE_END))
+	BASE_JD_REQ_SKIP_CACHE_START | BASE_JD_REQ_SKIP_CACHE_END | \
+	BASE_JD_REQ_JOB_SLOT))
 
 /**
  * Mask of all bits in base_jd_core_req that control the type of the atom.
@@ -907,7 +914,7 @@ typedef struct base_jd_atom_v2 {
 	base_atom_id atom_number;	    /**< unique number to identify the atom */
 	base_jd_prio prio;                  /**< Atom priority. Refer to @ref base_jd_prio for more details */
 	u8 device_nr;			    /**< coregroup when BASE_JD_REQ_SPECIFIC_COHERENT_GROUP specified */
-	u8 padding[1];
+	u8 jobslot;			    /**< Job slot to use when BASE_JD_REQ_JOB_SLOT is specified */
 	base_jd_core_req core_req;          /**< core requirements */
 } base_jd_atom_v2;
 
@@ -1762,6 +1769,24 @@ static inline int base_context_mmu_group_id_get(
 
 #define BASE_TLSTREAM_FLAGS_MASK (BASE_TLSTREAM_ENABLE_LATENCY_TRACEPOINTS | \
 		BASE_TLSTREAM_JOB_DUMPING_ENABLED)
+
+/**
+ * A number of bit flags are defined for requesting cpu_gpu_timeinfo. These
+ * flags are also used, where applicable, for specifying which fields
+ * are valid following the request operation.
+ */
+
+/* For monotonic (counter) timefield */
+#define BASE_TIMEINFO_MONOTONIC_FLAG (1UL << 0)
+/* For system wide timestamp */
+#define BASE_TIMEINFO_TIMESTAMP_FLAG (1UL << 1)
+/* For GPU cycle counter */
+#define BASE_TIMEINFO_CYCLE_COUNTER_FLAG (1UL << 2)
+
+#define BASE_TIMEREQUEST_ALLOWED_FLAGS (\
+		BASE_TIMEINFO_MONOTONIC_FLAG | \
+		BASE_TIMEINFO_TIMESTAMP_FLAG | \
+		BASE_TIMEINFO_CYCLE_COUNTER_FLAG)
 
 
 #endif				/* _BASE_KERNEL_H_ */

@@ -382,6 +382,39 @@ static const struct kbase_ipa_group ipa_groups_def_g77[] = {
 	},
 };
 
+static const struct kbase_ipa_group ipa_groups_def_tbex[] = {
+	{
+		.name = "l2_access",
+		.default_value = 599800,
+		.op = kbase_g7x_sum_all_memsys_blocks,
+		.counter_block_offset = MEMSYS_L2_ANY_LOOKUP,
+	},
+	{
+		.name = "exec_instr_msg",
+		.default_value = 1830200,
+		.op = kbase_g7x_sum_all_shader_cores,
+		.counter_block_offset = SC_EXEC_INSTR_MSG,
+	},
+	{
+		.name = "exec_instr_fma",
+		.default_value = 407300,
+		.op = kbase_g7x_sum_all_shader_cores,
+		.counter_block_offset = SC_EXEC_INSTR_FMA,
+	},
+	{
+		.name = "tex_filt_num_operations",
+		.default_value = 224500,
+		.op = kbase_g7x_sum_all_shader_cores,
+		.counter_block_offset = SC_TEX_FILT_NUM_OPERATIONS,
+	},
+	{
+		.name = "gpu_active",
+		.default_value = 153800,
+		.op = kbase_g7x_jm_single_counter,
+		.counter_block_offset = JM_GPU_ACTIVE,
+	},
+};
+
 
 #define IPA_POWER_MODEL_OPS(gpu, init_token) \
 	const struct kbase_ipa_model_ops kbase_ ## gpu ## _ipa_model_ops = { \
@@ -415,6 +448,9 @@ STANDARD_POWER_MODEL(g76, 800);
 STANDARD_POWER_MODEL(g52_r1, 1000);
 STANDARD_POWER_MODEL(g51, 1000);
 STANDARD_POWER_MODEL(g77, 1000);
+STANDARD_POWER_MODEL(tbex, 1000);
 
 /* g52 is an alias of g76 (TNOX) for IPA */
 ALIAS_POWER_MODEL(g52, g76);
+/* tnax is an alias of g77 (TTRX) for IPA */
+ALIAS_POWER_MODEL(tnax, g77);

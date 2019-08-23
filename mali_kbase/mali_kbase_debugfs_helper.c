@@ -27,8 +27,6 @@
 
 #include "mali_kbase_debugfs_helper.h"
 
-#ifdef CONFIG_DEBUG_FS
-
 /* Arbitrary maximum size to prevent user space allocating too much kernel
  * memory
  */
@@ -183,5 +181,3 @@ int kbase_debugfs_helper_seq_read(struct seq_file *const sfile,
 	}
 	return 0;
 }
-
-#endif /* CONFIG_DEBUG_FS */

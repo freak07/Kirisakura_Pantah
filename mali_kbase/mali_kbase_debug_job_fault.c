@@ -89,11 +89,16 @@ static bool kbase_ctx_has_no_event_pending(struct kbase_context *kctx)
 static int wait_for_job_fault(struct kbase_device *kbdev)
 {
 #if KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE && \
-		KERNEL_VERSION(4, 15, 0) > LINUX_VERSION_CODE
-	if (!kbase_is_job_fault_event_pending(kbdev))
+	KERNEL_VERSION(4, 15, 0) > LINUX_VERSION_CODE
+	int ret = wait_event_interruptible_timeout(kbdev->job_fault_wq,
+			kbase_is_job_fault_event_pending(kbdev),
+			msecs_to_jiffies(2000));
+	if (ret == 0)
 		return -EAGAIN;
-	else
+	else if (ret > 0)
 		return 0;
+	else
+		return ret;
 #else
 	return wait_event_interruptible(kbdev->job_fault_wq,
 			kbase_is_job_fault_event_pending(kbdev));
@@ -162,24 +167,6 @@ static void kbase_job_fault_resume_event_cleanup(struct kbase_context *kctx)
 		kbase_jd_done_worker(&event->katom->work);
 	}
 
-}
-
-/* Remove all the failed atoms that belong to different contexts
- * Resume all the contexts that were suspend due to failed job
- */
-static void kbase_job_fault_event_cleanup(struct kbase_device *kbdev)
-{
-	struct list_head *event_list = &kbdev->job_fault_event_list;
-	unsigned long    flags;
-
-	spin_lock_irqsave(&kbdev->job_fault_event_lock, flags);
-	while (!list_empty(event_list)) {
-		kbase_job_fault_event_dequeue(kbdev, event_list);
-		spin_unlock_irqrestore(&kbdev->job_fault_event_lock, flags);
-		wake_up(&kbdev->job_fault_resume_wq);
-		spin_lock_irqsave(&kbdev->job_fault_event_lock, flags);
-	}
-	spin_unlock_irqrestore(&kbdev->job_fault_event_lock, flags);
 }
 
 static void kbase_job_fault_resume_worker(struct work_struct *data)
@@ -282,7 +269,7 @@ bool kbase_debug_job_fault_process(struct kbase_jd_atom *katom,
 	if (kbase_ctx_flag(kctx, KCTX_DYING))
 		return false;
 
-	if (kctx->kbdev->job_fault_debug == true) {
+	if (atomic_read(&kctx->kbdev->job_fault_debug) > 0) {
 
 		if (completion_code != BASE_JD_EVENT_DONE) {
 
@@ -428,12 +415,16 @@ static int debug_job_fault_open(struct inode *in, struct file *file)
 {
 	struct kbase_device *kbdev = in->i_private;
 
+	if (atomic_cmpxchg(&kbdev->job_fault_debug, 0, 1) == 1) {
+		dev_warn(kbdev->dev, "debug job fault is busy, only a single client is allowed");
+		return -EBUSY;
+	}
+
 	seq_open(file, &ops);
 
 	((struct seq_file *)file->private_data)->private = kbdev;
 	dev_info(kbdev->dev, "debug job fault seq open");
 
-	kbdev->job_fault_debug = true;
 
 	return 0;
 
@@ -442,15 +433,35 @@ static int debug_job_fault_open(struct inode *in, struct file *file)
 static int debug_job_fault_release(struct inode *in, struct file *file)
 {
 	struct kbase_device *kbdev = in->i_private;
+	struct list_head *event_list = &kbdev->job_fault_event_list;
+	unsigned long    flags;
 
 	seq_release(in, file);
 
-	kbdev->job_fault_debug = false;
+	spin_lock_irqsave(&kbdev->job_fault_event_lock, flags);
+
+	/* Disable job fault dumping. This will let kbase run jobs as normal,
+	 * without blocking waiting for a job_fault client to read failed jobs.
+	 *
+	 * After this a new client may open the file, and may re-enable job
+	 * fault dumping, but the job_fault_event_lock we hold here will block
+	 * that from interfering until after we've completed the cleanup.
+	 */
+	atomic_dec(&kbdev->job_fault_debug);
 
 	/* Clean the unprocessed job fault. After that, all the suspended
-	 * contexts could be rescheduled.
+	 * contexts could be rescheduled. Remove all the failed atoms that
+	 * belong to different contexts Resume all the contexts that were
+	 * suspend due to failed job.
 	 */
-	kbase_job_fault_event_cleanup(kbdev);
+	while (!list_empty(event_list)) {
+		kbase_job_fault_event_dequeue(kbdev, event_list);
+		spin_unlock_irqrestore(&kbdev->job_fault_event_lock, flags);
+		wake_up(&kbdev->job_fault_resume_wq);
+		spin_lock_irqsave(&kbdev->job_fault_event_lock, flags);
+	}
+
+	spin_unlock_irqrestore(&kbdev->job_fault_event_lock, flags);
 
 	dev_info(kbdev->dev, "debug job fault seq close");
 
@@ -470,7 +481,7 @@ static const struct file_operations kbasep_debug_job_fault_fops = {
  */
 void kbase_debug_job_fault_debugfs_init(struct kbase_device *kbdev)
 {
-	debugfs_create_file("job_fault", S_IRUGO,
+	debugfs_create_file("job_fault", 0400,
 			kbdev->mali_debugfs_directory, kbdev,
 			&kbasep_debug_job_fault_fops);
 }
@@ -490,7 +501,7 @@ int kbase_debug_job_fault_dev_init(struct kbase_device *kbdev)
 	if (!kbdev->job_fault_resume_workq)
 		return -ENOMEM;
 
-	kbdev->job_fault_debug = false;
+	atomic_set(&kbdev->job_fault_debug, 0);
 
 	return 0;
 }
@@ -545,8 +556,6 @@ void kbase_debug_job_fault_kctx_unblock(struct kbase_context *kctx)
 
 int kbase_debug_job_fault_dev_init(struct kbase_device *kbdev)
 {
-	kbdev->job_fault_debug = false;
-
 	return 0;
 }
 

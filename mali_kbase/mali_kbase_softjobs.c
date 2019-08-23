@@ -24,10 +24,8 @@
 
 #include <mali_kbase.h>
 
-#if defined(CONFIG_DMA_SHARED_BUFFER)
 #include <linux/dma-buf.h>
 #include <asm/cacheflush.h>
-#endif /* defined(CONFIG_DMA_SHARED_BUFFER) */
 #if defined(CONFIG_SYNC) || defined(CONFIG_SYNC_FILE)
 #include <mali_kbase_sync.h>
 #endif
@@ -774,9 +772,7 @@ int kbase_mem_copy_from_extres(struct kbase_context *kctx,
 	size_t to_copy = min(extres_size, buf_data->size);
 	struct kbase_mem_phy_alloc *gpu_alloc = buf_data->gpu_alloc;
 	int ret = 0;
-#ifdef CONFIG_DMA_SHARED_BUFFER
 	size_t dma_to_copy;
-#endif
 
 	KBASE_DEBUG_ASSERT(pages != NULL);
 
@@ -807,7 +803,6 @@ int kbase_mem_copy_from_extres(struct kbase_context *kctx,
 		break;
 	}
 	break;
-#ifdef CONFIG_DMA_SHARED_BUFFER
 	case KBASE_MEM_TYPE_IMPORTED_UMM: {
 		struct dma_buf *dma_buf = gpu_alloc->imported.umm.dma_buf;
 
@@ -847,7 +842,6 @@ int kbase_mem_copy_from_extres(struct kbase_context *kctx,
 				DMA_FROM_DEVICE);
 		break;
 	}
-#endif
 	default:
 		ret = -EINVAL;
 	}

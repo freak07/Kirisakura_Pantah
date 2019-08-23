@@ -26,8 +26,6 @@
 #include "mali_kbase_mem_pool_debugfs.h"
 #include "mali_kbase_debugfs_helper.h"
 
-#ifdef CONFIG_DEBUG_FS
-
 void kbase_mem_pool_debugfs_trim(void *const array, size_t const index,
 	size_t const value)
 {
@@ -183,5 +181,3 @@ void kbase_mem_pool_debugfs_init(struct dentry *parent,
 	debugfs_create_file("lp_mem_pool_max_size", S_IRUGO | S_IWUSR, parent,
 		&kctx->mem_pools.large, &kbase_mem_pool_debugfs_max_size_fops);
 }
-
-#endif /* CONFIG_DEBUG_FS */

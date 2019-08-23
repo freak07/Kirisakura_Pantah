@@ -75,6 +75,7 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat,
 	spin_lock_init(&kctx->mm_update_lock);
 	kctx->process_mm = NULL;
 	atomic_set(&kctx->nonmapped_pages, 0);
+	atomic_set(&kctx->permanent_mapped_pages, 0);
 	kctx->slots_pullable = 0;
 	kctx->tgid = current->tgid;
 	kctx->pid = current->pid;
