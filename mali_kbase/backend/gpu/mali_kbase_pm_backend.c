@@ -26,15 +26,15 @@
  */
 
 #include <mali_kbase.h>
-#include <mali_midg_regmap.h>
+#include <gpu/mali_kbase_gpu_regmap.h>
 #include <mali_kbase_config_defaults.h>
 
 #include <mali_kbase_pm.h>
 #include <mali_kbase_hwaccess_jm.h>
-#include <mali_kbase_hwcnt_context.h>
 #include <backend/gpu/mali_kbase_js_internal.h>
-#include <backend/gpu/mali_kbase_pm_internal.h>
 #include <backend/gpu/mali_kbase_jm_internal.h>
+#include <mali_kbase_hwcnt_context.h>
+#include <backend/gpu/mali_kbase_pm_internal.h>
 #include <backend/gpu/mali_kbase_devfreq.h>
 
 static void kbase_pm_gpu_poweroff_wait_wq(struct work_struct *data);
@@ -615,7 +615,7 @@ void kbase_pm_power_changed(struct kbase_device *kbdev)
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	kbase_pm_update_state(kbdev);
 
-	kbase_backend_slot_update(kbdev);
+		kbase_backend_slot_update(kbdev);
 
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }

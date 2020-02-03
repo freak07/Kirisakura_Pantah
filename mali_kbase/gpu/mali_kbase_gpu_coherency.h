@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2015 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2015-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -20,12 +20,12 @@
  *
  */
 
-#ifndef _MIDG_COHERENCY_H_
-#define _MIDG_COHERENCY_H_
+#ifndef _KBASE_GPU_COHERENCY_H_
+#define _KBASE_GPU_COHERENCY_H_
 
 #define COHERENCY_ACE_LITE 0
 #define COHERENCY_ACE      1
 #define COHERENCY_NONE     31
 #define COHERENCY_FEATURE_BIT(x) (1 << (x))
 
-#endif /* _MIDG_COHERENCY_H_ */
+#endif /* _KBASE_GPU_COHERENCY_H_ */

@@ -28,7 +28,7 @@
 
 #include <mali_base_hwconfig_features.h>
 #include <mali_base_hwconfig_issues.h>
-#include <mali_midg_regmap.h>
+#include "gpu/mali_kbase_gpu_regmap.h"
 #include "mali_kbase.h"
 #include "mali_kbase_hw.h"
 
@@ -68,9 +68,6 @@ void kbase_hw_set_features_mask(struct kbase_device *kbdev)
 	case GPU_ID2_PRODUCT_TBEX:
 		features = base_hw_features_tBEx;
 		break;
-	case GPU_ID2_PRODUCT_TULX:
-		features = base_hw_features_tULx;
-		break;
 	case GPU_ID2_PRODUCT_TDUX:
 		features = base_hw_features_tDUx;
 		break;
@@ -78,8 +75,8 @@ void kbase_hw_set_features_mask(struct kbase_device *kbdev)
 	case GPU_ID2_PRODUCT_LODX:
 		features = base_hw_features_tODx;
 		break;
-	case GPU_ID2_PRODUCT_TIDX:
-		features = base_hw_features_tIDx;
+	case GPU_ID2_PRODUCT_TGRX:
+		features = base_hw_features_tGRx;
 		break;
 	case GPU_ID2_PRODUCT_TVAX:
 		features = base_hw_features_tVAx;
@@ -198,10 +195,6 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 		  {GPU_ID2_VERSION_MAKE(1, 0, 0), base_hw_issues_tBEx_r1p0},
 		  {U32_MAX, NULL} } },
 
-		{GPU_ID2_PRODUCT_TULX,
-		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tULx_r0p0},
-		  {U32_MAX, NULL} } },
-
 		{GPU_ID2_PRODUCT_TDUX,
 		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tDUx_r0p0},
 		  {U32_MAX, NULL} } },
@@ -214,8 +207,8 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tODx_r0p0},
 		  {U32_MAX, NULL} } },
 
-		{GPU_ID2_PRODUCT_TIDX,
-		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tIDx_r0p0},
+		{GPU_ID2_PRODUCT_TGRX,
+		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tGRx_r0p0},
 		  {U32_MAX, NULL} } },
 
 		{GPU_ID2_PRODUCT_TVAX,
@@ -358,9 +351,6 @@ int kbase_hw_set_issues_mask(struct kbase_device *kbdev)
 		case GPU_ID2_PRODUCT_TBEX:
 			issues = base_hw_issues_model_tBEx;
 			break;
-		case GPU_ID2_PRODUCT_TULX:
-			issues = base_hw_issues_model_tULx;
-			break;
 		case GPU_ID2_PRODUCT_TDUX:
 			issues = base_hw_issues_model_tDUx;
 			break;
@@ -368,8 +358,8 @@ int kbase_hw_set_issues_mask(struct kbase_device *kbdev)
 		case GPU_ID2_PRODUCT_LODX:
 			issues = base_hw_issues_model_tODx;
 			break;
-		case GPU_ID2_PRODUCT_TIDX:
-			issues = base_hw_issues_model_tIDx;
+		case GPU_ID2_PRODUCT_TGRX:
+			issues = base_hw_issues_model_tGRx;
 			break;
 		case GPU_ID2_PRODUCT_TVAX:
 			issues = base_hw_issues_model_tVAx;

@@ -2585,7 +2585,6 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 			if (!kbase_jm_kick(kbdev, 1 << js))
 				/* No more jobs can be submitted on this slot */
 				js_mask &= ~(1 << js);
-
 			if (!kbase_ctx_flag(kctx, KCTX_PULLED)) {
 				bool pullable = kbase_js_ctx_pullable(kctx, js,
 						true);

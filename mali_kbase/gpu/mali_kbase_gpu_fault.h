@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2017, 2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -20,27 +20,17 @@
  *
  */
 
-/**
- * Power management configuration
- *
- * Attached value: pointer to @ref kbase_pm_callback_conf
- * Default value: See @ref kbase_pm_callback_conf
- */
-#define POWER_MANAGEMENT_CALLBACKS (&pm_callbacks)
+#ifndef _KBASE_GPU_FAULT_H_
+#define _KBASE_GPU_FAULT_H_
 
-/**
- * Platform specific configuration functions
+/** Returns the name associated with a Mali exception code
  *
- * Attached value: pointer to @ref kbase_platform_funcs_conf
- * Default value: See @ref kbase_platform_funcs_conf
- */
-#define PLATFORM_FUNCS (NULL)
-
-extern struct kbase_pm_callback_conf pm_callbacks;
-
-/**
- * Autosuspend delay
+ * @exception_code: exception code
  *
- * The delay time (in milliseconds) to be used for autosuspend
+ * This function is called from the interrupt handler when a GPU fault occurs.
+ *
+ * Return: name associated with the exception code
  */
-#define AUTO_SUSPEND_DELAY (100)
+const char *kbase_gpu_exception_name(u32 exception_code);
+
+#endif /* _KBASE_GPU_FAULT_H_ */

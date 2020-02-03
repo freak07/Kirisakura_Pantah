@@ -27,9 +27,10 @@
  */
 
 #include <mali_kbase.h>
-#include <mali_midg_regmap.h>
+#include <gpu/mali_kbase_gpu_regmap.h>
 #include <mali_kbase_gpuprops.h>
 #include <mali_kbase_hwaccess_gpuprops.h>
+#include <mali_kbase_config_defaults.h>
 #include "mali_kbase_ioctl.h"
 #include <linux/clk.h>
 #include <mali_kbase_pm_internal.h>
@@ -247,8 +248,8 @@ static void kbase_gpuprops_calculate_props(base_gpu_props * const gpu_props, str
 		gpu_props->thread_props.tls_alloc =
 				gpu_props->raw_props.thread_tls_alloc;
 
-	/* Workaround for GPU2019HW-509. MIDHARC-2364 was wrongfully applied
-	 * to tDUx GPUs.
+	/* MIDHARC-2364 was intended for tULx.
+	 * Workaround for the incorrectly applied THREAD_FEATURES to tDUx.
 	 */
 	gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
 	product_id = gpu_id & GPU_ID_VERSION_PRODUCT_ID;
@@ -597,6 +598,28 @@ int kbase_gpuprops_populate_user_buffer(struct kbase_device *kbdev)
 			return -EINVAL;
 		}
 	}
+
+	return 0;
+}
+
+void kbase_gpuprops_free_user_buffer(struct kbase_device *kbdev)
+{
+	kfree(kbdev->gpu_props.prop_buffer);
+}
+
+int kbase_device_populate_max_freq(struct kbase_device *kbdev)
+{
+	struct mali_base_gpu_core_props *core_props;
+
+	/* obtain max configured gpu frequency, if devfreq is enabled then
+	 * this will be overridden by the highest operating point found
+	 */
+	core_props = &(kbdev->gpu_props.props.core_props);
+#ifdef GPU_FREQ_KHZ_MAX
+	core_props->gpu_freq_khz_max = GPU_FREQ_KHZ_MAX;
+#else
+	core_props->gpu_freq_khz_max = DEFAULT_GPU_FREQ_KHZ_MAX;
+#endif
 
 	return 0;
 }

@@ -67,55 +67,52 @@ enum tl_msg_id_obj {
 	KBASE_TL_EVENT_ATOM_SOFTJOB_START,
 	KBASE_TL_EVENT_ATOM_SOFTJOB_END,
 	KBASE_JD_GPU_SOFT_RESET,
-	KBASE_TL_NEW_KCPUQUEUE,
-	KBASE_TL_RET_KCPUQUEUE_CTX,
-	KBASE_TL_DEL_KCPUQUEUE,
-	KBASE_TL_NRET_KCPUQUEUE_CTX,
-	KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL,
-	KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_FENCE_WAIT,
-	KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT,
-	KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT,
-	KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT,
-	KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET,
-	KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET,
-	KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET,
-	KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY,
-	KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY,
-	KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY,
-	KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_MAP_IMPORT,
-	KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT,
-	KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE,
-	KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC,
-	KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC,
-	KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC,
-	KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE,
-	KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE,
-	KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_WAIT_START,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_WAIT_END,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_WAIT_START,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_WAIT_END,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_SET_START,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_SET_END,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_DEBUGCOPY_START,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_DEBUGCOPY_END,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_MAP_IMPORT_START,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_MAP_IMPORT_END,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_ALLOC_START,
-	KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END,
-	KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END,
-	KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_FREE_START,
-	KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END,
-	KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END,
-	KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END,
-	KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_ERRORBARRIER,
+	KBASE_TL_KBASE_NEW_KCPUQUEUE,
+	KBASE_TL_KBASE_DEL_KCPUQUEUE,
+	KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL,
+	KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_WAIT,
+	KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT,
+	KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT,
+	KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT,
+	KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET,
+	KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET,
+	KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET,
+	KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY,
+	KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY,
+	KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY,
+	KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_MAP_IMPORT,
+	KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT,
+	KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE,
+	KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC,
+	KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC,
+	KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC,
+	KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE,
+	KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE,
+	KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_START,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_END,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_START,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_END,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_SET,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_START,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_END,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_START,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_END,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_ALLOC_START,
+	KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END,
+	KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END,
+	KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_FREE_START,
+	KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END,
+	KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END,
+	KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END,
+	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_ERRORBARRIER,
 	KBASE_OBJ_MSG_COUNT,
 };
 
@@ -271,199 +268,187 @@ enum tl_msg_id_aux {
 		"gpu soft reset", \
 		"@p", \
 		"gpu") \
-	TP_DESC(KBASE_TL_NEW_KCPUQUEUE, \
+	TP_DESC(KBASE_TL_KBASE_NEW_KCPUQUEUE, \
 		"New KCPU Queue", \
 		"@ppI", \
 		"kcpu_queue,ctx,kcpuq_num_pending_cmds") \
-	TP_DESC(KBASE_TL_RET_KCPUQUEUE_CTX, \
-		"Context retains KCPU Queue", \
-		"@pp", \
-		"kcpu_queue,ctx") \
-	TP_DESC(KBASE_TL_DEL_KCPUQUEUE, \
+	TP_DESC(KBASE_TL_KBASE_DEL_KCPUQUEUE, \
 		"Delete KCPU Queue", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_NRET_KCPUQUEUE_CTX, \
-		"Context releases KCPU Queue", \
-		"@pp", \
-		"kcpu_queue,ctx") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL, \
 		"KCPU Queue enqueues Signal on Fence", \
 		"@pp", \
 		"kcpu_queue,fence") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_FENCE_WAIT, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_WAIT, \
 		"KCPU Queue enqueues Wait on Fence", \
 		"@pp", \
 		"kcpu_queue,fence") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
 		"Begin array of KCPU Queue enqueues Wait on Cross Queue Sync Object", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
 		"Array item of KCPU Queue enqueues Wait on Cross Queue Sync Object", \
 		"@pLI", \
 		"kcpu_queue,cqs_obj_gpu_addr,cqs_obj_compare_value") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
 		"End array of KCPU Queue enqueues Wait on Cross Queue Sync Object", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET, \
 		"Begin array of KCPU Queue enqueues Set on Cross Queue Sync Object", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET, \
 		"Array item of KCPU Queue enqueues Set on Cross Queue Sync Object", \
 		"@pL", \
 		"kcpu_queue,cqs_obj_gpu_addr") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET, \
 		"End array of KCPU Queue enqueues Set on Cross Queue Sync Object", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
 		"Begin array of KCPU Queue enqueues Debug Copy", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
 		"Array item of KCPU Queue enqueues Debug Copy", \
 		"@pL", \
 		"kcpu_queue,debugcopy_dst_size") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
 		"End array of KCPU Queue enqueues Debug Copy", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_MAP_IMPORT, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_MAP_IMPORT, \
 		"KCPU Queue enqueues Map Import", \
 		"@pL", \
 		"kcpu_queue,map_import_buf_gpu_addr") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT, \
 		"KCPU Queue enqueues Unmap Import", \
 		"@pL", \
 		"kcpu_queue,map_import_buf_gpu_addr") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE, \
 		"KCPU Queue enqueues Unmap Import ignoring reference count", \
 		"@pL", \
 		"kcpu_queue,map_import_buf_gpu_addr") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
 		"Begin array of KCPU Queue enqueues JIT Alloc", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
 		"Array item of KCPU Queue enqueues JIT Alloc", \
 		"@pLLLLIIIII", \
 		"kcpu_queue,jit_alloc_gpu_alloc_addr_dest,jit_alloc_va_pages,jit_alloc_commit_pages,jit_alloc_extent,jit_alloc_jit_id,jit_alloc_bin_id,jit_alloc_max_allocations,jit_alloc_flags,jit_alloc_usage_id") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
 		"End array of KCPU Queue enqueues JIT Alloc", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE, \
 		"Begin array of KCPU Queue enqueues JIT Free", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE, \
 		"Array item of KCPU Queue enqueues JIT Free", \
 		"@pI", \
 		"kcpu_queue,jit_alloc_jit_id") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE, \
 		"End array of KCPU Queue enqueues JIT Free", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START, \
 		"KCPU Queue starts a Signal on Fence", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END, \
 		"KCPU Queue ends a Signal on Fence", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_WAIT_START, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_START, \
 		"KCPU Queue starts a Wait on Fence", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_WAIT_END, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_END, \
 		"KCPU Queue ends a Wait on Fence", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_WAIT_START, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_START, \
 		"KCPU Queue starts a Wait on an array of Cross Queue Sync Objects", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_WAIT_END, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_END, \
 		"KCPU Queue ends a Wait on an array of Cross Queue Sync Objects", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_SET_START, \
-		"KCPU Queue starts a Set on an array of Cross Queue Sync Objects", \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_SET, \
+		"KCPU Queue executes a Set on an array of Cross Queue Sync Objects", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_SET_END, \
-		"KCPU Queue ends a Set on an array of Cross Queue Sync Objects", \
-		"@p", \
-		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_DEBUGCOPY_START, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_START, \
 		"KCPU Queue starts an array of Debug Copys", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_DEBUGCOPY_END, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_END, \
 		"KCPU Queue ends an array of Debug Copys", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_MAP_IMPORT_START, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_START, \
 		"KCPU Queue starts a Map Import", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_MAP_IMPORT_END, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_END, \
 		"KCPU Queue ends a Map Import", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START, \
 		"KCPU Queue starts an Unmap Import", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END, \
 		"KCPU Queue ends an Unmap Import", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START, \
 		"KCPU Queue starts an Unmap Import ignoring reference count", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END, \
 		"KCPU Queue ends an Unmap Import ignoring reference count", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_ALLOC_START, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_ALLOC_START, \
 		"KCPU Queue starts an array of JIT Allocs", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
 		"Begin array of KCPU Queue ends an array of JIT Allocs", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
 		"Array item of KCPU Queue ends an array of JIT Allocs", \
 		"@pLL", \
 		"kcpu_queue,jit_alloc_gpu_alloc_addr,jit_alloc_mmu_flags") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
 		"End array of KCPU Queue ends an array of JIT Allocs", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_FREE_START, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_FREE_START, \
 		"KCPU Queue starts an array of JIT Frees", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
 		"Begin array of KCPU Queue ends an array of JIT Frees", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
 		"Array item of KCPU Queue ends an array of JIT Frees", \
 		"@pL", \
 		"kcpu_queue,jit_free_pages_used") \
-	TP_DESC(KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
+	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
 		"End array of KCPU Queue ends an array of JIT Frees", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_ERRORBARRIER, \
+	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_ERRORBARRIER, \
 		"KCPU Queue executes an Error Barrier", \
 		"@p", \
 		"kcpu_queue") \
@@ -1736,13 +1721,13 @@ void __kbase_tlstream_aux_event_job_slot(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_new_kcpuqueue(
+void __kbase_tlstream_tl_kbase_new_kcpuqueue(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	const void *ctx,
 	u32 kcpuq_num_pending_cmds)
 {
-	const u32 msg_id = KBASE_TL_NEW_KCPUQUEUE;
+	const u32 msg_id = KBASE_TL_KBASE_NEW_KCPUQUEUE;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(ctx)
@@ -1766,37 +1751,11 @@ void __kbase_tlstream_tl_new_kcpuqueue(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_ret_kcpuqueue_ctx(
-	struct kbase_tlstream *stream,
-	const void *kcpu_queue,
-	const void *ctx)
-{
-	const u32 msg_id = KBASE_TL_RET_KCPUQUEUE_CTX;
-	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
-		+ sizeof(kcpu_queue)
-		+ sizeof(ctx)
-		;
-	char *buffer;
-	unsigned long acq_flags;
-	size_t pos = 0;
-
-	buffer = kbase_tlstream_msgbuf_acquire(stream, msg_size, &acq_flags);
-
-	pos = kbasep_serialize_bytes(buffer, pos, &msg_id, sizeof(msg_id));
-	pos = kbasep_serialize_timestamp(buffer, pos);
-	pos = kbasep_serialize_bytes(buffer,
-		pos, &kcpu_queue, sizeof(kcpu_queue));
-	pos = kbasep_serialize_bytes(buffer,
-		pos, &ctx, sizeof(ctx));
-
-	kbase_tlstream_msgbuf_release(stream, acq_flags);
-}
-
-void __kbase_tlstream_tl_del_kcpuqueue(
+void __kbase_tlstream_tl_kbase_del_kcpuqueue(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_DEL_KCPUQUEUE;
+	const u32 msg_id = KBASE_TL_KBASE_DEL_KCPUQUEUE;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -1814,38 +1773,12 @@ void __kbase_tlstream_tl_del_kcpuqueue(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_nret_kcpuqueue_ctx(
-	struct kbase_tlstream *stream,
-	const void *kcpu_queue,
-	const void *ctx)
-{
-	const u32 msg_id = KBASE_TL_NRET_KCPUQUEUE_CTX;
-	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
-		+ sizeof(kcpu_queue)
-		+ sizeof(ctx)
-		;
-	char *buffer;
-	unsigned long acq_flags;
-	size_t pos = 0;
-
-	buffer = kbase_tlstream_msgbuf_acquire(stream, msg_size, &acq_flags);
-
-	pos = kbasep_serialize_bytes(buffer, pos, &msg_id, sizeof(msg_id));
-	pos = kbasep_serialize_timestamp(buffer, pos);
-	pos = kbasep_serialize_bytes(buffer,
-		pos, &kcpu_queue, sizeof(kcpu_queue));
-	pos = kbasep_serialize_bytes(buffer,
-		pos, &ctx, sizeof(ctx));
-
-	kbase_tlstream_msgbuf_release(stream, acq_flags);
-}
-
-void __kbase_tlstream_tl_event_kcpuqueue_enqueue_fence_signal(
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_fence_signal(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	const void *fence)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(fence)
@@ -1866,12 +1799,12 @@ void __kbase_tlstream_tl_event_kcpuqueue_enqueue_fence_signal(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_enqueue_fence_wait(
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_fence_wait(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	const void *fence)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_FENCE_WAIT;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_WAIT;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(fence)
@@ -1892,11 +1825,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_enqueue_fence_wait(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_cqs_wait(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_cqs_wait(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -1914,13 +1847,13 @@ void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_cqs_wait(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_cqs_wait(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_cqs_wait(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 cqs_obj_gpu_addr,
 	u32 cqs_obj_compare_value)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(cqs_obj_gpu_addr)
@@ -1944,11 +1877,11 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_cqs_wait(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_cqs_wait(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_cqs_wait(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -1966,11 +1899,11 @@ void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_cqs_wait(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_cqs_set(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_cqs_set(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -1988,12 +1921,12 @@ void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_cqs_set(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_cqs_set(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_cqs_set(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 cqs_obj_gpu_addr)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(cqs_obj_gpu_addr)
@@ -2014,11 +1947,11 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_cqs_set(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_cqs_set(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_cqs_set(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2036,11 +1969,11 @@ void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_cqs_set(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_debugcopy(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_debugcopy(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2058,12 +1991,12 @@ void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_debugcopy(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_debugcopy(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_debugcopy(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 debugcopy_dst_size)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(debugcopy_dst_size)
@@ -2084,11 +2017,11 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_debugcopy(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_debugcopy(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_debugcopy(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2106,12 +2039,12 @@ void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_debugcopy(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_enqueue_map_import(
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_map_import(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 map_import_buf_gpu_addr)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_MAP_IMPORT;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_MAP_IMPORT;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(map_import_buf_gpu_addr)
@@ -2132,12 +2065,12 @@ void __kbase_tlstream_tl_event_kcpuqueue_enqueue_map_import(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_enqueue_unmap_import(
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_unmap_import(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 map_import_buf_gpu_addr)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(map_import_buf_gpu_addr)
@@ -2158,12 +2091,12 @@ void __kbase_tlstream_tl_event_kcpuqueue_enqueue_unmap_import(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_enqueue_unmap_import_force(
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_unmap_import_force(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 map_import_buf_gpu_addr)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(map_import_buf_gpu_addr)
@@ -2184,11 +2117,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_enqueue_unmap_import_force(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_jit_alloc(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_jit_alloc(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2206,7 +2139,7 @@ void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_jit_alloc(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_jit_alloc(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_jit_alloc(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 jit_alloc_gpu_alloc_addr_dest,
@@ -2219,7 +2152,7 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_jit_alloc(
 	u32 jit_alloc_flags,
 	u32 jit_alloc_usage_id)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(jit_alloc_gpu_alloc_addr_dest)
@@ -2264,11 +2197,11 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_jit_alloc(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_jit_alloc(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_jit_alloc(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2286,11 +2219,11 @@ void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_jit_alloc(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_jit_free(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_jit_free(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2308,12 +2241,12 @@ void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_jit_free(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_jit_free(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_jit_free(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u32 jit_alloc_jit_id)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(jit_alloc_jit_id)
@@ -2334,11 +2267,11 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_jit_free(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_jit_free(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_jit_free(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2356,11 +2289,11 @@ void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_jit_free(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_signal_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_signal_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2378,11 +2311,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_signal_start(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_signal_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_signal_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2400,11 +2333,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_signal_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_wait_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_wait_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_WAIT_START;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_START;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2422,11 +2355,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_wait_start(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_wait_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_wait_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_WAIT_END;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2444,11 +2377,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_wait_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_wait_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_wait_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_WAIT_START;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_START;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2466,11 +2399,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_wait_start(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_wait_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_wait_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_WAIT_END;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2488,11 +2421,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_wait_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_set_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_set(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_SET_START;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_SET;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2510,11 +2443,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_set_start(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_set_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_debugcopy_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_SET_END;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_START;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2532,11 +2465,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_set_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_debugcopy_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_debugcopy_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_DEBUGCOPY_START;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2554,11 +2487,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_debugcopy_start(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_debugcopy_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_map_import_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_DEBUGCOPY_END;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_START;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2576,11 +2509,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_debugcopy_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_map_import_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_map_import_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_MAP_IMPORT_START;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2598,11 +2531,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_map_import_start(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_map_import_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_MAP_IMPORT_END;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2620,11 +2553,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_map_import_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2642,11 +2575,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_start(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_force_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2664,11 +2597,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_force_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_force_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2686,11 +2619,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_force_start(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_force_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_jit_alloc_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_ALLOC_START;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2708,11 +2641,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_force_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_jit_alloc_start(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_execute_jit_alloc_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_ALLOC_START;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2730,35 +2663,13 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_jit_alloc_start(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_execute_jit_alloc_end(
-	struct kbase_tlstream *stream,
-	const void *kcpu_queue)
-{
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END;
-	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
-		+ sizeof(kcpu_queue)
-		;
-	char *buffer;
-	unsigned long acq_flags;
-	size_t pos = 0;
-
-	buffer = kbase_tlstream_msgbuf_acquire(stream, msg_size, &acq_flags);
-
-	pos = kbasep_serialize_bytes(buffer, pos, &msg_id, sizeof(msg_id));
-	pos = kbasep_serialize_timestamp(buffer, pos);
-	pos = kbasep_serialize_bytes(buffer,
-		pos, &kcpu_queue, sizeof(kcpu_queue));
-
-	kbase_tlstream_msgbuf_release(stream, acq_flags);
-}
-
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_alloc_end(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_execute_jit_alloc_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 jit_alloc_gpu_alloc_addr,
 	u64 jit_alloc_mmu_flags)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(jit_alloc_gpu_alloc_addr)
@@ -2782,11 +2693,11 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_alloc_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_alloc_end(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_execute_jit_alloc_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2804,11 +2715,11 @@ void __kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_alloc_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_jit_free_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_jit_free_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_FREE_START;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_FREE_START;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2826,11 +2737,11 @@ void __kbase_tlstream_tl_event_kcpuqueue_execute_jit_free_start(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_execute_jit_free_end(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_execute_jit_free_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2848,12 +2759,12 @@ void __kbase_tlstream_tl_event_array_begin_kcpuqueue_execute_jit_free_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_free_end(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_execute_jit_free_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 jit_free_pages_used)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		+ sizeof(jit_free_pages_used)
@@ -2874,11 +2785,11 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_free_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_free_end(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_execute_jit_free_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END;
+	const u32 msg_id = KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;
@@ -2896,11 +2807,11 @@ void __kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_free_end(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
-void __kbase_tlstream_tl_event_kcpuqueue_execute_errorbarrier(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_errorbarrier(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue)
 {
-	const u32 msg_id = KBASE_TL_EVENT_KCPUQUEUE_EXECUTE_ERRORBARRIER;
+	const u32 msg_id = KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_ERRORBARRIER;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
 		;

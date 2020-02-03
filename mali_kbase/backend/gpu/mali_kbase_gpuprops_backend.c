@@ -122,4 +122,3 @@ void kbase_backend_gpuprops_get_l2_features(struct kbase_device *kbdev,
 				GPU_CONTROL_REG(L2_FEATURES));
 	}
 }
-

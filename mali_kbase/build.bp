@@ -87,6 +87,10 @@ bob_kernel_module {
         "platform/*/*.h",
         "platform/*/Kbuild",
         "thirdparty/*.c",
+        "device/*.c",
+        "device/*.h",
+        "gpu/*.c",
+        "gpu/*.h",
     ],
     kbuild_options: [
         "CONFIG_MALI_KUTF=n",
@@ -120,8 +124,19 @@ bob_kernel_module {
     mali_hw_errata_1485982_use_clock_alternative: {
         kbuild_options: ["CONFIG_MALI_HW_ERRATA_1485982_USE_CLOCK_ALTERNATIVE=y"],
     },
+    gpu_has_job_manager: {
+        srcs: [
+            "jm/*.h",
+            "device/backend/*_jm.c",
+            "gpu/backend/*_jm.c",
+            "gpu/backend/*_jm.h",
+         ],
+    },
     gpu_has_csf: {
         srcs: [
+            "device/backend/*_csf.c",
+            "gpu/backend/*_csf.c",
+            "gpu/backend/*_csf.h",
             "csf/*.c",
             "csf/*.h",
             "csf/Kbuild",

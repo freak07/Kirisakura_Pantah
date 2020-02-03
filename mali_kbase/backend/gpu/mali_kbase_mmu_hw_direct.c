@@ -29,41 +29,61 @@
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <mali_kbase_as_fault_debugfs.h>
 
-static inline u64 lock_region(struct kbase_device *kbdev, u64 pfn,
-		u32 num_pages)
+/**
+ * lock_region() - Generate lockaddr to lock memory region in MMU
+ * @pfn:       Starting page frame number of the region to lock
+ * @num_pages: Number of pages to lock. It must be greater than 0.
+ * @lockaddr:  Address and size of memory region to lock
+ *
+ * The lockaddr value is a combination of the starting address and
+ * the size of the region that encompasses all the memory pages to lock.
+ *
+ * The size is expressed as a logarithm: it is represented in a way
+ * that is compatible with the HW specification and it also determines
+ * how many of the lowest bits of the address are cleared.
+ *
+ * Return: 0 if success, or an error code on failure.
+ */
+static int lock_region(u64 pfn, u32 num_pages, u64 *lockaddr)
 {
-	u64 region;
+	const u64 lockaddr_base = pfn << PAGE_SHIFT;
+	u64 lockaddr_size_log2, region_frame_number_start,
+		region_frame_number_end;
 
-	/* can't lock a zero sized range */
-	KBASE_DEBUG_ASSERT(num_pages);
+	if (num_pages == 0)
+		return -EINVAL;
 
-	region = pfn << PAGE_SHIFT;
-	/*
-	 * fls returns (given the ASSERT above):
-	 * 1 .. 32
-	 *
-	 * 10 + fls(num_pages)
-	 * results in the range (11 .. 42)
+	/* The size is expressed as a logarithm and should take into account
+	 * the possibility that some pages might spill into the next region.
 	 */
+	lockaddr_size_log2 = fls(num_pages) + PAGE_SHIFT - 1;
 
-	/* gracefully handle num_pages being zero */
-	if (0 == num_pages) {
-		region |= KBASE_LOCK_REGION_MIN_SIZE;
-	} else {
-		u8 region_width;
+	/* Round up if the number of pages is not a power of 2. */
+	if (num_pages != ((u32)1 << (lockaddr_size_log2 - PAGE_SHIFT)))
+		lockaddr_size_log2 += 1;
 
-		region_width = 10 + fls(num_pages);
-		if (num_pages != (1ul << (region_width - 11))) {
-			/* not pow2, so must go up to the next pow2 */
-			region_width += 1;
-		}
-		region_width = MAX(region_width, KBASE_LOCK_REGION_MIN_SIZE);
+	/* Round up if some memory pages spill into the next region. */
+	region_frame_number_start = pfn >> (lockaddr_size_log2 - PAGE_SHIFT);
+	region_frame_number_end =
+	    (pfn + num_pages - 1) >> (lockaddr_size_log2 - PAGE_SHIFT);
 
-		KBASE_DEBUG_ASSERT(region_width <= KBASE_LOCK_REGION_MAX_SIZE);
-		region |= region_width;
-	}
+	if (region_frame_number_start < region_frame_number_end)
+		lockaddr_size_log2 += 1;
 
-	return region;
+	/* Represent the size according to the HW specification. */
+	lockaddr_size_log2 = MAX(lockaddr_size_log2,
+		KBASE_LOCK_REGION_MIN_SIZE_LOG2);
+
+	if (lockaddr_size_log2 > KBASE_LOCK_REGION_MAX_SIZE_LOG2)
+		return -EINVAL;
+
+	/* The lowest bits are cleared and then set to size - 1 to represent
+	 * the size in a way that is compatible with the HW specification.
+	 */
+	*lockaddr = lockaddr_base & ~((1ull << lockaddr_size_log2) - 1);
+	*lockaddr |= lockaddr_size_log2 - 1;
+
+	return 0;
 }
 
 static int wait_ready(struct kbase_device *kbdev,
@@ -107,9 +127,6 @@ static void validate_protected_page_fault(struct kbase_device *kbdev)
 	 * fault addresses unless it has protected debug mode and protected
 	 * debug mode is turned on */
 	u32 protected_debug_mode = 0;
-
-	if (!kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_PROTECTED_MODE))
-		return;
 
 	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_PROTECTED_DEBUG_MODE)) {
 		protected_debug_mode = kbase_reg_read(kbdev,
@@ -300,20 +317,26 @@ int kbase_mmu_hw_do_operation(struct kbase_device *kbdev, struct kbase_as *as,
 		/* Unlock doesn't require a lock first */
 		ret = write_cmd(kbdev, as->number, AS_COMMAND_UNLOCK);
 	} else {
-		u64 lock_addr = lock_region(kbdev, vpfn, nr);
+		u64 lock_addr;
 
-		/* Lock the region that needs to be updated */
-		kbase_reg_write(kbdev, MMU_AS_REG(as->number, AS_LOCKADDR_LO),
+		ret = lock_region(vpfn, nr, &lock_addr);
+
+		if (!ret) {
+			/* Lock the region that needs to be updated */
+			kbase_reg_write(kbdev,
+				MMU_AS_REG(as->number, AS_LOCKADDR_LO),
 				lock_addr & 0xFFFFFFFFUL);
-		kbase_reg_write(kbdev, MMU_AS_REG(as->number, AS_LOCKADDR_HI),
+			kbase_reg_write(kbdev,
+				MMU_AS_REG(as->number, AS_LOCKADDR_HI),
 				(lock_addr >> 32) & 0xFFFFFFFFUL);
-		write_cmd(kbdev, as->number, AS_COMMAND_LOCK);
+			write_cmd(kbdev, as->number, AS_COMMAND_LOCK);
 
-		/* Run the MMU operation */
-		write_cmd(kbdev, as->number, op);
+			/* Run the MMU operation */
+			write_cmd(kbdev, as->number, op);
 
-		/* Wait for the flush to complete */
-		ret = wait_ready(kbdev, as->number);
+			/* Wait for the flush to complete */
+			ret = wait_ready(kbdev, as->number);
+		}
 	}
 
 	return ret;

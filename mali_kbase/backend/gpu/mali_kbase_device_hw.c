@@ -25,6 +25,7 @@
  *
  */
 #include <mali_kbase.h>
+#include <gpu/mali_kbase_gpu_fault.h>
 #include <backend/gpu/mali_kbase_instr_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
@@ -143,8 +144,8 @@ void kbase_io_history_dump(struct kbase_device *kbdev)
 			&h->buf[(h->count - iters + i) % h->size];
 		char const access = (io->addr & 1) ? 'w' : 'r';
 
-		dev_err(kbdev->dev, "%6i: %c: reg 0x%p val %08x\n", i, access,
-				(void *)(io->addr & ~0x1), io->value);
+		dev_err(kbdev->dev, "%6i: %c: reg 0x%016lx val %08x\n", i,
+			access, (unsigned long)(io->addr & ~0x1), io->value);
 	}
 
 	spin_unlock_irqrestore(&h->lock, flags);
@@ -203,23 +204,19 @@ KBASE_EXPORT_TEST_API(kbase_reg_read);
  */
 static void kbase_report_gpu_fault(struct kbase_device *kbdev, int multiple)
 {
-	u32 gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
-	u32 status = kbase_reg_read(kbdev,
-				GPU_CONTROL_REG(GPU_FAULTSTATUS));
+	u32 status = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_FAULTSTATUS));
 	u64 address = (u64) kbase_reg_read(kbdev,
 			GPU_CONTROL_REG(GPU_FAULTADDRESS_HI)) << 32;
 
 	address |= kbase_reg_read(kbdev,
 			GPU_CONTROL_REG(GPU_FAULTADDRESS_LO));
 
-	if ((gpu_id & GPU_ID2_PRODUCT_MODEL) != GPU_ID2_PRODUCT_TULX) {
-		dev_warn(kbdev->dev, "GPU Fault 0x%08x (%s) at 0x%016llx",
-			status,
-			kbase_exception_name(kbdev, status & 0xFF),
-			address);
-		if (multiple)
-			dev_warn(kbdev->dev, "There were multiple GPU faults - some have not been reported\n");
-	}
+	dev_warn(kbdev->dev, "GPU Fault 0x%08x (%s) at 0x%016llx",
+		status,
+		kbase_gpu_exception_name(status & 0xFF),
+		address);
+	if (multiple)
+		dev_warn(kbdev->dev, "There were multiple GPU faults - some have not been reported\n");
 }
 
 static bool kbase_gpu_fault_interrupt(struct kbase_device *kbdev, int multiple)

@@ -27,7 +27,7 @@
  */
 
 #include <mali_kbase.h>
-#include <mali_midg_regmap.h>
+#include <gpu/mali_kbase_gpu_regmap.h>
 #include <mali_kbase_hwaccess_instr.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_instr_internal.h>

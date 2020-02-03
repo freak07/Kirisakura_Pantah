@@ -64,11 +64,11 @@
 #include "mali_kbase_mem.h"
 #include "mali_kbase_gpu_memory_debugfs.h"
 #include "mali_kbase_mem_profile_debugfs.h"
+#include "mali_kbase_gpuprops.h"
+#include "mali_kbase_ioctl.h"
 #include "mali_kbase_debug_job_fault.h"
 #include "mali_kbase_jd_debugfs.h"
-#include "mali_kbase_gpuprops.h"
 #include "mali_kbase_jm.h"
-#include "mali_kbase_ioctl.h"
 
 #include "ipa/mali_kbase_ipa.h"
 
@@ -97,16 +97,8 @@ struct kbase_device *kbase_device_alloc(void);
 * been setup before calling kbase_device_init
 */
 
-/*
-* API to acquire device list semaphore and return pointer
-* to the device list head
-*/
-const struct list_head *kbase_dev_list_get(void);
-/* API to release the device list semaphore */
-void kbase_dev_list_put(const struct list_head *dev_list);
-
-int kbase_device_init(struct kbase_device * const kbdev);
-void kbase_device_term(struct kbase_device *kbdev);
+int kbase_device_misc_init(struct kbase_device *kbdev);
+void kbase_device_misc_term(struct kbase_device *kbdev);
 void kbase_device_free(struct kbase_device *kbdev);
 int kbase_device_has_feature(struct kbase_device *kbdev, u32 feature);
 
@@ -155,6 +147,32 @@ void kbase_release_device(struct kbase_device *kbdev);
 unsigned long kbase_context_get_unmapped_area(struct kbase_context *kctx,
 		const unsigned long addr, const unsigned long len,
 		const unsigned long pgoff, const unsigned long flags);
+
+
+int assign_irqs(struct kbase_device *kbdev);
+
+int kbase_sysfs_init(struct kbase_device *kbdev);
+void kbase_sysfs_term(struct kbase_device *kbdev);
+
+void kbase_device_debugfs_term(struct kbase_device *kbdev);
+
+int kbase_protected_mode_init(struct kbase_device *kbdev);
+void kbase_protected_mode_term(struct kbase_device *kbdev);
+
+int power_control_init(struct kbase_device *kbdev);
+void power_control_term(struct kbase_device *kbdev);
+
+int kbase_device_debugfs_init(struct kbase_device *kbdev);
+
+int registers_map(struct kbase_device *kbdev);
+void registers_unmap(struct kbase_device *kbdev);
+
+int kbase_device_coherency_init(struct kbase_device *kbdev);
+
+#ifdef CONFIG_MALI_BUSLOG
+int buslog_init(struct kbase_device *kbdev);
+void buslog_term(struct kbase_device *kbdev);
+#endif
 
 int kbase_jd_init(struct kbase_context *kctx);
 void kbase_jd_exit(struct kbase_context *kctx);
@@ -243,6 +261,7 @@ void kbase_job_check_enter_disjoint(struct kbase_device *kbdev, u32 action,
 void kbase_job_check_leave_disjoint(struct kbase_device *kbdev,
 		struct kbase_jd_atom *target_katom);
 
+
 void kbase_event_post(struct kbase_context *ctx, struct kbase_jd_atom *event);
 int kbase_event_dequeue(struct kbase_context *ctx, struct base_jd_event_v2 *uevent);
 int kbase_event_pending(struct kbase_context *ctx);
@@ -289,23 +308,6 @@ static inline void kbase_free_user_buffer(
 }
 
 /**
- * kbase_mem_copy_from_extres_page() - Copy pages from external resources.
- *
- * @kctx:		kbase context within which the copying is to take place.
- * @extres_pages:	Pointer to the pages which correspond to the external
- *			resources from which the copying will take place.
- * @pages:		Pointer to the pages to which the content is to be
- *			copied from the provided external resources.
- * @nr_pages:		Number of pages to copy.
- * @target_page_nr:	Number of target pages which will be used for copying.
- * @offset:		Offset into the target pages from which the copying
- *			is to be performed.
- * @to_copy:		Size of the chunk to be copied, in bytes.
- */
-void kbase_mem_copy_from_extres_page(struct kbase_context *kctx,
-		void *extres_page, struct page **pages, unsigned int nr_pages,
-		unsigned int *target_page_nr, size_t offset, size_t *to_copy);
-/**
  * kbase_mem_copy_from_extres() - Copy from external resources.
  *
  * @kctx:	kbase context within which the copying is to take place.
@@ -332,18 +334,6 @@ void kbasep_soft_job_timeout_worker(struct timer_list *timer);
 void kbasep_complete_triggered_soft_events(struct kbase_context *kctx, u64 evt);
 
 void kbasep_as_do_poke(struct work_struct *work);
-
-/** Returns the name associated with a Mali exception code
- *
- * This function is called from the interrupt handler when a GPU fault occurs.
- * It reports the details of the fault using KBASE_DEBUG_PRINT_WARN.
- *
- * @param[in] kbdev     The kbase device that the GPU fault occurred from.
- * @param[in] exception_code  exception code
- * @return name associated with the exception code
- */
-const char *kbase_exception_name(struct kbase_device *kbdev,
-		u32 exception_code);
 
 /**
  * Check whether a system suspend is in progress, or has already been suspended
@@ -446,6 +436,8 @@ static inline struct kbase_jd_atom *kbase_jd_atom_from_id(
  * and during context creation.
  *
  * @param kbdev The kbase device
+ *
+ * Return: 0 on success and non-zero value on failure.
  */
 void kbase_disjoint_init(struct kbase_device *kbdev);
 

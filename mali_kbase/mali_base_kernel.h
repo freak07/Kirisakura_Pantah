@@ -36,8 +36,8 @@ typedef struct base_mem_handle {
 } base_mem_handle;
 
 #include "mali_base_mem_priv.h"
-#include "mali_midg_coherency.h"
-#include "mali_kbase_gpu_id.h"
+#include "gpu/mali_kbase_gpu_coherency.h"
+#include "gpu/mali_kbase_gpu_id.h"
 
 /*
  * Dependency stuff, keep it private for now. May want to expose it if

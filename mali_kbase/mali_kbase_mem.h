@@ -1684,4 +1684,30 @@ void kbase_mem_umm_unmap(struct kbase_context *kctx,
 int kbase_mem_do_sync_imported(struct kbase_context *kctx,
 		struct kbase_va_region *reg, enum kbase_sync_type sync_fn);
 
+
+/**
+ * kbase_mem_copy_to_pinned_user_pages - Memcpy from source input page to
+ * an unaligned address at a given offset from the start of a target page.
+ *
+ * @dest_pages:		Pointer to the array of pages to which the content is
+ *			to be copied from the provided @src_page.
+ * @src_page:		Pointer to the page which correspond to the source page
+ *			from which the copying will take place.
+ * @to_copy:		Total number of bytes pending to be copied from
+ *			@src_page to @target_page_nr within @dest_pages.
+ *			This will get decremented by number of bytes we
+ *			managed to copy from source page to target pages.
+ * @nr_pages:		Total number of pages present in @dest_pages.
+ * @target_page_nr:	Target page number to which @src_page needs to be
+ *			copied. This will get incremented by one if
+ *			we are successful in copying from source page.
+ * @offset:		Offset in bytes into the target pages from which the
+ *			copying is to be performed.
+ *
+ * Return: 0 on success, or a negative error code.
+ */
+int kbase_mem_copy_to_pinned_user_pages(struct page **dest_pages,
+		void *src_page, size_t *to_copy, unsigned int nr_pages,
+		unsigned int *target_page_nr, size_t offset);
+
 #endif				/* _KBASE_MEM_H_ */

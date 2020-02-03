@@ -32,12 +32,21 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
+#include <linux/types.h>
 
 #include <mali_kbase.h>
 #include <mali_kbase_defs.h>
 #include <mali_kbase_hwaccess_instr.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_config_defaults.h>
+
+#include <mali_kbase_timeline.h>
+#include "mali_kbase_vinstr.h"
+#include "mali_kbase_hwcnt_context.h"
+#include "mali_kbase_hwcnt_virtualizer.h"
+
+#include "mali_kbase_device.h"
+#include "mali_kbase_device_internal.h"
 
 /* NOTE: Magic - 0x45435254 (TRCE in ASCII).
  * Supports tracing feature provided in the base module.
@@ -56,6 +65,15 @@ static const char *kbasep_trace_code_string[] = {
 #endif
 
 #define DEBUG_MESSAGE_SIZE 256
+
+/* Number of register accesses for the buffer that we allocate during
+ * initialization time. The buffer size can be changed later via debugfs.
+ */
+#define KBASEP_DEFAULT_REGISTER_HISTORY_SIZE ((u16)512)
+
+static DEFINE_MUTEX(kbase_dev_list_lock);
+static LIST_HEAD(kbase_dev_list);
+static int kbase_dev_nr;
 
 static int kbasep_trace_init(struct kbase_device *kbdev);
 static void kbasep_trace_term(struct kbase_device *kbdev);
@@ -114,7 +132,7 @@ static void kbase_device_all_as_term(struct kbase_device *kbdev)
 		kbase_device_as_term(kbdev, i);
 }
 
-int kbase_device_init(struct kbase_device * const kbdev)
+int kbase_device_misc_init(struct kbase_device * const kbdev)
 {
 	int err;
 #ifdef CONFIG_ARM64
@@ -224,7 +242,7 @@ fail:
 	return err;
 }
 
-void kbase_device_term(struct kbase_device *kbdev)
+void kbase_device_misc_term(struct kbase_device *kbdev)
 {
 	KBASE_DEBUG_ASSERT(kbdev);
 
@@ -245,6 +263,122 @@ void kbase_device_free(struct kbase_device *kbdev)
 {
 	kfree(kbdev);
 }
+
+void kbase_device_id_init(struct kbase_device *kbdev)
+{
+	scnprintf(kbdev->devname, DEVNAME_SIZE, "%s%d", kbase_drv_name,
+			kbase_dev_nr);
+	kbdev->id = kbase_dev_nr++;
+}
+
+int kbase_device_hwcnt_backend_gpu_init(struct kbase_device *kbdev)
+{
+	return kbase_hwcnt_backend_gpu_create(kbdev, &kbdev->hwcnt_gpu_iface);
+}
+
+void kbase_device_hwcnt_backend_gpu_term(struct kbase_device *kbdev)
+{
+	kbase_hwcnt_backend_gpu_destroy(&kbdev->hwcnt_gpu_iface);
+}
+
+int kbase_device_hwcnt_context_init(struct kbase_device *kbdev)
+{
+	return kbase_hwcnt_context_init(&kbdev->hwcnt_gpu_iface,
+			&kbdev->hwcnt_gpu_ctx);
+}
+
+void kbase_device_hwcnt_context_term(struct kbase_device *kbdev)
+{
+	kbase_hwcnt_context_term(kbdev->hwcnt_gpu_ctx);
+}
+
+int kbase_device_hwcnt_virtualizer_init(struct kbase_device *kbdev)
+{
+	return kbase_hwcnt_virtualizer_init(kbdev->hwcnt_gpu_ctx,
+			KBASE_HWCNT_GPU_VIRTUALIZER_DUMP_THRESHOLD_NS,
+			&kbdev->hwcnt_gpu_virt);
+}
+
+void kbase_device_hwcnt_virtualizer_term(struct kbase_device *kbdev)
+{
+	kbase_hwcnt_virtualizer_term(kbdev->hwcnt_gpu_virt);
+}
+
+int kbase_device_timeline_init(struct kbase_device *kbdev)
+{
+	atomic_set(&kbdev->timeline_is_enabled, 0);
+	return kbase_timeline_init(&kbdev->timeline,
+			&kbdev->timeline_is_enabled);
+}
+
+void kbase_device_timeline_term(struct kbase_device *kbdev)
+{
+	kbase_timeline_term(kbdev->timeline);
+}
+
+int kbase_device_vinstr_init(struct kbase_device *kbdev)
+{
+	return kbase_vinstr_init(kbdev->hwcnt_gpu_virt, &kbdev->vinstr_ctx);
+}
+
+void kbase_device_vinstr_term(struct kbase_device *kbdev)
+{
+	kbase_vinstr_term(kbdev->vinstr_ctx);
+}
+
+int kbase_device_io_history_init(struct kbase_device *kbdev)
+{
+	return kbase_io_history_init(&kbdev->io_history,
+			KBASEP_DEFAULT_REGISTER_HISTORY_SIZE);
+}
+
+void kbase_device_io_history_term(struct kbase_device *kbdev)
+{
+	kbase_io_history_term(&kbdev->io_history);
+}
+
+int kbase_device_misc_register(struct kbase_device *kbdev)
+{
+	return misc_register(&kbdev->mdev);
+}
+
+void kbase_device_misc_deregister(struct kbase_device *kbdev)
+{
+	misc_deregister(&kbdev->mdev);
+}
+
+int kbase_device_list_init(struct kbase_device *kbdev)
+{
+	const struct list_head *dev_list;
+
+	dev_list = kbase_device_get_list();
+	list_add(&kbdev->entry, &kbase_dev_list);
+	kbase_device_put_list(dev_list);
+
+	return 0;
+}
+
+void kbase_device_list_term(struct kbase_device *kbdev)
+{
+	const struct list_head *dev_list;
+
+	dev_list = kbase_device_get_list();
+	list_del(&kbdev->entry);
+	kbase_device_put_list(dev_list);
+}
+
+const struct list_head *kbase_device_get_list(void)
+{
+	mutex_lock(&kbase_dev_list_lock);
+	return &kbase_dev_list;
+}
+KBASE_EXPORT_TEST_API(kbase_device_get_list);
+
+void kbase_device_put_list(const struct list_head *dev_list)
+{
+	mutex_unlock(&kbase_dev_list_lock);
+}
+KBASE_EXPORT_TEST_API(kbase_device_put_list);
 
 /*
  * Device trace functions

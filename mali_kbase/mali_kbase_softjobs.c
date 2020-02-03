@@ -719,48 +719,6 @@ out_cleanup:
 	return ret;
 }
 
-void kbase_mem_copy_from_extres_page(struct kbase_context *kctx,
-		void *extres_page, struct page **pages, unsigned int nr_pages,
-		unsigned int *target_page_nr, size_t offset, size_t *to_copy)
-{
-	void *target_page = kmap(pages[*target_page_nr]);
-	size_t chunk = PAGE_SIZE-offset;
-
-	lockdep_assert_held(&kctx->reg_lock);
-
-	if (!target_page) {
-		*target_page_nr += 1;
-		dev_warn(kctx->kbdev->dev, "kmap failed in debug_copy job.");
-		return;
-	}
-
-	chunk = min(chunk, *to_copy);
-
-	memcpy(target_page + offset, extres_page, chunk);
-	*to_copy -= chunk;
-
-	kunmap(pages[*target_page_nr]);
-
-	*target_page_nr += 1;
-	if (*target_page_nr >= nr_pages)
-		return;
-
-	target_page = kmap(pages[*target_page_nr]);
-	if (!target_page) {
-		*target_page_nr += 1;
-		dev_warn(kctx->kbdev->dev, "kmap failed in debug_copy job.");
-		return;
-	}
-
-	KBASE_DEBUG_ASSERT(target_page);
-
-	chunk = min(offset, *to_copy);
-	memcpy(target_page, extres_page + PAGE_SIZE-offset, chunk);
-	*to_copy -= chunk;
-
-	kunmap(pages[*target_page_nr]);
-}
-
 int kbase_mem_copy_from_extres(struct kbase_context *kctx,
 		struct kbase_debug_copy_buffer *buf_data)
 {
@@ -785,22 +743,21 @@ int kbase_mem_copy_from_extres(struct kbase_context *kctx,
 	switch (gpu_alloc->type) {
 	case KBASE_MEM_TYPE_IMPORTED_USER_BUF:
 	{
-		for (i = 0; i < buf_data->nr_extres_pages; i++) {
+		for (i = 0; i < buf_data->nr_extres_pages &&
+				target_page_nr < buf_data->nr_pages; i++) {
 			struct page *pg = buf_data->extres_pages[i];
 			void *extres_page = kmap(pg);
 
-			if (extres_page)
-				kbase_mem_copy_from_extres_page(kctx,
-						extres_page, pages,
+			if (extres_page) {
+				ret = kbase_mem_copy_to_pinned_user_pages(
+						pages, extres_page, &to_copy,
 						buf_data->nr_pages,
-						&target_page_nr,
-						offset, &to_copy);
-
-			kunmap(pg);
-			if (target_page_nr >= buf_data->nr_pages)
-				break;
+						&target_page_nr, offset);
+				kunmap(pg);
+				if (ret)
+					goto out_unlock;
+			}
 		}
-		break;
 	}
 	break;
 	case KBASE_MEM_TYPE_IMPORTED_UMM: {
@@ -820,20 +777,21 @@ int kbase_mem_copy_from_extres(struct kbase_context *kctx,
 		if (ret)
 			goto out_unlock;
 
-		for (i = 0; i < dma_to_copy/PAGE_SIZE; i++) {
+		for (i = 0; i < dma_to_copy/PAGE_SIZE &&
+				target_page_nr < buf_data->nr_pages; i++) {
 
 			void *extres_page = dma_buf_kmap(dma_buf, i);
 
-			if (extres_page)
-				kbase_mem_copy_from_extres_page(kctx,
-						extres_page, pages,
+			if (extres_page) {
+				ret = kbase_mem_copy_to_pinned_user_pages(
+						pages, extres_page, &to_copy,
 						buf_data->nr_pages,
-						&target_page_nr,
-						offset, &to_copy);
+						&target_page_nr, offset);
 
-			dma_buf_kunmap(dma_buf, i, extres_page);
-			if (target_page_nr >= buf_data->nr_pages)
-				break;
+				dma_buf_kunmap(dma_buf, i, extres_page);
+				if (ret)
+					goto out_unlock;
+			}
 		}
 		dma_buf_end_cpu_access(dma_buf,
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 0) && !defined(CONFIG_CHROMEOS)
@@ -848,7 +806,6 @@ int kbase_mem_copy_from_extres(struct kbase_context *kctx,
 out_unlock:
 	kbase_gpu_vm_unlock(kctx);
 	return ret;
-
 }
 
 static int kbase_debug_copy(struct kbase_jd_atom *katom)

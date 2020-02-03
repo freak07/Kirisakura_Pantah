@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -545,6 +545,7 @@ bool kbase_js_complete_atom_wq(struct kbase_context *kctx,
  */
 struct kbase_jd_atom *kbase_js_complete_atom(struct kbase_jd_atom *katom,
 		ktime_t *end_timestamp);
+
 
 /**
  * @brief Submit atoms from all available contexts.

@@ -19,6 +19,7 @@
  * SPDX-License-Identifier: GPL-2.0
  *
  */
+
 #ifndef _KBASE_GPU_ID_H_
 #define _KBASE_GPU_ID_H_
 
@@ -97,10 +98,9 @@
 #define GPU_ID2_PRODUCT_TNAX              GPU_ID2_MODEL_MAKE(9, 1)
 #define GPU_ID2_PRODUCT_TBEX              GPU_ID2_MODEL_MAKE(9, 2)
 #define GPU_ID2_PRODUCT_LBEX              GPU_ID2_MODEL_MAKE(9, 4)
-#define GPU_ID2_PRODUCT_TULX              GPU_ID2_MODEL_MAKE(10, 0)
 #define GPU_ID2_PRODUCT_TDUX              GPU_ID2_MODEL_MAKE(10, 1)
 #define GPU_ID2_PRODUCT_TODX              GPU_ID2_MODEL_MAKE(10, 2)
-#define GPU_ID2_PRODUCT_TIDX              GPU_ID2_MODEL_MAKE(10, 3)
+#define GPU_ID2_PRODUCT_TGRX              GPU_ID2_MODEL_MAKE(10, 3)
 #define GPU_ID2_PRODUCT_TVAX              GPU_ID2_MODEL_MAKE(10, 4)
 #define GPU_ID2_PRODUCT_LODX              GPU_ID2_MODEL_MAKE(10, 5)
 

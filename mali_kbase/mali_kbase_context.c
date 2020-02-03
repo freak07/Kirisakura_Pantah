@@ -27,12 +27,13 @@
  */
 
 #include <mali_kbase.h>
-#include <mali_midg_regmap.h>
+#include <gpu/mali_kbase_gpu_regmap.h>
 #include <mali_kbase_mem_linux.h>
 #include <mali_kbase_dma_fence.h>
 #include <mali_kbase_ctx_sched.h>
 #include <mali_kbase_mem_pool_group.h>
 #include <mali_kbase_tracepoints.h>
+#include <mali_kbase_timeline.h>
 
 struct kbase_context *
 kbase_create_context(struct kbase_device *kbdev, bool is_compat,
@@ -262,11 +263,12 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	 * atom debugfs interface alive until all atoms have completed. This
 	 * is useful for debugging hung contexts. */
 	debugfs_remove_recursive(kctx->kctx_dentry);
+
 	kbase_debug_job_fault_context_term(kctx);
+
 #endif
 
 	kbase_event_cleanup(kctx);
-
 
 	/*
 	 * JIT must be terminated before the code below as it must be called
@@ -330,5 +332,13 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	vfree(kctx);
 
 	kbase_pm_context_idle(kbdev);
+
+	/* Flush the timeline stream, so the user can see the termination
+	 * tracepoints being fired.
+	 * The "if" statement below is for optimization. It is safe to call
+	 * kbase_timeline_streams_flush when timeline is disabled.
+	 */
+	if (atomic_read(&kbdev->timeline_is_enabled) != 0)
+		kbase_timeline_streams_flush(kbdev->timeline);
 }
 KBASE_EXPORT_SYMBOL(kbase_destroy_context);

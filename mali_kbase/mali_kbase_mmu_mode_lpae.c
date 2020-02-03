@@ -22,7 +22,7 @@
 
 
 #include "mali_kbase.h"
-#include "mali_midg_regmap.h"
+#include <gpu/mali_kbase_gpu_regmap.h>
 #include "mali_kbase_defs.h"
 
 #define ENTRY_TYPE_MASK     3ULL

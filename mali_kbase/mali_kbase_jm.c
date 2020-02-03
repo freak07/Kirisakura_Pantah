@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -137,4 +137,3 @@ struct kbase_jd_atom *kbase_jm_complete(struct kbase_device *kbdev,
 
 	return kbase_js_complete_atom(katom, end_timestamp);
 }
-

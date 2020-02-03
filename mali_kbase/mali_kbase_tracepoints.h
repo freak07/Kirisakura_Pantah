@@ -271,77 +271,69 @@ void __kbase_tlstream_aux_event_job_slot(
 	u32 slot_nr,
 	u32 atom_nr,
 	u32 event);
-void __kbase_tlstream_tl_new_kcpuqueue(
+void __kbase_tlstream_tl_kbase_new_kcpuqueue(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	const void *ctx,
 	u32 kcpuq_num_pending_cmds);
-void __kbase_tlstream_tl_ret_kcpuqueue_ctx(
-	struct kbase_tlstream *stream,
-	const void *kcpu_queue,
-	const void *ctx);
-void __kbase_tlstream_tl_del_kcpuqueue(
+void __kbase_tlstream_tl_kbase_del_kcpuqueue(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_nret_kcpuqueue_ctx(
-	struct kbase_tlstream *stream,
-	const void *kcpu_queue,
-	const void *ctx);
-void __kbase_tlstream_tl_event_kcpuqueue_enqueue_fence_signal(
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_fence_signal(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	const void *fence);
-void __kbase_tlstream_tl_event_kcpuqueue_enqueue_fence_wait(
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_fence_wait(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	const void *fence);
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_cqs_wait(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_cqs_wait(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_cqs_wait(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_cqs_wait(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 cqs_obj_gpu_addr,
 	u32 cqs_obj_compare_value);
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_cqs_wait(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_cqs_wait(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_cqs_set(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_cqs_set(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_cqs_set(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_cqs_set(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 cqs_obj_gpu_addr);
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_cqs_set(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_cqs_set(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_debugcopy(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_debugcopy(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_debugcopy(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_debugcopy(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 debugcopy_dst_size);
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_debugcopy(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_debugcopy(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_enqueue_map_import(
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_map_import(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 map_import_buf_gpu_addr);
-void __kbase_tlstream_tl_event_kcpuqueue_enqueue_unmap_import(
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_unmap_import(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 map_import_buf_gpu_addr);
-void __kbase_tlstream_tl_event_kcpuqueue_enqueue_unmap_import_force(
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_unmap_import_force(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 map_import_buf_gpu_addr);
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_jit_alloc(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_jit_alloc(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_jit_alloc(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_jit_alloc(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 jit_alloc_gpu_alloc_addr_dest,
@@ -353,95 +345,92 @@ void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_jit_alloc(
 	u32 jit_alloc_max_allocations,
 	u32 jit_alloc_flags,
 	u32 jit_alloc_usage_id);
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_jit_alloc(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_jit_alloc(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_jit_free(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_jit_free(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_jit_free(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_jit_free(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u32 jit_alloc_jit_id);
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_jit_free(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_jit_free(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_signal_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_signal_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_signal_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_signal_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_wait_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_wait_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_fence_wait_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_wait_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_wait_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_wait_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_wait_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_wait_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_set_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_set(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_cqs_set_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_debugcopy_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_debugcopy_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_debugcopy_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_debugcopy_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_map_import_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_map_import_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_map_import_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_map_import_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_force_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_force_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_force_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_force_end(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_jit_alloc_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_jit_alloc_start(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_execute_jit_alloc_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_execute_jit_alloc_end(
-	struct kbase_tlstream *stream,
-	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_alloc_end(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_execute_jit_alloc_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 jit_alloc_gpu_alloc_addr,
 	u64 jit_alloc_mmu_flags);
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_alloc_end(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_execute_jit_alloc_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_jit_free_start(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_jit_free_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_begin_kcpuqueue_execute_jit_free_end(
+void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_execute_jit_free_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_free_end(
+void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_execute_jit_free_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 jit_free_pages_used);
-void __kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_free_end(
+void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_execute_jit_free_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_event_kcpuqueue_execute_errorbarrier(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_errorbarrier(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
 
@@ -1415,7 +1404,7 @@ struct kbase_tlstream;
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_NEW_KCPUQUEUE -
+ * KBASE_TLSTREAM_TL_KBASE_NEW_KCPUQUEUE -
  *   New KCPU Queue
  *
  * @kbdev:	Kbase device
@@ -1424,7 +1413,7 @@ struct kbase_tlstream;
  * @kcpuq_num_pending_cmds:	Number of commands already enqueued
  * in the KCPU queue
  */
-#define KBASE_TLSTREAM_TL_NEW_KCPUQUEUE(	\
+#define KBASE_TLSTREAM_TL_KBASE_NEW_KCPUQUEUE(	\
 	kbdev,	\
 	kcpu_queue,	\
 	ctx,	\
@@ -1433,81 +1422,39 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_new_kcpuqueue(	\
+			__kbase_tlstream_tl_kbase_new_kcpuqueue(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, ctx, kcpuq_num_pending_cmds);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_RET_KCPUQUEUE_CTX -
- *   Context retains KCPU Queue
- *
- * @kbdev:	Kbase device
- * @kcpu_queue:	KCPU queue
- * @ctx:	Name of the context object
- */
-#define KBASE_TLSTREAM_TL_RET_KCPUQUEUE_CTX(	\
-	kbdev,	\
-	kcpu_queue,	\
-	ctx	\
-	)	\
-	do {	\
-		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
-		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_ret_kcpuqueue_ctx(	\
-				__TL_DISPATCH_STREAM(kbdev, obj), \
-				kcpu_queue, ctx);	\
-	} while (0)
-
-/**
- * KBASE_TLSTREAM_TL_DEL_KCPUQUEUE -
+ * KBASE_TLSTREAM_TL_KBASE_DEL_KCPUQUEUE -
  *   Delete KCPU Queue
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_DEL_KCPUQUEUE(	\
+#define KBASE_TLSTREAM_TL_KBASE_DEL_KCPUQUEUE(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_del_kcpuqueue(	\
+			__kbase_tlstream_tl_kbase_del_kcpuqueue(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_NRET_KCPUQUEUE_CTX -
- *   Context releases KCPU Queue
- *
- * @kbdev:	Kbase device
- * @kcpu_queue:	KCPU queue
- * @ctx:	Name of the context object
- */
-#define KBASE_TLSTREAM_TL_NRET_KCPUQUEUE_CTX(	\
-	kbdev,	\
-	kcpu_queue,	\
-	ctx	\
-	)	\
-	do {	\
-		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
-		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_nret_kcpuqueue_ctx(	\
-				__TL_DISPATCH_STREAM(kbdev, obj), \
-				kcpu_queue, ctx);	\
-	} while (0)
-
-/**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL -
  *   KCPU Queue enqueues Signal on Fence
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  * @fence:	Fence object handle
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL(	\
 	kbdev,	\
 	kcpu_queue,	\
 	fence	\
@@ -1515,20 +1462,20 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_enqueue_fence_signal(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_enqueue_fence_signal(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, fence);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_ENQUEUE_FENCE_WAIT -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_WAIT -
  *   KCPU Queue enqueues Wait on Fence
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  * @fence:	Fence object handle
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_ENQUEUE_FENCE_WAIT(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_WAIT(	\
 	kbdev,	\
 	kcpu_queue,	\
 	fence	\
@@ -1536,32 +1483,32 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_enqueue_fence_wait(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_enqueue_fence_wait(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, fence);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT -
  *   Begin array of KCPU Queue enqueues Wait on Cross Queue Sync Object
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_cqs_wait(	\
+			__kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_cqs_wait(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT -
  *   Array item of KCPU Queue enqueues Wait on Cross Queue Sync Object
  *
  * @kbdev:	Kbase device
@@ -1570,7 +1517,7 @@ struct kbase_tlstream;
  * @cqs_obj_compare_value:	Semaphore value that should be exceeded
  * for the WAIT to pass
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT(	\
 	kbdev,	\
 	kcpu_queue,	\
 	cqs_obj_gpu_addr,	\
@@ -1579,58 +1526,58 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_cqs_wait(	\
+			__kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_cqs_wait(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, cqs_obj_gpu_addr, cqs_obj_compare_value);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT -
  *   End array of KCPU Queue enqueues Wait on Cross Queue Sync Object
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_cqs_wait(	\
+			__kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_cqs_wait(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET -
  *   Begin array of KCPU Queue enqueues Set on Cross Queue Sync Object
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_cqs_set(	\
+			__kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_cqs_set(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET -
  *   Array item of KCPU Queue enqueues Set on Cross Queue Sync Object
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  * @cqs_obj_gpu_addr:	CQS Object GPU ptr
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET(	\
 	kbdev,	\
 	kcpu_queue,	\
 	cqs_obj_gpu_addr	\
@@ -1638,58 +1585,58 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_cqs_set(	\
+			__kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_cqs_set(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, cqs_obj_gpu_addr);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET -
  *   End array of KCPU Queue enqueues Set on Cross Queue Sync Object
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_cqs_set(	\
+			__kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_cqs_set(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY -
  *   Begin array of KCPU Queue enqueues Debug Copy
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_debugcopy(	\
+			__kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_debugcopy(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY -
  *   Array item of KCPU Queue enqueues Debug Copy
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  * @debugcopy_dst_size:	Debug Copy destination size
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY(	\
 	kbdev,	\
 	kcpu_queue,	\
 	debugcopy_dst_size	\
@@ -1697,39 +1644,39 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_debugcopy(	\
+			__kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_debugcopy(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, debugcopy_dst_size);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY -
  *   End array of KCPU Queue enqueues Debug Copy
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_debugcopy(	\
+			__kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_debugcopy(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_ENQUEUE_MAP_IMPORT -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_MAP_IMPORT -
  *   KCPU Queue enqueues Map Import
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  * @map_import_buf_gpu_addr:	Map import buffer GPU ptr
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_ENQUEUE_MAP_IMPORT(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_MAP_IMPORT(	\
 	kbdev,	\
 	kcpu_queue,	\
 	map_import_buf_gpu_addr	\
@@ -1737,20 +1684,20 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_enqueue_map_import(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_enqueue_map_import(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, map_import_buf_gpu_addr);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT -
  *   KCPU Queue enqueues Unmap Import
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  * @map_import_buf_gpu_addr:	Map import buffer GPU ptr
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT(	\
 	kbdev,	\
 	kcpu_queue,	\
 	map_import_buf_gpu_addr	\
@@ -1758,20 +1705,20 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_enqueue_unmap_import(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_enqueue_unmap_import(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, map_import_buf_gpu_addr);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE -
  *   KCPU Queue enqueues Unmap Import ignoring reference count
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  * @map_import_buf_gpu_addr:	Map import buffer GPU ptr
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE(	\
 	kbdev,	\
 	kcpu_queue,	\
 	map_import_buf_gpu_addr	\
@@ -1779,32 +1726,32 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_enqueue_unmap_import_force(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_enqueue_unmap_import_force(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, map_import_buf_gpu_addr);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC -
  *   Begin array of KCPU Queue enqueues JIT Alloc
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_jit_alloc(	\
+			__kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_jit_alloc(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC -
  *   Array item of KCPU Queue enqueues JIT Alloc
  *
  * @kbdev:	Kbase device
@@ -1829,7 +1776,7 @@ struct kbase_tlstream;
  * reused. The kernel should attempt to use a previous allocation with the same
  * usage_id
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC(	\
 	kbdev,	\
 	kcpu_queue,	\
 	jit_alloc_gpu_alloc_addr_dest,	\
@@ -1845,51 +1792,51 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_jit_alloc(	\
+			__kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_jit_alloc(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, jit_alloc_gpu_alloc_addr_dest, jit_alloc_va_pages, jit_alloc_commit_pages, jit_alloc_extent, jit_alloc_jit_id, jit_alloc_bin_id, jit_alloc_max_allocations, jit_alloc_flags, jit_alloc_usage_id);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC -
  *   End array of KCPU Queue enqueues JIT Alloc
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_jit_alloc(	\
+			__kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_jit_alloc(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE -
  *   Begin array of KCPU Queue enqueues JIT Free
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_begin_kcpuqueue_enqueue_jit_free(	\
+			__kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_jit_free(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE -
  *   Array item of KCPU Queue enqueues JIT Free
  *
  * @kbdev:	Kbase device
@@ -1897,7 +1844,7 @@ struct kbase_tlstream;
  * @jit_alloc_jit_id:	Unique ID provided by the caller, this is used
  * to pair allocation and free requests. Zero is not a valid value
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE(	\
 	kbdev,	\
 	kcpu_queue,	\
 	jit_alloc_jit_id	\
@@ -1905,374 +1852,355 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_item_kcpuqueue_enqueue_jit_free(	\
+			__kbase_tlstream_tl_kbase_array_item_kcpuqueue_enqueue_jit_free(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, jit_alloc_jit_id);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE -
  *   End array of KCPU Queue enqueues JIT Free
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_end_kcpuqueue_enqueue_jit_free(	\
+			__kbase_tlstream_tl_kbase_array_end_kcpuqueue_enqueue_jit_free(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START -
  *   KCPU Queue starts a Signal on Fence
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_fence_signal_start(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_signal_start(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END -
  *   KCPU Queue ends a Signal on Fence
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_fence_signal_end(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_signal_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_WAIT_START -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_START -
  *   KCPU Queue starts a Wait on Fence
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_WAIT_START(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_START(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_fence_wait_start(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_wait_start(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_WAIT_END -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_END -
  *   KCPU Queue ends a Wait on Fence
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_FENCE_WAIT_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_fence_wait_end(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_wait_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_WAIT_START -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_START -
  *   KCPU Queue starts a Wait on an array of Cross Queue Sync Objects
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_WAIT_START(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_START(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_cqs_wait_start(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_wait_start(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_WAIT_END -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_END -
  *   KCPU Queue ends a Wait on an array of Cross Queue Sync Objects
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_WAIT_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_cqs_wait_end(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_wait_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_SET_START -
- *   KCPU Queue starts a Set on an array of Cross Queue Sync Objects
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_SET -
+ *   KCPU Queue executes a Set on an array of Cross Queue Sync Objects
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_SET_START(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_SET(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_cqs_set_start(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_set(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_SET_END -
- *   KCPU Queue ends a Set on an array of Cross Queue Sync Objects
- *
- * @kbdev:	Kbase device
- * @kcpu_queue:	KCPU queue
- */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_CQS_SET_END(	\
-	kbdev,	\
-	kcpu_queue	\
-	)	\
-	do {	\
-		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
-		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_cqs_set_end(	\
-				__TL_DISPATCH_STREAM(kbdev, obj), \
-				kcpu_queue);	\
-	} while (0)
-
-/**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_DEBUGCOPY_START -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_START -
  *   KCPU Queue starts an array of Debug Copys
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_DEBUGCOPY_START(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_START(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_debugcopy_start(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_debugcopy_start(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_DEBUGCOPY_END -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_END -
  *   KCPU Queue ends an array of Debug Copys
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_DEBUGCOPY_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_debugcopy_end(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_debugcopy_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_MAP_IMPORT_START -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_START -
  *   KCPU Queue starts a Map Import
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_MAP_IMPORT_START(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_START(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_map_import_start(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_map_import_start(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_MAP_IMPORT_END -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_END -
  *   KCPU Queue ends a Map Import
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_MAP_IMPORT_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_map_import_end(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_map_import_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START -
  *   KCPU Queue starts an Unmap Import
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_start(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_start(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END -
  *   KCPU Queue ends an Unmap Import
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_end(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START -
  *   KCPU Queue starts an Unmap Import ignoring reference count
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_force_start(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_force_start(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END -
  *   KCPU Queue ends an Unmap Import ignoring reference count
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_unmap_import_force_end(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_force_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_ALLOC_START -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_ALLOC_START -
  *   KCPU Queue starts an array of JIT Allocs
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_ALLOC_START(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_ALLOC_START(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_jit_alloc_start(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_jit_alloc_start(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END -
  *   Begin array of KCPU Queue ends an array of JIT Allocs
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_begin_kcpuqueue_execute_jit_alloc_end(	\
+			__kbase_tlstream_tl_kbase_array_begin_kcpuqueue_execute_jit_alloc_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END -
  *   Array item of KCPU Queue ends an array of JIT Allocs
  *
  * @kbdev:	Kbase device
@@ -2280,7 +2208,7 @@ struct kbase_tlstream;
  * @jit_alloc_gpu_alloc_addr:	The JIT allocated GPU virtual address
  * @jit_alloc_mmu_flags:	The MMU flags for the JIT allocation
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END(	\
 	kbdev,	\
 	kcpu_queue,	\
 	jit_alloc_gpu_alloc_addr,	\
@@ -2289,70 +2217,70 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_alloc_end(	\
+			__kbase_tlstream_tl_kbase_array_item_kcpuqueue_execute_jit_alloc_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, jit_alloc_gpu_alloc_addr, jit_alloc_mmu_flags);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END -
  *   End array of KCPU Queue ends an array of JIT Allocs
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_alloc_end(	\
+			__kbase_tlstream_tl_kbase_array_end_kcpuqueue_execute_jit_alloc_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_FREE_START -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_FREE_START -
  *   KCPU Queue starts an array of JIT Frees
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_JIT_FREE_START(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_FREE_START(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_jit_free_start(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_jit_free_start(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END -
  *   Begin array of KCPU Queue ends an array of JIT Frees
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_begin_kcpuqueue_execute_jit_free_end(	\
+			__kbase_tlstream_tl_kbase_array_begin_kcpuqueue_execute_jit_free_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END -
  *   Array item of KCPU Queue ends an array of JIT Frees
  *
  * @kbdev:	Kbase device
@@ -2360,7 +2288,7 @@ struct kbase_tlstream;
  * @jit_free_pages_used:	The actual number of pages used by the JIT
  * allocation
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
 	kbdev,	\
 	kcpu_queue,	\
 	jit_free_pages_used	\
@@ -2368,45 +2296,45 @@ struct kbase_tlstream;
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_item_kcpuqueue_execute_jit_free_end(	\
+			__kbase_tlstream_tl_kbase_array_item_kcpuqueue_execute_jit_free_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue, jit_free_pages_used);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END -
+ * KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END -
  *   End array of KCPU Queue ends an array of JIT Frees
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
+#define KBASE_TLSTREAM_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_array_end_kcpuqueue_execute_jit_free_end(	\
+			__kbase_tlstream_tl_kbase_array_end_kcpuqueue_execute_jit_free_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)
 
 /**
- * KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_ERRORBARRIER -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_ERRORBARRIER -
  *   KCPU Queue executes an Error Barrier
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
  */
-#define KBASE_TLSTREAM_TL_EVENT_KCPUQUEUE_EXECUTE_ERRORBARRIER(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_ERRORBARRIER(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
 		if (enabled & TLSTREAM_ENABLED)	\
-			__kbase_tlstream_tl_event_kcpuqueue_execute_errorbarrier(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_errorbarrier(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
 	} while (0)

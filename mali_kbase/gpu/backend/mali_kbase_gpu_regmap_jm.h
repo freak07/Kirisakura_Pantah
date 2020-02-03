@@ -20,15 +20,69 @@
  *
  */
 
-#ifndef _MIDG_REGMAP_JM_H_
-#define _MIDG_REGMAP_JM_H_
+#ifndef _KBASE_GPU_REGMAP_JM_H_
+#define _KBASE_GPU_REGMAP_JM_H_
+
+
+/* Set to implementation defined, outer caching */
+#define AS_MEMATTR_AARCH64_OUTER_IMPL_DEF 0x88ull
+/* Set to write back memory, outer caching */
+#define AS_MEMATTR_AARCH64_OUTER_WA       0x8Dull
+/* Set to inner non-cacheable, outer-non-cacheable
+ * Setting defined by the alloc bits is ignored, but set to a valid encoding:
+ * - no-alloc on read
+ * - no alloc on write
+ */
+#define AS_MEMATTR_AARCH64_NON_CACHEABLE  0x4Cull
+
+/* Symbols for default MEMATTR to use
+ * Default is - HW implementation defined caching
+ */
+#define AS_MEMATTR_INDEX_DEFAULT               0
+#define AS_MEMATTR_INDEX_DEFAULT_ACE           3
+
+/* HW implementation defined caching */
+#define AS_MEMATTR_INDEX_IMPL_DEF_CACHE_POLICY 0
+/* Force cache on */
+#define AS_MEMATTR_INDEX_FORCE_TO_CACHE_ALL    1
+/* Write-alloc */
+#define AS_MEMATTR_INDEX_WRITE_ALLOC           2
+/* Outer coherent, inner implementation defined policy */
+#define AS_MEMATTR_INDEX_OUTER_IMPL_DEF        3
+/* Outer coherent, write alloc inner */
+#define AS_MEMATTR_INDEX_OUTER_WA              4
+/* Normal memory, inner non-cacheable, outer non-cacheable (ARMv8 mode only) */
+#define AS_MEMATTR_INDEX_NON_CACHEABLE         5
 
 /* GPU control registers */
 
 #define CORE_FEATURES           0x008   /* (RO) Shader Core Features */
 #define JS_PRESENT              0x01C   /* (RO) Job slots present */
-#define LATEST_FLUSH            0x038   /* (RO) Flush ID of latest clean-and-invalidate operation */
-#define GROUPS_L2_COHERENT      (1 << 0)    /* Cores groups are l2 coherent */
+#define LATEST_FLUSH            0x038   /* (RO) Flush ID of latest
+					 * clean-and-invalidate operation
+					 */
+
+#define PRFCNT_BASE_LO   0x060  /* (RW) Performance counter memory
+				 * region base address, low word
+				 */
+#define PRFCNT_BASE_HI   0x064  /* (RW) Performance counter memory
+				 * region base address, high word
+				 */
+#define PRFCNT_CONFIG    0x068  /* (RW) Performance counter
+				 * configuration
+				 */
+#define PRFCNT_JM_EN     0x06C  /* (RW) Performance counter enable
+				 * flags for Job Manager
+				 */
+#define PRFCNT_SHADER_EN 0x070  /* (RW) Performance counter enable
+				 * flags for shader cores
+				 */
+#define PRFCNT_TILER_EN  0x074  /* (RW) Performance counter enable
+				 * flags for tiler
+				 */
+#define PRFCNT_MMU_L2_EN 0x07C  /* (RW) Performance counter enable
+				 * flags for MMU/L2 cache
+				 */
 
 #define JS0_FEATURES            0x0C0   /* (RO) Features of job slot 0 */
 #define JS1_FEATURES            0x0C4   /* (RO) Features of job slot 1 */
@@ -140,7 +194,7 @@
  * The values are separated to avoid dependency of userspace and kernel code.
  */
 
-/* Group of values representing the job status insead a particular fault */
+/* Group of values representing the job status instead of a particular fault */
 #define JS_STATUS_NO_EXCEPTION_BASE   0x00
 #define JS_STATUS_INTERRUPTED         (JS_STATUS_NO_EXCEPTION_BASE + 0x02)	/* 0x02 means INTERRUPTED */
 #define JS_STATUS_STOPPED             (JS_STATUS_NO_EXCEPTION_BASE + 0x03)	/* 0x03 means STOPPED */
@@ -192,8 +246,6 @@
 #define JM_JOB_THROTTLE_LIMIT_SHIFT (3)
 #define JM_MAX_JOB_THROTTLE_LIMIT (0x3F)
 #define JM_FORCE_COHERENCY_FEATURES_SHIFT (2)
-#define JM_IDVS_GROUP_SIZE_SHIFT (16)
-#define JM_MAX_IDVS_GROUP_SIZE (0x3F)
 
 /* GPU_COMMAND values */
 #define GPU_COMMAND_NOP                0x00 /* No operation, nothing happens */
@@ -207,4 +259,4 @@
 #define GPU_COMMAND_CLEAN_INV_CACHES   0x08 /* Clean and invalidate all caches */
 #define GPU_COMMAND_SET_PROTECTED_MODE 0x09 /* Places the GPU in protected mode */
 
-#endif /* _MIDG_REGMAP_JM_H_ */
+#endif /* _KBASE_GPU_REGMAP_JM_H_ */

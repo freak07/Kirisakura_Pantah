@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2015, 2017, 2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -20,22 +20,12 @@
  *
  */
 
-#include <mali_kbase_config.h>
+#ifndef _KBASE_GPU_H_
+#define _KBASE_GPU_H_
 
-static struct kbase_platform_config dummy_platform_config;
+#include "mali_kbase_gpu_regmap.h"
+#include "mali_kbase_gpu_fault.h"
+#include "mali_kbase_gpu_coherency.h"
+#include "mali_kbase_gpu_id.h"
 
-struct kbase_platform_config *kbase_get_platform_config(void)
-{
-	return &dummy_platform_config;
-}
-
-#ifndef CONFIG_OF
-int kbase_platform_register(void)
-{
-	return 0;
-}
-
-void kbase_platform_unregister(void)
-{
-}
-#endif
+#endif /* _KBASE_GPU_H_ */

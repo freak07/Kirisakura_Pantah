@@ -155,8 +155,15 @@
 /** setting in kbase_context::as_nr that indicates it's invalid */
 #define KBASEP_AS_NR_INVALID     (-1)
 
-#define KBASE_LOCK_REGION_MAX_SIZE (63)
-#define KBASE_LOCK_REGION_MIN_SIZE (15)
+/**
+ * Maximum size in bytes of a MMU lock region, as a logarithm
+ */
+#define KBASE_LOCK_REGION_MAX_SIZE_LOG2 (64)
+
+/**
+ * Minimum size in bytes of a MMU lock region, as a logarithm
+ */
+#define KBASE_LOCK_REGION_MIN_SIZE_LOG2 (15)
 
 #define KBASE_TRACE_SIZE_LOG2 8	/* 256 entries */
 #define KBASE_TRACE_SIZE (1 << KBASE_TRACE_SIZE_LOG2)
@@ -168,7 +175,7 @@
 /* Maximum number of pages of memory that require a permanent mapping, per
  * kbase_context
  */
-#define KBASE_PERMANENTLY_MAPPED_MEM_LIMIT_PAGES ((1024ul * 1024ul) >> \
+#define KBASE_PERMANENTLY_MAPPED_MEM_LIMIT_PAGES ((32 * 1024ul * 1024ul) >> \
 								PAGE_SHIFT)
 
 /** Atom has been previously soft-stoppped */
@@ -1456,7 +1463,6 @@ struct kbase_devfreq_queue_info {
  *                         enabled.
  * @protected_mode_hwcnt_disable_work: Work item to disable GPU hardware
  *                         counters, used if atomic disable is not possible.
- * @protected_mode_support: set to true if protected mode is supported.
  * @buslogger:              Pointer to the structure required for interfacing
  *                          with the bus logger module to set the size of buffer
  *                          used by the module for capturing bus logs.
@@ -1677,7 +1683,7 @@ struct kbase_device {
 	u32 snoop_enable_smc;
 	u32 snoop_disable_smc;
 
-	struct protected_mode_ops *protected_ops;
+	const struct protected_mode_ops *protected_ops;
 
 	struct protected_mode_device *protected_dev;
 
@@ -1690,8 +1696,6 @@ struct kbase_device {
 	bool protected_mode_hwcnt_disabled;
 
 	struct work_struct protected_mode_hwcnt_disable_work;
-
-	bool protected_mode_support;
 
 #ifdef CONFIG_MALI_BUSLOG
 	struct bus_logger_client *buslogger;

@@ -38,7 +38,7 @@
 
 #include <mali_kbase_config.h>
 #include <mali_kbase.h>
-#include <mali_midg_regmap.h>
+#include <gpu/mali_kbase_gpu_regmap.h>
 #include <mali_kbase_cache_policy.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_tracepoints.h>
@@ -1015,11 +1015,7 @@ void kbase_mem_term(struct kbase_device *kbdev)
 	if (kbdev->mgm_dev)
 		module_put(kbdev->mgm_dev->owner);
 }
-
 KBASE_EXPORT_TEST_API(kbase_mem_term);
-
-
-
 
 /**
  * @brief Allocate a free region object.
@@ -3705,6 +3701,46 @@ static void kbase_jd_user_buf_unmap(struct kbase_context *kctx,
 		size -= local_size;
 	}
 	alloc->nents = 0;
+}
+
+int kbase_mem_copy_to_pinned_user_pages(struct page **dest_pages,
+		void *src_page, size_t *to_copy, unsigned int nr_pages,
+		unsigned int *target_page_nr, size_t offset)
+{
+	void *target_page = kmap(dest_pages[*target_page_nr]);
+	size_t chunk = PAGE_SIZE-offset;
+
+	if (!target_page) {
+		pr_err("%s: kmap failure", __func__);
+		return -ENOMEM;
+	}
+
+	chunk = min(chunk, *to_copy);
+
+	memcpy(target_page + offset, src_page, chunk);
+	*to_copy -= chunk;
+
+	kunmap(dest_pages[*target_page_nr]);
+
+	*target_page_nr += 1;
+	if (*target_page_nr >= nr_pages || *to_copy == 0)
+		return 0;
+
+	target_page = kmap(dest_pages[*target_page_nr]);
+	if (!target_page) {
+		pr_err("%s: kmap failure", __func__);
+		return -ENOMEM;
+	}
+
+	KBASE_DEBUG_ASSERT(target_page);
+
+	chunk = min(offset, *to_copy);
+	memcpy(target_page, src_page + PAGE_SIZE-offset, chunk);
+	*to_copy -= chunk;
+
+	kunmap(dest_pages[*target_page_nr]);
+
+	return 0;
 }
 
 struct kbase_mem_phy_alloc *kbase_map_external_resource(

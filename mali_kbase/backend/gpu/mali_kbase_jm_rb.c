@@ -26,6 +26,7 @@
  */
 
 #include <mali_kbase.h>
+#include <gpu/mali_kbase_gpu_fault.h>
 #include <mali_kbase_hwaccess_jm.h>
 #include <mali_kbase_jm.h>
 #include <mali_kbase_js.h>
@@ -1125,8 +1126,7 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 		if (!kbase_ctx_flag(katom->kctx, KCTX_DYING))
 			dev_warn(kbdev->dev, "error detected from slot %d, job status 0x%08x (%s)",
 					js, completion_code,
-					kbase_exception_name
-					(kbdev,
+					kbase_gpu_exception_name(
 					completion_code));
 
 #if KBASE_TRACE_DUMP_ON_JOB_SLOT_ERROR != 0

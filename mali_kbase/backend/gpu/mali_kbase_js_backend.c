@@ -313,7 +313,6 @@ int kbase_backend_timer_init(struct kbase_device *kbdev)
 	hrtimer_init(&backend->scheduling_timer, CLOCK_MONOTONIC,
 							HRTIMER_MODE_REL);
 	backend->scheduling_timer.function = timer_callback;
-
 	backend->timer_running = false;
 
 	return 0;

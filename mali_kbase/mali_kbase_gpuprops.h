@@ -66,10 +66,28 @@ void kbase_gpuprops_update_l2_features(struct kbase_device *kbdev);
  * kbase_gpuprops_populate_user_buffer - Populate the GPU properties buffer
  * @kbdev: The kbase device
  *
- * Fills kbdev->gpu_props->prop_buffer with the GPU properties for user
- * space to read.
+ * Fills prop_buffer with the GPU properties for user space to read.
  */
 int kbase_gpuprops_populate_user_buffer(struct kbase_device *kbdev);
+
+/**
+ * kbase_gpuprops_free_user_buffer - Free the GPU properties buffer.
+ * @kbdev: kbase device pointer
+ *
+ * Free the GPU properties buffer allocated from
+ * kbase_gpuprops_populate_user_buffer.
+ */
+void kbase_gpuprops_free_user_buffer(struct kbase_device *kbdev);
+
+/**
+ * kbase_device_populate_max_freq - Populate max gpu frequency.
+ * @kbdev: kbase device pointer
+ *
+ * Populate the maximum gpu frequency to be used when devfreq is disabled.
+ *
+ * Return: 0 on success and non-zero value on failure.
+ */
+int kbase_device_populate_max_freq(struct kbase_device *kbdev);
 
 /**
  * kbase_gpuprops_update_core_props_gpu_id - break down gpu id value
