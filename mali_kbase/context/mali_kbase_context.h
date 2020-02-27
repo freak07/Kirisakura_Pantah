@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2017, 2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -18,12 +18,46 @@
  *
  * SPDX-License-Identifier: GPL-2.0
  *
+ *//* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *
+ * (C) COPYRIGHT 2011-2017, 2019 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the
+ * GNU General Public License version 2 as published by the Free Software
+ * Foundation, and any use by you of this program is subject to the terms
+ * of such GNU licence.
+ *
  */
 
 #ifndef _KBASE_CONTEXT_H_
 #define _KBASE_CONTEXT_H_
 
 #include <linux/atomic.h>
+
+#ifdef CONFIG_DEBUG_FS
+/**
+ * kbase_context_debugfs_init - Initialize the kctx platform
+ *                              specific debugfs
+ *
+ * @kctx: kbase context
+ *
+ * This initializes some debugfs interfaces specific to the platform the source
+ * is compiled for.
+ */
+void kbase_context_debugfs_init(struct kbase_context *const kctx);
+
+/**
+ * kbase_context_debugfs_term - Terminate the kctx platform
+ *                              specific debugfs
+ *
+ * @kctx: kbase context
+ *
+ * This terminates some debugfs interfaces specific to the platform the source
+ * is compiled for.
+ */
+void kbase_context_debugfs_term(struct kbase_context *const kctx);
+#endif /* CONFIG_DEBUG_FS */
 
 /**
  * kbase_create_context() - Create a kernel base context.

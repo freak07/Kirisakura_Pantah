@@ -21,7 +21,7 @@
  */
 
 #include <mali_kbase.h>
-#include <mali_kbase_tracepoints.h>
+#include <tl/mali_kbase_tracepoints.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 
 #include <linux/of.h>

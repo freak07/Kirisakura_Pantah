@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2017-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2017-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -83,9 +83,11 @@ extern "C" {
  * - Added BASE_JD_REQ_JOB_SLOT.
  * - Reused padding field in base_jd_atom_v2 to pass job slot number.
  * - New ioctl: KBASE_IOCTL_GET_CPU_GPU_TIMEINFO
+ * 11.18:
+ * - Added BASE_MEM_IMPORT_SYNC_ON_MAP_UNMAP under base_mem_alloc_flags
  */
 #define BASE_UK_VERSION_MAJOR 11
-#define BASE_UK_VERSION_MINOR 17
+#define BASE_UK_VERSION_MINOR 18
 
 /**
  * struct kbase_ioctl_version_check - Check version compatibility with kernel

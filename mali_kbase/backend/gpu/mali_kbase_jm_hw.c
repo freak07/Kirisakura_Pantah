@@ -27,7 +27,7 @@
 #include <mali_kbase.h>
 #include <mali_kbase_config.h>
 #include <gpu/mali_kbase_gpu_regmap.h>
-#include <mali_kbase_tracepoints.h>
+#include <tl/mali_kbase_tracepoints.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_hwaccess_jm.h>
 #include <mali_kbase_reset_gpu.h>
@@ -36,9 +36,6 @@
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_irq_internal.h>
 #include <backend/gpu/mali_kbase_jm_internal.h>
-
-#define beenthere(kctx, f, a...) \
-			dev_dbg(kctx->kbdev->dev, "%s:" f, __func__, ##a)
 
 static void kbasep_try_reset_gpu_early_locked(struct kbase_device *kbdev);
 

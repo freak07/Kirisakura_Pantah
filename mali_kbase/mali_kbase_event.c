@@ -24,7 +24,7 @@
 
 #include <mali_kbase.h>
 #include <mali_kbase_debug.h>
-#include <mali_kbase_tracepoints.h>
+#include <tl/mali_kbase_tracepoints.h>
 
 static struct base_jd_udata kbase_event_process(struct kbase_context *kctx, struct kbase_jd_atom *katom)
 {

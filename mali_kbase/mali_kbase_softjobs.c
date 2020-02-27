@@ -33,7 +33,7 @@
 #include <mali_base_kernel.h>
 #include <mali_kbase_hwaccess_time.h>
 #include <mali_kbase_mem_linux.h>
-#include <mali_kbase_tracepoints.h>
+#include <tl/mali_kbase_tracepoints.h>
 #include <linux/version.h>
 #include <linux/ktime.h>
 #include <linux/pfn.h>

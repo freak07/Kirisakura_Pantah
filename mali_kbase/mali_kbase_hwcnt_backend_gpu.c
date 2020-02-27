@@ -30,6 +30,7 @@
 #include "backend/gpu/mali_kbase_model_dummy.h"
 #endif
 
+
 /**
  * struct kbase_hwcnt_backend_gpu_info - Information used to create an instance
  *                                       of a GPU hardware counter backend.
@@ -324,6 +325,7 @@ static int kbasep_hwcnt_backend_gpu_create(
 	const struct kbase_hwcnt_backend_gpu_info *info,
 	struct kbase_hwcnt_backend_gpu **out_backend)
 {
+
 	int errcode;
 	struct kbase_device *kbdev;
 	struct kbase_hwcnt_backend_gpu *backend = NULL;

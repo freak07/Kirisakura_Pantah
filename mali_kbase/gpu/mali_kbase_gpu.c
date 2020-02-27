@@ -20,29 +20,22 @@
  *
  */
 
-#ifndef _KBASE_GPU_FAULT_H_
-#define _KBASE_GPU_FAULT_H_
+#include <mali_kbase.h>
+#include <mali_kbase_defs.h>
 
-/** Returns the name associated with a Mali exception code
- *
- * @exception_code: exception code
- *
- * This function is called from the interrupt handler when a GPU fault occurs.
- *
- * Return: name associated with the exception code
- */
-const char *kbase_gpu_exception_name(u32 exception_code);
-
-/**
- * kbase_gpu_access_type_name - Convert MMU_AS_CONTROL.FAULTSTATUS.ACCESS_TYPE
- * into string.
- * @fault_status:  value of FAULTSTATUS register.
- *
- * After MMU fault, this function can be used to get readable information about
- * access_type of the MMU fault.
- *
- * Return: String of the access type.
- */
-const char *kbase_gpu_access_type_name(u32 fault_status);
-
-#endif /* _KBASE_GPU_FAULT_H_ */
+const char *kbase_gpu_access_type_name(u32 fault_status)
+{
+	switch (AS_FAULTSTATUS_ACCESS_TYPE_GET(fault_status)) {
+	case AS_FAULTSTATUS_ACCESS_TYPE_ATOMIC:
+		return "ATOMIC";
+	case AS_FAULTSTATUS_ACCESS_TYPE_READ:
+		return "READ";
+	case AS_FAULTSTATUS_ACCESS_TYPE_WRITE:
+		return "WRITE";
+	case AS_FAULTSTATUS_ACCESS_TYPE_EX:
+		return "EXECUTE";
+	default:
+		WARN_ON(1);
+		return NULL;
+	}
+}

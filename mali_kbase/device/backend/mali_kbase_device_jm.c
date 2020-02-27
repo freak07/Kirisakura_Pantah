@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -32,6 +32,110 @@
 #include <mali_kbase_model_linux.h>
 #endif
 
+#include <mali_kbase.h>
+#include <backend/gpu/mali_kbase_irq_internal.h>
+#include <backend/gpu/mali_kbase_jm_internal.h>
+#include <backend/gpu/mali_kbase_js_internal.h>
+#include <backend/gpu/mali_kbase_pm_internal.h>
+#include <mali_kbase_dummy_job_wa.h>
+
+/**
+ * kbase_backend_late_init - Perform any backend-specific initialization.
+ * @kbdev:	Device pointer
+ *
+ * Return: 0 on success, or an error code on failure.
+ */
+static int kbase_backend_late_init(struct kbase_device *kbdev)
+{
+	int err;
+
+	err = kbase_hwaccess_pm_init(kbdev);
+	if (err)
+		return err;
+
+	err = kbase_reset_gpu_init(kbdev);
+	if (err)
+		goto fail_reset_gpu_init;
+
+	err = kbase_hwaccess_pm_powerup(kbdev, PM_HW_ISSUES_DETECT);
+	if (err)
+		goto fail_pm_powerup;
+
+	err = kbase_backend_timer_init(kbdev);
+	if (err)
+		goto fail_timer;
+
+#ifdef CONFIG_MALI_DEBUG
+#ifndef CONFIG_MALI_NO_MALI
+	if (kbasep_common_test_interrupt_handlers(kbdev) != 0) {
+		dev_err(kbdev->dev, "Interrupt assignment check failed.\n");
+		err = -EINVAL;
+		goto fail_interrupt_test;
+	}
+#endif /* !CONFIG_MALI_NO_MALI */
+#endif /* CONFIG_MALI_DEBUG */
+
+	err = kbase_job_slot_init(kbdev);
+	if (err)
+		goto fail_job_slot;
+
+	/* Do the initialisation of devfreq.
+	 * Devfreq needs backend_timer_init() for completion of its
+	 * initialisation and it also needs to catch the first callback
+	 * occurrence of the runtime_suspend event for maintaining state
+	 * coherence with the backend power management, hence needs to be
+	 * placed before the kbase_pm_context_idle().
+	 */
+	err = kbase_backend_devfreq_init(kbdev);
+	if (err)
+		goto fail_devfreq_init;
+
+	/* Idle the GPU and/or cores, if the policy wants it to */
+	kbase_pm_context_idle(kbdev);
+
+	/* Update gpuprops with L2_FEATURES if applicable */
+	kbase_gpuprops_update_l2_features(kbdev);
+
+	init_waitqueue_head(&kbdev->hwaccess.backend.reset_wait);
+
+	return 0;
+
+fail_devfreq_init:
+	kbase_job_slot_term(kbdev);
+fail_job_slot:
+
+#ifdef CONFIG_MALI_DEBUG
+#ifndef CONFIG_MALI_NO_MALI
+fail_interrupt_test:
+#endif /* !CONFIG_MALI_NO_MALI */
+#endif /* CONFIG_MALI_DEBUG */
+
+	kbase_backend_timer_term(kbdev);
+fail_timer:
+	kbase_hwaccess_pm_halt(kbdev);
+fail_pm_powerup:
+	kbase_reset_gpu_term(kbdev);
+fail_reset_gpu_init:
+	kbase_hwaccess_pm_term(kbdev);
+
+	return err;
+}
+
+/**
+ * kbase_backend_late_term - Perform any backend-specific termination.
+ * @kbdev:	Device pointer
+ */
+static void kbase_backend_late_term(struct kbase_device *kbdev)
+{
+	kbase_backend_devfreq_term(kbdev);
+	kbase_job_slot_halt(kbdev);
+	kbase_job_slot_term(kbdev);
+	kbase_backend_timer_term(kbdev);
+	kbase_hwaccess_pm_halt(kbdev);
+	kbase_reset_gpu_term(kbdev);
+	kbase_hwaccess_pm_term(kbdev);
+}
+
 static const struct kbase_device_init dev_init[] = {
 #ifdef CONFIG_MALI_NO_MALI
 	{kbase_gpu_device_create, kbase_gpu_device_destroy,
@@ -46,8 +150,8 @@ static const struct kbase_device_init dev_init[] = {
 			"Power control initialization failed"},
 	{kbase_device_io_history_init, kbase_device_io_history_term,
 			"Register access history initialization failed"},
-	{kbase_backend_early_init, kbase_backend_early_term,
-			"Early backend initialization failed"},
+	{kbase_device_early_init, kbase_device_early_term,
+			"Early device initialization failed"},
 	{kbase_device_populate_max_freq, NULL,
 			"Populating max frequency failed"},
 	{kbase_device_misc_init, kbase_device_misc_term,
@@ -104,6 +208,8 @@ static const struct kbase_device_init dev_init[] = {
 	{kbase_gpuprops_populate_user_buffer, kbase_gpuprops_free_user_buffer,
 			"GPU property population failed"},
 #endif
+	{kbase_dummy_job_wa_load, kbase_dummy_job_wa_cleanup,
+			"Dummy job workaround load failed"},
 };
 
 static void kbase_device_term_partial(struct kbase_device *kbdev,
@@ -126,6 +232,8 @@ int kbase_device_init(struct kbase_device *kbdev)
 {
 	int err = 0;
 	unsigned int i = 0;
+
+	dev_info(kbdev->dev, "Kernel DDK version %s", MALI_RELEASE_NAME);
 
 	kbase_device_id_init(kbdev);
 	kbase_disjoint_init(kbdev);

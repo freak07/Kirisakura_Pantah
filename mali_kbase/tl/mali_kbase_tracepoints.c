@@ -67,6 +67,11 @@ enum tl_msg_id_obj {
 	KBASE_TL_EVENT_ATOM_SOFTJOB_START,
 	KBASE_TL_EVENT_ATOM_SOFTJOB_END,
 	KBASE_JD_GPU_SOFT_RESET,
+	KBASE_TL_KBASE_NEW_DEVICE,
+	KBASE_TL_KBASE_DEVICE_PROGRAM_CSG,
+	KBASE_TL_KBASE_DEVICE_DEPROGRAM_CSG,
+	KBASE_TL_KBASE_NEW_CTX,
+	KBASE_TL_KBASE_DEL_CTX,
 	KBASE_TL_KBASE_NEW_KCPUQUEUE,
 	KBASE_TL_KBASE_DEL_KCPUQUEUE,
 	KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL,
@@ -268,10 +273,30 @@ enum tl_msg_id_aux {
 		"gpu soft reset", \
 		"@p", \
 		"gpu") \
+	TP_DESC(KBASE_TL_KBASE_NEW_DEVICE, \
+		"New KBase Device", \
+		"@III", \
+		"kbase_device_id,kbase_device_gpu_core_count,kbase_device_max_num_csgs") \
+	TP_DESC(KBASE_TL_KBASE_DEVICE_PROGRAM_CSG, \
+		"CSG is programmed to a slot", \
+		"@III", \
+		"kbase_device_id,gpu_cmdq_grp_handle,kbase_device_csg_slot_index") \
+	TP_DESC(KBASE_TL_KBASE_DEVICE_DEPROGRAM_CSG, \
+		"CSG is deprogrammed from a slot", \
+		"@II", \
+		"kbase_device_id,kbase_device_csg_slot_index") \
+	TP_DESC(KBASE_TL_KBASE_NEW_CTX, \
+		"New KBase Context", \
+		"@II", \
+		"kernel_ctx_id,kbase_device_id") \
+	TP_DESC(KBASE_TL_KBASE_DEL_CTX, \
+		"Delete KBase Context", \
+		"@I", \
+		"kernel_ctx_id") \
 	TP_DESC(KBASE_TL_KBASE_NEW_KCPUQUEUE, \
 		"New KCPU Queue", \
-		"@ppI", \
-		"kcpu_queue,ctx,kcpuq_num_pending_cmds") \
+		"@pII", \
+		"kcpu_queue,kernel_ctx_id,kcpuq_num_pending_cmds") \
 	TP_DESC(KBASE_TL_KBASE_DEL_KCPUQUEUE, \
 		"Delete KCPU Queue", \
 		"@p", \
@@ -1721,16 +1746,150 @@ void __kbase_tlstream_aux_event_job_slot(
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }
 
+void __kbase_tlstream_tl_kbase_new_device(
+	struct kbase_tlstream *stream,
+	u32 kbase_device_id,
+	u32 kbase_device_gpu_core_count,
+	u32 kbase_device_max_num_csgs)
+{
+	const u32 msg_id = KBASE_TL_KBASE_NEW_DEVICE;
+	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
+		+ sizeof(kbase_device_id)
+		+ sizeof(kbase_device_gpu_core_count)
+		+ sizeof(kbase_device_max_num_csgs)
+		;
+	char *buffer;
+	unsigned long acq_flags;
+	size_t pos = 0;
+
+	buffer = kbase_tlstream_msgbuf_acquire(stream, msg_size, &acq_flags);
+
+	pos = kbasep_serialize_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_serialize_timestamp(buffer, pos);
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kbase_device_id, sizeof(kbase_device_id));
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kbase_device_gpu_core_count, sizeof(kbase_device_gpu_core_count));
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kbase_device_max_num_csgs, sizeof(kbase_device_max_num_csgs));
+
+	kbase_tlstream_msgbuf_release(stream, acq_flags);
+}
+
+void __kbase_tlstream_tl_kbase_device_program_csg(
+	struct kbase_tlstream *stream,
+	u32 kbase_device_id,
+	u32 gpu_cmdq_grp_handle,
+	u32 kbase_device_csg_slot_index)
+{
+	const u32 msg_id = KBASE_TL_KBASE_DEVICE_PROGRAM_CSG;
+	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
+		+ sizeof(kbase_device_id)
+		+ sizeof(gpu_cmdq_grp_handle)
+		+ sizeof(kbase_device_csg_slot_index)
+		;
+	char *buffer;
+	unsigned long acq_flags;
+	size_t pos = 0;
+
+	buffer = kbase_tlstream_msgbuf_acquire(stream, msg_size, &acq_flags);
+
+	pos = kbasep_serialize_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_serialize_timestamp(buffer, pos);
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kbase_device_id, sizeof(kbase_device_id));
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &gpu_cmdq_grp_handle, sizeof(gpu_cmdq_grp_handle));
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kbase_device_csg_slot_index, sizeof(kbase_device_csg_slot_index));
+
+	kbase_tlstream_msgbuf_release(stream, acq_flags);
+}
+
+void __kbase_tlstream_tl_kbase_device_deprogram_csg(
+	struct kbase_tlstream *stream,
+	u32 kbase_device_id,
+	u32 kbase_device_csg_slot_index)
+{
+	const u32 msg_id = KBASE_TL_KBASE_DEVICE_DEPROGRAM_CSG;
+	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
+		+ sizeof(kbase_device_id)
+		+ sizeof(kbase_device_csg_slot_index)
+		;
+	char *buffer;
+	unsigned long acq_flags;
+	size_t pos = 0;
+
+	buffer = kbase_tlstream_msgbuf_acquire(stream, msg_size, &acq_flags);
+
+	pos = kbasep_serialize_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_serialize_timestamp(buffer, pos);
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kbase_device_id, sizeof(kbase_device_id));
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kbase_device_csg_slot_index, sizeof(kbase_device_csg_slot_index));
+
+	kbase_tlstream_msgbuf_release(stream, acq_flags);
+}
+
+void __kbase_tlstream_tl_kbase_new_ctx(
+	struct kbase_tlstream *stream,
+	u32 kernel_ctx_id,
+	u32 kbase_device_id)
+{
+	const u32 msg_id = KBASE_TL_KBASE_NEW_CTX;
+	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
+		+ sizeof(kernel_ctx_id)
+		+ sizeof(kbase_device_id)
+		;
+	char *buffer;
+	unsigned long acq_flags;
+	size_t pos = 0;
+
+	buffer = kbase_tlstream_msgbuf_acquire(stream, msg_size, &acq_flags);
+
+	pos = kbasep_serialize_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_serialize_timestamp(buffer, pos);
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kernel_ctx_id, sizeof(kernel_ctx_id));
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kbase_device_id, sizeof(kbase_device_id));
+
+	kbase_tlstream_msgbuf_release(stream, acq_flags);
+}
+
+void __kbase_tlstream_tl_kbase_del_ctx(
+	struct kbase_tlstream *stream,
+	u32 kernel_ctx_id)
+{
+	const u32 msg_id = KBASE_TL_KBASE_DEL_CTX;
+	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
+		+ sizeof(kernel_ctx_id)
+		;
+	char *buffer;
+	unsigned long acq_flags;
+	size_t pos = 0;
+
+	buffer = kbase_tlstream_msgbuf_acquire(stream, msg_size, &acq_flags);
+
+	pos = kbasep_serialize_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_serialize_timestamp(buffer, pos);
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &kernel_ctx_id, sizeof(kernel_ctx_id));
+
+	kbase_tlstream_msgbuf_release(stream, acq_flags);
+}
+
 void __kbase_tlstream_tl_kbase_new_kcpuqueue(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
-	const void *ctx,
+	u32 kernel_ctx_id,
 	u32 kcpuq_num_pending_cmds)
 {
 	const u32 msg_id = KBASE_TL_KBASE_NEW_KCPUQUEUE;
 	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
 		+ sizeof(kcpu_queue)
-		+ sizeof(ctx)
+		+ sizeof(kernel_ctx_id)
 		+ sizeof(kcpuq_num_pending_cmds)
 		;
 	char *buffer;
@@ -1744,7 +1903,7 @@ void __kbase_tlstream_tl_kbase_new_kcpuqueue(
 	pos = kbasep_serialize_bytes(buffer,
 		pos, &kcpu_queue, sizeof(kcpu_queue));
 	pos = kbasep_serialize_bytes(buffer,
-		pos, &ctx, sizeof(ctx));
+		pos, &kernel_ctx_id, sizeof(kernel_ctx_id));
 	pos = kbasep_serialize_bytes(buffer,
 		pos, &kcpuq_num_pending_cmds, sizeof(kcpuq_num_pending_cmds));
 

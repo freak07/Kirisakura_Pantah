@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -101,10 +101,11 @@
 
 #include <linux/pm_runtime.h>
 
-#include <mali_kbase_timeline.h>
+#include <tl/mali_kbase_timeline.h>
 
 #include <mali_kbase_as_fault_debugfs.h>
 #include <device/mali_kbase_device.h>
+#include <context/mali_kbase_context.h>
 
 /* GPU IRQ Tags */
 #define	JOB_IRQ_TAG	0
@@ -275,6 +276,8 @@ static void kbase_file_delete(struct kbase_file *const kfile)
 		kctx->legacy_hwcnt_cli = NULL;
 		mutex_unlock(&kctx->legacy_hwcnt_lock);
 
+		kbase_context_debugfs_term(kctx);
+
 		kbase_destroy_context(kctx);
 
 		dev_dbg(kbdev->dev, "deleted base context\n");
@@ -368,11 +371,11 @@ int assign_irqs(struct kbase_device *kbdev)
 		}
 
 #ifdef CONFIG_OF
-		if (!strncmp(irq_res->name, "JOB", 4)) {
+		if (!strncasecmp(irq_res->name, "JOB", 4)) {
 			irqtag = JOB_IRQ_TAG;
-		} else if (!strncmp(irq_res->name, "MMU", 4)) {
+		} else if (!strncasecmp(irq_res->name, "MMU", 4)) {
 			irqtag = MMU_IRQ_TAG;
-		} else if (!strncmp(irq_res->name, "GPU", 4)) {
+		} else if (!strncasecmp(irq_res->name, "GPU", 4)) {
 			irqtag = GPU_IRQ_TAG;
 		} else {
 			dev_err(&pdev->dev, "Invalid irq res name: '%s'\n",
@@ -576,22 +579,22 @@ static int kbase_file_create_kctx(struct kbase_file *const kfile,
 		/* we don't treat this as a fail - just warn about it */
 		dev_warn(kbdev->dev, "couldn't create debugfs dir for kctx\n");
 	} else {
+#if (KERNEL_VERSION(4, 7, 0) > LINUX_VERSION_CODE)
+		/* prevent unprivileged use of debug file system
+		 * in old kernel version
+		 */
+		debugfs_create_file("infinite_cache", 0600, kctx->kctx_dentry,
+			kctx, &kbase_infinite_cache_fops);
+#else
 		debugfs_create_file("infinite_cache", 0644, kctx->kctx_dentry,
-				kctx, &kbase_infinite_cache_fops);
-		debugfs_create_file("force_same_va", 0600,
-				kctx->kctx_dentry, kctx,
-				&kbase_force_same_va_fops);
+			kctx, &kbase_infinite_cache_fops);
+#endif
+		debugfs_create_file("force_same_va", 0600, kctx->kctx_dentry,
+			kctx, &kbase_force_same_va_fops);
 
 		mutex_init(&kctx->mem_profile_lock);
 
-		kbasep_jd_debugfs_ctx_init(kctx);
-		kbase_debug_mem_view_init(kctx);
-
-		kbase_debug_job_fault_context_init(kctx);
-
-		kbase_mem_pool_debugfs_init(kctx->kctx_dentry, kctx);
-
-		kbase_jit_debugfs_init(kctx);
+		kbase_context_debugfs_init(kctx);
 	}
 #endif /* CONFIG_DEBUG_FS */
 
@@ -2376,7 +2379,7 @@ static ssize_t show_js_softstop_always(struct device *dev,
  * (see CL t6xx_stress_1 unit-test as an example whereby this feature is used.)
  */
 static DEVICE_ATTR(js_softstop_always, S_IRUGO | S_IWUSR, show_js_softstop_always, set_js_softstop_always);
-#endif /* !MALI_USE_CSF */
+#endif /* CONFIG_MALI_DEBUG */
 
 #ifdef CONFIG_MALI_DEBUG
 typedef void (kbasep_debug_command_func) (struct kbase_device *);
@@ -2532,6 +2535,12 @@ static ssize_t kbase_show_gpuinfo(struct device *dev,
 		  .name = "Mali-TVAX" },
 		{ .id = GPU_ID2_PRODUCT_LODX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
 		  .name = "Mali-LODX" },
+		{ .id = GPU_ID2_PRODUCT_TTUX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
+		  .name = "Mali-TTUX" },
+		{ .id = GPU_ID2_PRODUCT_LTUX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
+		  .name = "Mali-LTUX" },
+		{ .id = GPU_ID2_PRODUCT_TE2X >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
+		  .name = "Mali-TE2X" },
 	};
 	const char *product_name = "(Unknown Mali GPU)";
 	struct kbase_device *kbdev;
@@ -3501,7 +3510,7 @@ void power_control_term(struct kbase_device *kbdev)
 #ifdef MALI_KBASE_BUILD
 #ifdef CONFIG_DEBUG_FS
 
-static void trigger_quirks_reload(struct kbase_device *kbdev)
+static void trigger_reset(struct kbase_device *kbdev)
 {
 	kbase_pm_context_active(kbdev);
 	if (kbase_prepare_to_reset_gpu(kbdev))
@@ -3515,7 +3524,7 @@ static int type##_quirks_set(void *data, u64 val) \
 	struct kbase_device *kbdev; \
 	kbdev = (struct kbase_device *)data; \
 	kbdev->hw_quirks_##type = (u32)val; \
-	trigger_quirks_reload(kbdev); \
+	trigger_reset(kbdev); \
 	return 0;\
 } \
 \
@@ -3534,6 +3543,25 @@ MAKE_QUIRK_ACCESSORS(tiler);
 MAKE_QUIRK_ACCESSORS(mmu);
 MAKE_QUIRK_ACCESSORS(jm);
 
+static ssize_t kbase_device_debugfs_reset_write(struct file *file,
+		const char __user *ubuf, size_t count, loff_t *ppos)
+{
+	struct kbase_device *kbdev = file->private_data;
+	CSTD_UNUSED(ubuf);
+	CSTD_UNUSED(count);
+	CSTD_UNUSED(ppos);
+
+	trigger_reset(kbdev);
+
+	return count;
+}
+
+static const struct file_operations fops_trigger_reset = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.write = kbase_device_debugfs_reset_write,
+	.llseek = default_llseek,
+};
 
 /**
  * debugfs_protected_debug_mode_read - "protected_debug_mode" debugfs read
@@ -3621,6 +3649,15 @@ int kbase_device_debugfs_init(struct kbase_device *kbdev)
 {
 	struct dentry *debugfs_ctx_defaults_directory;
 	int err;
+	/* prevent unprivileged use of debug file system
+	 * in old kernel version
+	 */
+#if (KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE)
+	/* only for newer kernel version debug file system is safe */
+	const mode_t mode = 0644;
+#else
+	const mode_t mode = 0600;
+#endif
 
 	kbdev->mali_debugfs_directory = debugfs_create_dir(kbdev->devname,
 			NULL);
@@ -3670,16 +3707,16 @@ int kbase_device_debugfs_init(struct kbase_device *kbdev)
 			kbdev->mali_debugfs_directory, kbdev,
 			&fops_jm_quirks);
 
-	debugfs_create_bool("infinite_cache", 0644,
+	debugfs_create_bool("infinite_cache", mode,
 			debugfs_ctx_defaults_directory,
 			&kbdev->infinite_cache_active_default);
 
-	debugfs_create_file("mem_pool_max_size", 0644,
+	debugfs_create_file("mem_pool_max_size", mode,
 			debugfs_ctx_defaults_directory,
 			&kbdev->mem_pool_defaults.small,
 			&kbase_device_debugfs_mem_pool_max_size_fops);
 
-	debugfs_create_file("lp_mem_pool_max_size", 0644,
+	debugfs_create_file("lp_mem_pool_max_size", mode,
 			debugfs_ctx_defaults_directory,
 			&kbdev->mem_pool_defaults.large,
 			&kbase_device_debugfs_mem_pool_max_size_fops);
@@ -3689,6 +3726,10 @@ int kbase_device_debugfs_init(struct kbase_device *kbdev)
 				kbdev->mali_debugfs_directory, kbdev,
 				&fops_protected_debug_mode);
 	}
+
+	debugfs_create_file("reset", 0644,
+			kbdev->mali_debugfs_directory, kbdev,
+			&fops_trigger_reset);
 
 #if KBASE_TRACE_ENABLE
 	kbasep_trace_debugfs_init(kbdev);
@@ -4114,6 +4155,7 @@ static const struct dev_pm_ops kbase_pm_ops = {
 static const struct of_device_id kbase_dt_ids[] = {
 	{ .compatible = "arm,malit6xx" },
 	{ .compatible = "arm,mali-midgard" },
+	{ .compatible = "arm,mali-bifrost" },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, kbase_dt_ids);

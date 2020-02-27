@@ -23,7 +23,6 @@
 
 
 /**
- * @file mali_kbase_mem.c
  * Base kernel memory APIs
  */
 #include <linux/dma-buf.h>
@@ -41,10 +40,10 @@
 #include <gpu/mali_kbase_gpu_regmap.h>
 #include <mali_kbase_cache_policy.h>
 #include <mali_kbase_hw.h>
-#include <mali_kbase_tracepoints.h>
+#include <tl/mali_kbase_tracepoints.h>
 #include <mali_kbase_native_mgm.h>
 #include <mali_kbase_mem_pool_group.h>
-
+#include <mmu/mali_kbase_mmu.h>
 
 /* Forward declarations */
 static void free_partial_locked(struct kbase_context *kctx,
@@ -2618,6 +2617,12 @@ bool kbase_check_alloc_flags(unsigned long flags)
 	if ((flags & BASE_MEM_IMPORT_SHARED) == BASE_MEM_IMPORT_SHARED)
 		return false;
 
+	/* BASE_MEM_IMPORT_SYNC_ON_MAP_UNMAP is only valid for imported
+	 * memory */
+	if ((flags & BASE_MEM_IMPORT_SYNC_ON_MAP_UNMAP) ==
+			BASE_MEM_IMPORT_SYNC_ON_MAP_UNMAP)
+		return false;
+
 	/* Should not combine BASE_MEM_COHERENT_LOCAL with
 	 * BASE_MEM_COHERENT_SYSTEM */
 	if ((flags & (BASE_MEM_COHERENT_LOCAL | BASE_MEM_COHERENT_SYSTEM)) ==
@@ -2931,6 +2936,16 @@ KBASE_JIT_DEBUGFS_DECLARE(kbase_jit_debugfs_phys_fops,
 
 void kbase_jit_debugfs_init(struct kbase_context *kctx)
 {
+	/* prevent unprivileged use of debug file system
+         * in old kernel version
+         */
+#if (KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE)
+	/* only for newer kernel version debug file system is safe */
+	const mode_t mode = 0444;
+#else
+	const mode_t mode = 0400;
+#endif
+
 	/* Caller already ensures this, but we keep the pattern for
 	 * maintenance safety.
 	 */
@@ -2938,22 +2953,24 @@ void kbase_jit_debugfs_init(struct kbase_context *kctx)
 		WARN_ON(IS_ERR_OR_NULL(kctx->kctx_dentry)))
 		return;
 
+
+
 	/* Debugfs entry for getting the number of JIT allocations. */
-	debugfs_create_file("mem_jit_count", S_IRUGO, kctx->kctx_dentry,
+	debugfs_create_file("mem_jit_count", mode, kctx->kctx_dentry,
 			kctx, &kbase_jit_debugfs_count_fops);
 
 	/*
 	 * Debugfs entry for getting the total number of virtual pages
 	 * used by JIT allocations.
 	 */
-	debugfs_create_file("mem_jit_vm", S_IRUGO, kctx->kctx_dentry,
+	debugfs_create_file("mem_jit_vm", mode, kctx->kctx_dentry,
 			kctx, &kbase_jit_debugfs_vm_fops);
 
 	/*
 	 * Debugfs entry for getting the number of physical pages used
 	 * by JIT allocations.
 	 */
-	debugfs_create_file("mem_jit_phys", S_IRUGO, kctx->kctx_dentry,
+	debugfs_create_file("mem_jit_phys", mode, kctx->kctx_dentry,
 			kctx, &kbase_jit_debugfs_phys_fops);
 }
 #endif /* CONFIG_DEBUG_FS */

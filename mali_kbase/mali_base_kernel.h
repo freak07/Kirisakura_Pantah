@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -234,12 +234,20 @@ typedef u32 base_mem_alloc_flags;
 #define BASE_MEM_GROUP_ID_MASK \
 	((base_mem_alloc_flags)0xF << BASEP_MEM_GROUP_ID_SHIFT)
 
+/* Must do CPU cache maintenance when imported memory is mapped/unmapped
+ * on GPU. Currently applicable to dma-buf type only.
+ */
+#define BASE_MEM_IMPORT_SYNC_ON_MAP_UNMAP ((base_mem_alloc_flags)1 << 26)
+
+/* Use the GPU VA chosen by the kernel client */
+#define BASE_MEM_FLAG_MAP_FIXED ((base_mem_alloc_flags)1 << 27)
+
 /**
  * Number of bits used as flags for base memory management
  *
  * Must be kept in sync with the base_mem_alloc_flags flags
  */
-#define BASE_MEM_FLAGS_NR_BITS 26
+#define BASE_MEM_FLAGS_NR_BITS 28
 
 /* A mask for all output bits, excluding IN/OUT bits.
  */
@@ -304,7 +312,8 @@ static inline base_mem_alloc_flags base_mem_group_id_set(int id)
  * and may not be passed from user space.
  */
 #define BASEP_MEM_FLAGS_KERNEL_ONLY \
-	(BASEP_MEM_PERMANENT_KERNEL_MAPPING | BASEP_MEM_NO_USER_FREE)
+	(BASEP_MEM_PERMANENT_KERNEL_MAPPING | BASEP_MEM_NO_USER_FREE | \
+	 BASE_MEM_FLAG_MAP_FIXED)
 
 /* A mask of all the flags that can be returned via the base_mem_get_flags()
  * interface.
@@ -1766,6 +1775,7 @@ static inline int base_context_mmu_group_id_get(
 /* Indicate that job dumping is enabled. This could affect certain timers
  * to account for the performance impact. */
 #define BASE_TLSTREAM_JOB_DUMPING_ENABLED (1 << 1)
+
 
 #define BASE_TLSTREAM_FLAGS_MASK (BASE_TLSTREAM_ENABLE_LATENCY_TRACEPOINTS | \
 		BASE_TLSTREAM_JOB_DUMPING_ENABLED)

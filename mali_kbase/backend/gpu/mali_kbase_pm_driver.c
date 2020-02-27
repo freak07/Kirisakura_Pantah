@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -29,7 +29,7 @@
 #include <mali_kbase.h>
 #include <mali_kbase_config_defaults.h>
 #include <gpu/mali_kbase_gpu_regmap.h>
-#include <mali_kbase_tracepoints.h>
+#include <tl/mali_kbase_tracepoints.h>
 #include <mali_kbase_pm.h>
 #include <mali_kbase_config_defaults.h>
 #include <mali_kbase_smc.h>
@@ -42,6 +42,7 @@
 #include <backend/gpu/mali_kbase_irq_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <backend/gpu/mali_kbase_l2_mmu_config.h>
+#include <mali_kbase_dummy_job_wa.h>
 
 #include <linux/of.h>
 
@@ -315,11 +316,17 @@ static void kbase_pm_invoke(struct kbase_device *kbdev,
 			}
 	}
 
-	if (lo != 0)
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(reg), lo);
-
-	if (hi != 0)
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(reg + 4), hi);
+	if (kbase_dummy_job_wa_enabled(kbdev) &&
+	    action == ACTION_PWRON &&
+	    core_type == KBASE_PM_CORE_SHADER &&
+	    !(kbdev->dummy_job_wa.flags & KBASE_DUMMY_JOB_WA_FLAG_LOGICAL_SHADER_POWER)) {
+		kbase_dummy_job_wa_execute(kbdev, cores);
+	} else {
+		if (lo != 0)
+			kbase_reg_write(kbdev, GPU_CONTROL_REG(reg), lo);
+		if (hi != 0)
+			kbase_reg_write(kbdev, GPU_CONTROL_REG(reg + 4), hi);
+	}
 }
 
 /**
@@ -1579,6 +1586,15 @@ void kbase_pm_clock_on(struct kbase_device *kbdev, bool is_resume)
 	kbase_ctx_sched_restore_all_as(kbdev);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 	mutex_unlock(&kbdev->mmu_hw_mutex);
+
+	if (kbdev->dummy_job_wa.flags &
+			KBASE_DUMMY_JOB_WA_FLAG_LOGICAL_SHADER_POWER) {
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbase_dummy_job_wa_execute(kbdev,
+			kbase_pm_get_present_cores(kbdev,
+					KBASE_PM_CORE_SHADER));
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	}
 
 	/* Enable the interrupts */
 	kbase_pm_enable_interrupts(kbdev);

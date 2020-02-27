@@ -81,6 +81,14 @@ void kbase_hw_set_features_mask(struct kbase_device *kbdev)
 	case GPU_ID2_PRODUCT_TVAX:
 		features = base_hw_features_tVAx;
 		break;
+	case GPU_ID2_PRODUCT_TTUX:
+		/* Fallthrough */
+	case GPU_ID2_PRODUCT_LTUX:
+		features = base_hw_features_tTUx;
+		break;
+	case GPU_ID2_PRODUCT_TE2X:
+		features = base_hw_features_tE2x;
+		break;
 	default:
 		features = base_hw_features_generic;
 		break;
@@ -213,6 +221,18 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 
 		{GPU_ID2_PRODUCT_TVAX,
 		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tVAx_r0p0},
+		  {U32_MAX, NULL} } },
+
+		{GPU_ID2_PRODUCT_TTUX,
+		 {{GPU_ID2_VERSION_MAKE(2, 0, 0), base_hw_issues_tTUx_r0p0},
+		  {U32_MAX, NULL} } },
+
+		{GPU_ID2_PRODUCT_LTUX,
+		 {{GPU_ID2_VERSION_MAKE(3, 0, 0), base_hw_issues_tTUx_r0p0},
+		  {U32_MAX, NULL} } },
+
+		{GPU_ID2_PRODUCT_TE2X,
+		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tE2x_r0p0},
 		  {U32_MAX, NULL} } },
 	};
 
@@ -363,6 +383,13 @@ int kbase_hw_set_issues_mask(struct kbase_device *kbdev)
 			break;
 		case GPU_ID2_PRODUCT_TVAX:
 			issues = base_hw_issues_model_tVAx;
+			break;
+		case GPU_ID2_PRODUCT_TTUX:
+		case GPU_ID2_PRODUCT_LTUX:
+			issues = base_hw_issues_model_tTUx;
+			break;
+		case GPU_ID2_PRODUCT_TE2X:
+			issues = base_hw_issues_model_tE2x;
 			break;
 		default:
 			dev_err(kbdev->dev,

@@ -56,12 +56,13 @@
  */
 #include "mali_kbase_defs.h"
 
-#include "mali_kbase_context.h"
+#include "context/mali_kbase_context.h"
 #include "mali_kbase_strings.h"
 #include "mali_kbase_mem_lowlevel.h"
 #include "mali_kbase_js.h"
 #include "mali_kbase_utility.h"
 #include "mali_kbase_mem.h"
+#include "mmu/mali_kbase_mmu.h"
 #include "mali_kbase_gpu_memory_debugfs.h"
 #include "mali_kbase_mem_profile_debugfs.h"
 #include "mali_kbase_gpuprops.h"

@@ -21,14 +21,8 @@
  */
 
 /**
- * @file
- * Interface file for accessing MMU hardware functionality
- */
-
-/**
- * @page mali_kbase_mmu_hw_page MMU hardware interface
+ * DOC: Interface file for accessing MMU hardware functionality
  *
- * @section mali_kbase_mmu_hw_intro_sec Introduction
  * This module provides an abstraction for accessing the functionality provided
  * by the midgard MMU and thus allows all MMU HW access to be contained within
  * one common place and allows for different backends (implementations) to
@@ -44,16 +38,7 @@ struct kbase_as;
 struct kbase_context;
 
 /**
- * @addtogroup base_kbase_api
- * @{
- */
-
-/**
- * @addtogroup mali_kbase_mmu_hw  MMU access APIs
- * @{
- */
-
-/** @brief MMU fault type descriptor.
+ * enum kbase_mmu_fault_type - MMU fault type descriptor.
  */
 enum kbase_mmu_fault_type {
 	KBASE_MMU_FAULT_TYPE_UNKNOWN = 0,
@@ -63,62 +48,60 @@ enum kbase_mmu_fault_type {
 	KBASE_MMU_FAULT_TYPE_BUS_UNEXPECTED
 };
 
-/** @brief Configure an address space for use.
+/**
+ * kbase_mmu_hw_configure - Configure an address space for use.
+ * @kbdev:          kbase device to configure.
+ * @as:             address space to configure.
  *
  * Configure the MMU using the address space details setup in the
- * @ref kbase_context structure.
- *
- * @param[in]  kbdev          kbase device to configure.
- * @param[in]  as             address space to configure.
+ * kbase_context structure.
  */
 void kbase_mmu_hw_configure(struct kbase_device *kbdev,
 		struct kbase_as *as);
 
-/** @brief Issue an operation to the MMU.
+/**
+ * kbase_mmu_hw_do_operation - Issue an operation to the MMU.
+ * @kbdev:         kbase device to issue the MMU operation on.
+ * @as:            address space to issue the MMU operation on.
+ * @vpfn:          MMU Virtual Page Frame Number to start the operation on.
+ * @nr:            Number of pages to work on.
+ * @type:          Operation type (written to ASn_COMMAND).
+ * @handling_irq:  Is this operation being called during the handling
+ *                 of an interrupt?
  *
  * Issue an operation (MMU invalidate, MMU flush, etc) on the address space that
- * is associated with the provided @ref kbase_context over the specified range
+ * is associated with the provided kbase_context over the specified range
  *
- * @param[in]  kbdev         kbase device to issue the MMU operation on.
- * @param[in]  as            address space to issue the MMU operation on.
- * @param[in]  vpfn          MMU Virtual Page Frame Number to start the
- *                           operation on.
- * @param[in]  nr            Number of pages to work on.
- * @param[in]  type          Operation type (written to ASn_COMMAND).
- * @param[in]  handling_irq  Is this operation being called during the handling
- *                           of an interrupt?
- *
- * @return Zero if the operation was successful, non-zero otherwise.
+ * Return: Zero if the operation was successful, non-zero otherwise.
  */
 int kbase_mmu_hw_do_operation(struct kbase_device *kbdev, struct kbase_as *as,
 		u64 vpfn, u32 nr, u32 type,
 		unsigned int handling_irq);
 
-/** @brief Clear a fault that has been previously reported by the MMU.
+/**
+ * kbase_mmu_hw_clear_fault - Clear a fault that has been previously reported by
+ *                            the MMU.
+ * @kbdev:         kbase device to  clear the fault from.
+ * @as:            address space to  clear the fault from.
+ * @type:          The type of fault that needs to be cleared.
  *
  * Clear a bus error or page fault that has been reported by the MMU.
- *
- * @param[in]  kbdev         kbase device to  clear the fault from.
- * @param[in]  as            address space to  clear the fault from.
- * @param[in]  type          The type of fault that needs to be cleared.
  */
 void kbase_mmu_hw_clear_fault(struct kbase_device *kbdev, struct kbase_as *as,
 		enum kbase_mmu_fault_type type);
 
-/** @brief Enable fault that has been previously reported by the MMU.
+/**
+ * kbase_mmu_hw_enable_fault - Enable fault that has been previously reported by
+ *                             the MMU.
+ * @kbdev:         kbase device to again enable the fault from.
+ * @as:            address space to again enable the fault from.
+ * @type:          The type of fault that needs to be enabled again.
  *
  * After a page fault or bus error has been reported by the MMU these
  * will be disabled. After these are handled this function needs to be
  * called to enable the page fault or bus error fault again.
- *
- * @param[in]  kbdev         kbase device to again enable the fault from.
- * @param[in]  as            address space to again enable the fault from.
- * @param[in]  type          The type of fault that needs to be enabled again.
  */
 void kbase_mmu_hw_enable_fault(struct kbase_device *kbdev, struct kbase_as *as,
 		enum kbase_mmu_fault_type type);
-
-/** @} *//* end group mali_kbase_mmu_hw */
-/** @} *//* end group base_kbase_api */
 
 #endif	/* _KBASE_MMU_HW_H_ */

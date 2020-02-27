@@ -30,7 +30,7 @@
 #include <mali_kbase_hwaccess_jm.h>
 #include <mali_kbase_jm.h>
 #include <mali_kbase_js.h>
-#include <mali_kbase_tracepoints.h>
+#include <tl/mali_kbase_tracepoints.h>
 #include <mali_kbase_hwcnt_context.h>
 #include <mali_kbase_10969_workaround.h>
 #include <mali_kbase_reset_gpu.h>
@@ -298,9 +298,6 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 				[katom->slot_nr]);
 
 	case KBASE_ATOM_GPU_RB_READY:
-		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
-
-	case KBASE_ATOM_GPU_RB_WAITING_AFFINITY:
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
 
 	case KBASE_ATOM_GPU_RB_WAITING_FOR_CORE_AVAILABLE:
@@ -931,12 +928,6 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 				if (!cores_ready)
 					break;
 
-				katom[idx]->gpu_rb_state =
-					KBASE_ATOM_GPU_RB_WAITING_AFFINITY;
-
-				/* ***TRANSITION TO HIGHER STATE*** */
-				/* fallthrough */
-			case KBASE_ATOM_GPU_RB_WAITING_AFFINITY:
 				katom[idx]->gpu_rb_state =
 					KBASE_ATOM_GPU_RB_READY;
 

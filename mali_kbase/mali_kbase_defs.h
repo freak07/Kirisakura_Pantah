@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -36,7 +36,7 @@
 #include <mali_base_hwconfig_features.h>
 #include <mali_base_hwconfig_issues.h>
 #include <mali_kbase_mem_lowlevel.h>
-#include <mali_kbase_mmu_hw.h>
+#include <mmu/mali_kbase_mmu_hw.h>
 #include <mali_kbase_instr_defs.h>
 #include <mali_kbase_pm.h>
 #include <mali_kbase_gpuprops_types.h>
@@ -418,8 +418,6 @@ static inline void kbase_jd_katom_dep_clear(const struct kbase_jd_atom_dependenc
  * @KBASE_ATOM_GPU_RB_WAITING_FOR_CORE_AVAILABLE: Atom is in slot fifo but is waiting
  *                                for the cores, which are needed to execute the job
  *                                chain represented by the atom, to become available
- * @KBASE_ATOM_GPU_RB_WAITING_AFFINITY: Atom is in slot fifo but is blocked on
- *                                affinity due to rmu workaround for Hw issue 8987.
  * @KBASE_ATOM_GPU_RB_READY:      Atom is in slot fifo and can be submitted to GPU.
  * @KBASE_ATOM_GPU_RB_SUBMITTED:  Atom is in slot fifo and has been submitted to GPU.
  * @KBASE_ATOM_GPU_RB_RETURN_TO_JS: Atom must be returned to JS due to some failure,
@@ -432,7 +430,6 @@ enum kbase_atom_gpu_rb_state {
 	KBASE_ATOM_GPU_RB_WAITING_PROTECTED_MODE_PREV,
 	KBASE_ATOM_GPU_RB_WAITING_PROTECTED_MODE_TRANSITION,
 	KBASE_ATOM_GPU_RB_WAITING_FOR_CORE_AVAILABLE,
-	KBASE_ATOM_GPU_RB_WAITING_AFFINITY,
 	KBASE_ATOM_GPU_RB_READY,
 	KBASE_ATOM_GPU_RB_SUBMITTED,
 	KBASE_ATOM_GPU_RB_RETURN_TO_JS = -1
@@ -950,7 +947,7 @@ enum kbase_trace_code {
 	/* IMPORTANT: USE OF SPECIAL #INCLUDE OF NON-STANDARD HEADER FILE
 	 * THIS MUST BE USED AT THE START OF THE ENUM */
 #define KBASE_TRACE_CODE_MAKE_CODE(X) KBASE_TRACE_CODE(X)
-#include "mali_kbase_trace_defs.h"
+#include <tl/mali_kbase_trace_defs.h>
 #undef  KBASE_TRACE_CODE_MAKE_CODE
 	/* Comma on its own, to extend the list */
 	,
@@ -1722,6 +1719,13 @@ struct kbase_device {
 	/* See KBASE_JS_*_PRIORITY_MODE for details. */
 	u32 js_ctx_scheduling_mode;
 
+
+	struct {
+		struct kbase_context *ctx;
+		u64 jc;
+		int slot;
+		u64 flags;
+	} dummy_job_wa;
 };
 
 /**
@@ -2096,6 +2100,7 @@ struct kbase_sub_alloc {
  * @priority:             Indicates the context priority. Used along with @atoms_count
  *                        for context scheduling, protected by hwaccess_lock.
  * @atoms_count:          Number of gpu atoms currently in use, per priority
+ * @create_flags:         Flags used in context creation.
  *
  * A kernel base context is an entity among which the GPU is scheduled.
  * Each context has its own GPU address space.
@@ -2236,6 +2241,7 @@ struct kbase_context {
 
 	int priority;
 	s16 atoms_count[KBASE_JS_ATOM_SCHED_PRIO_COUNT];
+	base_context_create_flags create_flags;
 };
 
 #ifdef CONFIG_MALI_CINSTR_GWT

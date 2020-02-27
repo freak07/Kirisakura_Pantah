@@ -29,11 +29,10 @@
 #include <backend/gpu/mali_kbase_instr_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
-#include <backend/gpu/mali_kbase_mmu_hw_direct.h>
 #include <mali_kbase_reset_gpu.h>
+#include <mmu/mali_kbase_mmu.h>
 
 #if !defined(CONFIG_MALI_NO_MALI)
-
 
 #ifdef CONFIG_DEBUG_FS
 
@@ -296,18 +295,38 @@ static void kbase_clean_caches_done(struct kbase_device *kbdev)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
 
-void kbase_gpu_wait_cache_clean(struct kbase_device *kbdev)
+static inline bool get_cache_clean_flag(struct kbase_device *kbdev)
 {
+	bool cache_clean_in_progress;
 	unsigned long flags;
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	while (kbdev->cache_clean_in_progress) {
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	cache_clean_in_progress = kbdev->cache_clean_in_progress;
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	return cache_clean_in_progress;
+}
+
+void kbase_gpu_wait_cache_clean(struct kbase_device *kbdev)
+{
+	while (get_cache_clean_flag(kbdev)) {
 		wait_event_interruptible(kbdev->cache_clean_wait,
 				!kbdev->cache_clean_in_progress);
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	}
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+}
+
+int kbase_gpu_wait_cache_clean_timeout(struct kbase_device *kbdev,
+				unsigned int wait_timeout_ms)
+{
+	long remaining = msecs_to_jiffies(wait_timeout_ms);
+
+	while (remaining && get_cache_clean_flag(kbdev)) {
+		remaining = wait_event_timeout(kbdev->cache_clean_wait,
+					!kbdev->cache_clean_in_progress,
+					remaining);
+	}
+
+	return (remaining ? 0 : -ETIMEDOUT);
 }
 
 void kbase_gpu_interrupt(struct kbase_device *kbdev, u32 val)

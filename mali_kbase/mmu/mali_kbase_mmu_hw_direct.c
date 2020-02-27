@@ -21,11 +21,10 @@
  */
 
 #include <linux/bitops.h>
-
 #include <mali_kbase.h>
 #include <mali_kbase_mem.h>
-#include <mali_kbase_mmu_hw.h>
-#include <mali_kbase_tracepoints.h>
+#include <mmu/mali_kbase_mmu_hw.h>
+#include <tl/mali_kbase_tracepoints.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <mali_kbase_as_fault_debugfs.h>
 
@@ -93,7 +92,8 @@ static int wait_ready(struct kbase_device *kbdev,
 	u32 val = kbase_reg_read(kbdev, MMU_AS_REG(as_nr, AS_STATUS));
 
 	/* Wait for the MMU status to indicate there is no active command, in
-	 * case one is pending. Do not log remaining register accesses. */
+	 * case one is pending. Do not log remaining register accesses.
+	 */
 	while (--max_loops && (val & AS_STATUS_AS_ACTIVE))
 		val = kbase_reg_read(kbdev, MMU_AS_REG(as_nr, AS_STATUS));
 
@@ -121,137 +121,6 @@ static int write_cmd(struct kbase_device *kbdev, int as_nr, u32 cmd)
 	return status;
 }
 
-static void validate_protected_page_fault(struct kbase_device *kbdev)
-{
-	/* GPUs which support (native) protected mode shall not report page
-	 * fault addresses unless it has protected debug mode and protected
-	 * debug mode is turned on */
-	u32 protected_debug_mode = 0;
-
-	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_PROTECTED_DEBUG_MODE)) {
-		protected_debug_mode = kbase_reg_read(kbdev,
-				GPU_CONTROL_REG(GPU_STATUS)) & GPU_DBGEN;
-	}
-
-	if (!protected_debug_mode) {
-		/* fault_addr should never be reported in protected mode.
-		 * However, we just continue by printing an error message */
-		dev_err(kbdev->dev, "Fault address reported in protected mode\n");
-	}
-}
-
-void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
-{
-	const int num_as = 16;
-	const int busfault_shift = MMU_PAGE_FAULT_FLAGS;
-	const int pf_shift = 0;
-	const unsigned long as_bit_mask = (1UL << num_as) - 1;
-	unsigned long flags;
-	u32 new_mask;
-	u32 tmp;
-
-	/* bus faults */
-	u32 bf_bits = (irq_stat >> busfault_shift) & as_bit_mask;
-	/* page faults (note: Ignore ASes with both pf and bf) */
-	u32 pf_bits = ((irq_stat >> pf_shift) & as_bit_mask) & ~bf_bits;
-
-	KBASE_DEBUG_ASSERT(NULL != kbdev);
-
-	/* remember current mask */
-	spin_lock_irqsave(&kbdev->mmu_mask_change, flags);
-	new_mask = kbase_reg_read(kbdev, MMU_REG(MMU_IRQ_MASK));
-	/* mask interrupts for now */
-	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_MASK), 0);
-	spin_unlock_irqrestore(&kbdev->mmu_mask_change, flags);
-
-	while (bf_bits | pf_bits) {
-		struct kbase_as *as;
-		int as_no;
-		struct kbase_context *kctx;
-		struct kbase_fault *fault;
-
-		/*
-		 * the while logic ensures we have a bit set, no need to check
-		 * for not-found here
-		 */
-		as_no = ffs(bf_bits | pf_bits) - 1;
-		as = &kbdev->as[as_no];
-
-		/* find the fault type */
-		if (bf_bits & (1 << as_no))
-			fault = &as->bf_data;
-		else
-			fault = &as->pf_data;
-
-		/*
-		 * Refcount the kctx ASAP - it shouldn't disappear anyway, since
-		 * Bus/Page faults _should_ only occur whilst jobs are running,
-		 * and a job causing the Bus/Page fault shouldn't complete until
-		 * the MMU is updated
-		 */
-		kctx = kbasep_js_runpool_lookup_ctx(kbdev, as_no);
-
-		/* find faulting address */
-		fault->addr = kbase_reg_read(kbdev, MMU_AS_REG(as_no,
-				AS_FAULTADDRESS_HI));
-		fault->addr <<= 32;
-		fault->addr |= kbase_reg_read(kbdev, MMU_AS_REG(as_no,
-				AS_FAULTADDRESS_LO));
-		/* Mark the fault protected or not */
-		fault->protected_mode = kbdev->protected_mode;
-
-		if (kbdev->protected_mode && fault->addr) {
-			/* check if address reporting is allowed */
-			validate_protected_page_fault(kbdev);
-		}
-
-		/* report the fault to debugfs */
-		kbase_as_fault_debugfs_new(kbdev, as_no);
-
-		/* record the fault status */
-		fault->status = kbase_reg_read(kbdev, MMU_AS_REG(as_no,
-				AS_FAULTSTATUS));
-
-		if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_AARCH64_MMU)) {
-			fault->extra_addr = kbase_reg_read(kbdev,
-					MMU_AS_REG(as_no, AS_FAULTEXTRA_HI));
-			fault->extra_addr <<= 32;
-			fault->extra_addr |= kbase_reg_read(kbdev,
-					MMU_AS_REG(as_no, AS_FAULTEXTRA_LO));
-		}
-
-		if (kbase_as_has_bus_fault(as, fault)) {
-			/* Mark bus fault as handled.
-			 * Note that a bus fault is processed first in case
-			 * where both a bus fault and page fault occur.
-			 */
-			bf_bits &= ~(1UL << as_no);
-
-			/* remove the queued BF (and PF) from the mask */
-			new_mask &= ~(MMU_BUS_ERROR(as_no) |
-					MMU_PAGE_FAULT(as_no));
-		} else {
-			/* Mark page fault as handled */
-			pf_bits &= ~(1UL << as_no);
-
-			/* remove the queued PF from the mask */
-			new_mask &= ~MMU_PAGE_FAULT(as_no);
-		}
-
-		/* Process the interrupt for this address space */
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		kbase_mmu_interrupt_process(kbdev, kctx, as, fault);
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-	}
-
-	/* reenable interrupts */
-	spin_lock_irqsave(&kbdev->mmu_mask_change, flags);
-	tmp = kbase_reg_read(kbdev, MMU_REG(MMU_IRQ_MASK));
-	new_mask |= tmp;
-	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_MASK), new_mask);
-	spin_unlock_irqrestore(&kbdev->mmu_mask_change, flags);
-}
-
 void kbase_mmu_hw_configure(struct kbase_device *kbdev, struct kbase_as *as)
 {
 	struct kbase_mmu_setup *current_setup = &as->current_setup;
@@ -260,8 +129,9 @@ void kbase_mmu_hw_configure(struct kbase_device *kbdev, struct kbase_as *as)
 	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_AARCH64_MMU)) {
 		transcfg = current_setup->transcfg;
 
-		/* Set flag AS_TRANSCFG_PTW_MEMATTR_WRITE_BACK */
-		/* Clear PTW_MEMATTR bits */
+		/* Set flag AS_TRANSCFG_PTW_MEMATTR_WRITE_BACK
+		 * Clear PTW_MEMATTR bits
+		 */
 		transcfg &= ~AS_TRANSCFG_PTW_MEMATTR_MASK;
 		/* Enable correct PTW_MEMATTR bits */
 		transcfg |= AS_TRANSCFG_PTW_MEMATTR_WRITE_BACK;
@@ -271,8 +141,9 @@ void kbase_mmu_hw_configure(struct kbase_device *kbdev, struct kbase_as *as)
 		transcfg |= AS_TRANSCFG_R_ALLOCATE;
 
 		if (kbdev->system_coherency == COHERENCY_ACE) {
-			/* Set flag AS_TRANSCFG_PTW_SH_OS (outer shareable) */
-			/* Clear PTW_SH bits */
+			/* Set flag AS_TRANSCFG_PTW_SH_OS (outer shareable)
+			 * Clear PTW_SH bits
+			 */
 			transcfg = (transcfg & ~AS_TRANSCFG_PTW_SH_MASK);
 			/* Enable correct PTW_SH bits */
 			transcfg = (transcfg | AS_TRANSCFG_PTW_SH_OS);
@@ -375,8 +246,9 @@ void kbase_mmu_hw_enable_fault(struct kbase_device *kbdev, struct kbase_as *as,
 	unsigned long flags;
 	u32 irq_mask;
 
-	/* Enable the page fault IRQ (and bus fault IRQ as well in case one
-	 * occurred) */
+	/* Enable the page fault IRQ
+	 * (and bus fault IRQ as well in case one occurred)
+	 */
 	spin_lock_irqsave(&kbdev->mmu_mask_change, flags);
 
 	/*

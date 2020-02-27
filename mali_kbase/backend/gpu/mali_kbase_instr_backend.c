@@ -32,6 +32,7 @@
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_instr_internal.h>
 
+
 int kbase_instr_hwcnt_enable_internal(struct kbase_device *kbdev,
 					struct kbase_context *kctx,
 					struct kbase_instr_hwcnt_enable *enable)
@@ -80,16 +81,17 @@ int kbase_instr_hwcnt_enable_internal(struct kbase_device *kbdev,
 					enable->dump_buffer & 0xFFFFFFFF);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_BASE_HI),
 					enable->dump_buffer >> 32);
+
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_JM_EN),
 					enable->jm_bm);
+
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_SHADER_EN),
 					enable->shader_bm);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_MMU_L2_EN),
 					enable->mmu_l2_bm);
-	/* Due to PRLAM-8186 we need to disable the Tiler before we enable the
-	 * HW counter dump. */
+
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN),
-			enable->tiler_bm);
+					enable->tiler_bm);
 
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG),
 			prfcnt_config | PRFCNT_CONFIG_MODE_MANUAL);
@@ -198,6 +200,7 @@ int kbase_instr_hwcnt_request_dump(struct kbase_context *kctx)
 	 */
 	kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_DUMPING;
 
+
 	/* Reconfigure the dump address */
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_BASE_LO),
 					kbdev->hwcnt.addr & 0xFFFFFFFF);
@@ -207,6 +210,7 @@ int kbase_instr_hwcnt_request_dump(struct kbase_context *kctx)
 	/* Start dumping */
 	KBASE_TRACE_ADD(kbdev, CORE_GPU_PRFCNT_SAMPLE, NULL, NULL,
 					kbdev->hwcnt.addr, 0);
+
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND),
 					GPU_COMMAND_PRFCNT_SAMPLE);
 
@@ -216,6 +220,8 @@ int kbase_instr_hwcnt_request_dump(struct kbase_context *kctx)
 
  unlock:
 	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
+
+
 	return err;
 }
 KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_request_dump);
@@ -276,6 +282,7 @@ void kbasep_cache_clean_worker(struct work_struct *data)
 
 	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 }
+
 
 void kbase_instr_hwcnt_sample_done(struct kbase_device *kbdev)
 {
@@ -369,6 +376,8 @@ int kbase_instr_backend_init(struct kbase_device *kbdev)
 	init_waitqueue_head(&kbdev->hwcnt.backend.wait);
 	INIT_WORK(&kbdev->hwcnt.backend.cache_clean_work,
 						kbasep_cache_clean_worker);
+
+
 	kbdev->hwcnt.backend.triggered = 0;
 
 	kbdev->hwcnt.backend.cache_clean_wq =

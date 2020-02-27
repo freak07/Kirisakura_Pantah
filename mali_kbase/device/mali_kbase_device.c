@@ -40,13 +40,15 @@
 #include <mali_kbase_hw.h>
 #include <mali_kbase_config_defaults.h>
 
-#include <mali_kbase_timeline.h>
+#include <tl/mali_kbase_timeline.h>
 #include "mali_kbase_vinstr.h"
 #include "mali_kbase_hwcnt_context.h"
 #include "mali_kbase_hwcnt_virtualizer.h"
 
 #include "mali_kbase_device.h"
 #include "mali_kbase_device_internal.h"
+#include "backend/gpu/mali_kbase_pm_internal.h"
+#include "backend/gpu/mali_kbase_irq_internal.h"
 
 /* NOTE: Magic - 0x45435254 (TRCE in ASCII).
  * Supports tracing feature provided in the base module.
@@ -59,7 +61,7 @@ static const char *kbasep_trace_code_string[] = {
 	/* IMPORTANT: USE OF SPECIAL #INCLUDE OF NON-STANDARD HEADER FILE
 	 * THIS MUST BE USED AT THE START OF THE ARRAY */
 #define KBASE_TRACE_CODE_MAKE_CODE(X) # X
-#include "mali_kbase_trace_defs.h"
+#include "tl/mali_kbase_trace_defs.h"
 #undef  KBASE_TRACE_CODE_MAKE_CODE
 };
 #endif
@@ -647,3 +649,45 @@ void kbasep_trace_dump(struct kbase_device *kbdev)
 	CSTD_UNUSED(kbdev);
 }
 #endif				/* KBASE_TRACE_ENABLE  */
+
+int kbase_device_early_init(struct kbase_device *kbdev)
+{
+	int err;
+
+	err = kbasep_platform_device_init(kbdev);
+	if (err)
+		return err;
+
+	err = kbase_pm_runtime_init(kbdev);
+	if (err)
+		goto fail_runtime_pm;
+
+	/* Ensure we can access the GPU registers */
+	kbase_pm_register_access_enable(kbdev);
+
+	/* Find out GPU properties based on the GPU feature registers */
+	kbase_gpuprops_set(kbdev);
+
+	/* We're done accessing the GPU registers for now. */
+	kbase_pm_register_access_disable(kbdev);
+
+	err = kbase_install_interrupts(kbdev);
+	if (err)
+		goto fail_interrupts;
+
+	return 0;
+
+fail_interrupts:
+	kbase_pm_runtime_term(kbdev);
+fail_runtime_pm:
+	kbasep_platform_device_term(kbdev);
+
+	return err;
+}
+
+void kbase_device_early_term(struct kbase_device *kbdev)
+{
+	kbase_release_interrupts(kbdev);
+	kbase_pm_runtime_term(kbdev);
+	kbasep_platform_device_term(kbdev);
+}

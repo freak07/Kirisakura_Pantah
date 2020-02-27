@@ -510,4 +510,41 @@ static const enum base_hw_issue base_hw_issues_model_tVAx[] = {
 	BASE_HW_ISSUE_END
 };
 
+static const enum base_hw_issue base_hw_issues_tTUx_r0p0[] = {
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TSIX_2033,
+	BASE_HW_ISSUE_TTRX_1337,
+	BASE_HW_ISSUE_END
+};
+
+static const enum base_hw_issue base_hw_issues_model_tTUx[] = {
+	BASE_HW_ISSUE_5736,
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TSIX_2033,
+	BASE_HW_ISSUE_TTRX_1337,
+	BASE_HW_ISSUE_END
+};
+
+static const enum base_hw_issue base_hw_issues_tE2x_r0p0[] = {
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TSIX_2033,
+	BASE_HW_ISSUE_TTRX_1337,
+	BASE_HW_ISSUE_TTRX_921,
+	BASE_HW_ISSUE_TTRX_3414,
+	BASE_HW_ISSUE_TTRX_3083,
+	BASE_HW_ISSUE_TTRX_3470,
+	BASE_HW_ISSUE_END
+};
+
+static const enum base_hw_issue base_hw_issues_model_tE2x[] = {
+	BASE_HW_ISSUE_5736,
+	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_TSIX_2033,
+	BASE_HW_ISSUE_TTRX_1337,
+	BASE_HW_ISSUE_TTRX_3414,
+	BASE_HW_ISSUE_TTRX_3083,
+	BASE_HW_ISSUE_TTRX_3470,
+	BASE_HW_ISSUE_END
+};
+
 #endif /* _BASE_HWCONFIG_ISSUES_H_ */

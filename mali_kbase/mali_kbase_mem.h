@@ -145,6 +145,7 @@ struct kbase_mem_phy_alloc {
 			struct dma_buf_attachment *dma_attachment;
 			unsigned int current_mapping_usage_count;
 			struct sg_table *sgt;
+			bool need_sync;
 		} umm;
 		struct {
 			u64 stride;
@@ -1009,72 +1010,6 @@ void kbase_gpu_vm_unlock(struct kbase_context *kctx);
 int kbase_alloc_phy_pages(struct kbase_va_region *reg, size_t vsize, size_t size);
 
 /**
- * kbase_mmu_init - Initialise an object representing GPU page tables
- *
- * The structure should be terminated using kbase_mmu_term()
- *
- * @kbdev:    Instance of GPU platform device, allocated from the probe method.
- * @mmut:     GPU page tables to be initialized.
- * @kctx:     Optional kbase context, may be NULL if this set of MMU tables
- *            is not associated with a context.
- * @group_id: The physical group ID from which to allocate GPU page tables.
- *            Valid range is 0..(MEMORY_GROUP_MANAGER_NR_GROUPS-1).
- *
- * Return:    0 if successful, otherwise a negative error code.
- */
-int kbase_mmu_init(struct kbase_device *kbdev, struct kbase_mmu_table *mmut,
-		struct kbase_context *kctx, int group_id);
-/**
- * kbase_mmu_term - Terminate an object representing GPU page tables
- *
- * This will free any page tables that have been allocated
- *
- * @kbdev: Instance of GPU platform device, allocated from the probe method.
- * @mmut:  GPU page tables to be destroyed.
- */
-void kbase_mmu_term(struct kbase_device *kbdev, struct kbase_mmu_table *mmut);
-
-/**
- * kbase_mmu_create_ate - Create an address translation entry
- *
- * @kbdev:    Instance of GPU platform device, allocated from the probe method.
- * @phy:      Physical address of the page to be mapped for GPU access.
- * @flags:    Bitmask of attributes of the GPU memory region being mapped.
- * @level:    Page table level for which to build an address translation entry.
- * @group_id: The physical memory group in which the page was allocated.
- *            Valid range is 0..(MEMORY_GROUP_MANAGER_NR_GROUPS-1).
- *
- * This function creates an address translation entry to encode the physical
- * address of a page to be mapped for access by the GPU, along with any extra
- * attributes required for the GPU memory region.
- *
- * Return: An address translation entry, either in LPAE or AArch64 format
- *         (depending on the driver's configuration).
- */
-u64 kbase_mmu_create_ate(struct kbase_device *kbdev,
-	struct tagged_addr phy, unsigned long flags, int level, int group_id);
-
-int kbase_mmu_insert_pages_no_flush(struct kbase_device *kbdev,
-				    struct kbase_mmu_table *mmut,
-				    const u64 start_vpfn,
-				    struct tagged_addr *phys, size_t nr,
-				    unsigned long flags, int group_id);
-int kbase_mmu_insert_pages(struct kbase_device *kbdev,
-			   struct kbase_mmu_table *mmut, u64 vpfn,
-			   struct tagged_addr *phys, size_t nr,
-			   unsigned long flags, int as_nr, int group_id);
-int kbase_mmu_insert_single_page(struct kbase_context *kctx, u64 vpfn,
-					struct tagged_addr phys, size_t nr,
-					unsigned long flags, int group_id);
-
-int kbase_mmu_teardown_pages(struct kbase_device *kbdev,
-			     struct kbase_mmu_table *mmut, u64 vpfn,
-			     size_t nr, int as_nr);
-int kbase_mmu_update_pages(struct kbase_context *kctx, u64 vpfn,
-			   struct tagged_addr *phys, size_t nr,
-			   unsigned long flags, int const group_id);
-
-/**
  * @brief Register region and map it on the GPU.
  *
  * Call kbase_add_va_region() and map the region on the GPU.
@@ -1387,20 +1322,6 @@ static inline void kbase_clear_dma_addr(struct page *p)
 {
 	ClearPagePrivate(p);
 }
-
-/**
- * kbase_mmu_interrupt_process - Process a bus or page fault.
- * @kbdev   The kbase_device the fault happened on
- * @kctx    The kbase_context for the faulting address space if one was found.
- * @as      The address space that has the fault
- * @fault   Data relating to the fault
- *
- * This function will process a fault on a specific address space
- */
-void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
-		struct kbase_context *kctx, struct kbase_as *as,
-		struct kbase_fault *fault);
-
 
 /**
  * @brief Process a page fault.

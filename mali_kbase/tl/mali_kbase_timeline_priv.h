@@ -24,7 +24,7 @@
 #define _KBASE_TIMELINE_PRIV_H
 
 #include <mali_kbase.h>
-#include <mali_kbase_tlstream.h>
+#include "mali_kbase_tlstream.h"
 
 #include <linux/timer.h>
 #include <linux/atomic.h>
@@ -59,5 +59,7 @@ struct kbase_timeline {
 };
 
 extern const struct file_operations kbasep_tlstream_fops;
+
+void kbase_create_timeline_objects(struct kbase_device *kbdev);
 
 #endif /* _KBASE_TIMELINE_PRIV_H */

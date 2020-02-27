@@ -31,7 +31,7 @@
 #define _KBASE_JS_H_
 
 #include "mali_kbase_js_defs.h"
-#include "mali_kbase_context.h"
+#include "context/mali_kbase_context.h"
 #include "mali_kbase_defs.h"
 #include "mali_kbase_debug.h"
 

@@ -77,6 +77,22 @@ void kbase_gpu_start_cache_clean_nolock(struct kbase_device *kbdev);
 void kbase_gpu_wait_cache_clean(struct kbase_device *kbdev);
 
 /**
+ * kbase_gpu_wait_cache_clean_timeout - Wait for certain time for cache
+ *                                      cleaning to finish
+ * @kbdev: Kbase device
+ * @wait_timeout_ms: Time, in milli seconds, to wait for cache clean to complete.
+ *
+ * This function will take hwaccess_lock, and may sleep. This is supposed to be
+ * called from paths (like GPU reset) where an indefinite wait for the completion
+ * of cache clean operation can cause deadlock, as the operation may never
+ * complete.
+ *
+ * Return: 0 if successful or a negative error code on failure.
+ */
+int kbase_gpu_wait_cache_clean_timeout(struct kbase_device *kbdev,
+                                unsigned int wait_timeout_ms);
+
+/**
  * kbase_gpu_cache_clean_wait_complete - Called after the cache cleaning is
  *                                       finished. Would also be called after
  *                                       the GPU reset.

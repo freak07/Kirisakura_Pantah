@@ -271,10 +271,31 @@ void __kbase_tlstream_aux_event_job_slot(
 	u32 slot_nr,
 	u32 atom_nr,
 	u32 event);
+void __kbase_tlstream_tl_kbase_new_device(
+	struct kbase_tlstream *stream,
+	u32 kbase_device_id,
+	u32 kbase_device_gpu_core_count,
+	u32 kbase_device_max_num_csgs);
+void __kbase_tlstream_tl_kbase_device_program_csg(
+	struct kbase_tlstream *stream,
+	u32 kbase_device_id,
+	u32 gpu_cmdq_grp_handle,
+	u32 kbase_device_csg_slot_index);
+void __kbase_tlstream_tl_kbase_device_deprogram_csg(
+	struct kbase_tlstream *stream,
+	u32 kbase_device_id,
+	u32 kbase_device_csg_slot_index);
+void __kbase_tlstream_tl_kbase_new_ctx(
+	struct kbase_tlstream *stream,
+	u32 kernel_ctx_id,
+	u32 kbase_device_id);
+void __kbase_tlstream_tl_kbase_del_ctx(
+	struct kbase_tlstream *stream,
+	u32 kernel_ctx_id);
 void __kbase_tlstream_tl_kbase_new_kcpuqueue(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
-	const void *ctx,
+	u32 kernel_ctx_id,
 	u32 kcpuq_num_pending_cmds);
 void __kbase_tlstream_tl_kbase_del_kcpuqueue(
 	struct kbase_tlstream *stream,
@@ -1404,19 +1425,126 @@ struct kbase_tlstream;
 	} while (0)
 
 /**
+ * KBASE_TLSTREAM_TL_KBASE_NEW_DEVICE -
+ *   New KBase Device
+ *
+ * @kbdev:	Kbase device
+ * @kbase_device_id:	The id of the physical hardware
+ * @kbase_device_gpu_core_count:	The number of gpu cores in the physical hardware
+ * @kbase_device_max_num_csgs:	The max number of CSGs the physical hardware supports
+ */
+#define KBASE_TLSTREAM_TL_KBASE_NEW_DEVICE(	\
+	kbdev,	\
+	kbase_device_id,	\
+	kbase_device_gpu_core_count,	\
+	kbase_device_max_num_csgs	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
+		if (enabled & TLSTREAM_ENABLED)	\
+			__kbase_tlstream_tl_kbase_new_device(	\
+				__TL_DISPATCH_STREAM(kbdev, obj), \
+				kbase_device_id, kbase_device_gpu_core_count, kbase_device_max_num_csgs);	\
+	} while (0)
+
+/**
+ * KBASE_TLSTREAM_TL_KBASE_DEVICE_PROGRAM_CSG -
+ *   CSG is programmed to a slot
+ *
+ * @kbdev:	Kbase device
+ * @kbase_device_id:	The id of the physical hardware
+ * @gpu_cmdq_grp_handle:	GPU Command Queue Group handle which will match userspace
+ * @kbase_device_csg_slot_index:	The index of the slot in the scheduler being programmed
+ */
+#define KBASE_TLSTREAM_TL_KBASE_DEVICE_PROGRAM_CSG(	\
+	kbdev,	\
+	kbase_device_id,	\
+	gpu_cmdq_grp_handle,	\
+	kbase_device_csg_slot_index	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
+		if (enabled & TLSTREAM_ENABLED)	\
+			__kbase_tlstream_tl_kbase_device_program_csg(	\
+				__TL_DISPATCH_STREAM(kbdev, obj), \
+				kbase_device_id, gpu_cmdq_grp_handle, kbase_device_csg_slot_index);	\
+	} while (0)
+
+/**
+ * KBASE_TLSTREAM_TL_KBASE_DEVICE_DEPROGRAM_CSG -
+ *   CSG is deprogrammed from a slot
+ *
+ * @kbdev:	Kbase device
+ * @kbase_device_id:	The id of the physical hardware
+ * @kbase_device_csg_slot_index:	The index of the slot in the scheduler being programmed
+ */
+#define KBASE_TLSTREAM_TL_KBASE_DEVICE_DEPROGRAM_CSG(	\
+	kbdev,	\
+	kbase_device_id,	\
+	kbase_device_csg_slot_index	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
+		if (enabled & TLSTREAM_ENABLED)	\
+			__kbase_tlstream_tl_kbase_device_deprogram_csg(	\
+				__TL_DISPATCH_STREAM(kbdev, obj), \
+				kbase_device_id, kbase_device_csg_slot_index);	\
+	} while (0)
+
+/**
+ * KBASE_TLSTREAM_TL_KBASE_NEW_CTX -
+ *   New KBase Context
+ *
+ * @kbdev:	Kbase device
+ * @kernel_ctx_id:	Unique ID for the KBase Context
+ * @kbase_device_id:	The id of the physical hardware
+ */
+#define KBASE_TLSTREAM_TL_KBASE_NEW_CTX(	\
+	kbdev,	\
+	kernel_ctx_id,	\
+	kbase_device_id	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
+		if (enabled & TLSTREAM_ENABLED)	\
+			__kbase_tlstream_tl_kbase_new_ctx(	\
+				__TL_DISPATCH_STREAM(kbdev, obj), \
+				kernel_ctx_id, kbase_device_id);	\
+	} while (0)
+
+/**
+ * KBASE_TLSTREAM_TL_KBASE_DEL_CTX -
+ *   Delete KBase Context
+ *
+ * @kbdev:	Kbase device
+ * @kernel_ctx_id:	Unique ID for the KBase Context
+ */
+#define KBASE_TLSTREAM_TL_KBASE_DEL_CTX(	\
+	kbdev,	\
+	kernel_ctx_id	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_is_enabled); \
+		if (enabled & TLSTREAM_ENABLED)	\
+			__kbase_tlstream_tl_kbase_del_ctx(	\
+				__TL_DISPATCH_STREAM(kbdev, obj), \
+				kernel_ctx_id);	\
+	} while (0)
+
+/**
  * KBASE_TLSTREAM_TL_KBASE_NEW_KCPUQUEUE -
  *   New KCPU Queue
  *
  * @kbdev:	Kbase device
  * @kcpu_queue:	KCPU queue
- * @ctx:	Name of the context object
+ * @kernel_ctx_id:	Unique ID for the KBase Context
  * @kcpuq_num_pending_cmds:	Number of commands already enqueued
  * in the KCPU queue
  */
 #define KBASE_TLSTREAM_TL_KBASE_NEW_KCPUQUEUE(	\
 	kbdev,	\
 	kcpu_queue,	\
-	ctx,	\
+	kernel_ctx_id,	\
 	kcpuq_num_pending_cmds	\
 	)	\
 	do {	\
@@ -1424,7 +1552,7 @@ struct kbase_tlstream;
 		if (enabled & TLSTREAM_ENABLED)	\
 			__kbase_tlstream_tl_kbase_new_kcpuqueue(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
-				kcpu_queue, ctx, kcpuq_num_pending_cmds);	\
+				kcpu_queue, kernel_ctx_id, kcpuq_num_pending_cmds);	\
 	} while (0)
 
 /**

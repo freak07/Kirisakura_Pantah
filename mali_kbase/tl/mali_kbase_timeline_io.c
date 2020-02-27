@@ -20,9 +20,9 @@
  *
  */
 
-#include <mali_kbase_timeline_priv.h>
-#include <mali_kbase_tlstream.h>
-#include <mali_kbase_tracepoints.h>
+#include "mali_kbase_timeline_priv.h"
+#include "mali_kbase_tlstream.h"
+#include "mali_kbase_tracepoints.h"
 
 #include <linux/poll.h>
 

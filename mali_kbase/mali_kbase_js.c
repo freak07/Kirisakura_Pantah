@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -27,7 +27,7 @@
  */
 #include <mali_kbase.h>
 #include <mali_kbase_js.h>
-#include <mali_kbase_tracepoints.h>
+#include <tl/mali_kbase_tracepoints.h>
 #include <mali_kbase_hw.h>
 #include <mali_kbase_ctx_sched.h>
 
@@ -204,7 +204,8 @@ jsctx_rb_none_to_pull(struct kbase_context *kctx, int js)
 
 	lockdep_assert_held(&kctx->kbdev->hwaccess_lock);
 
-	for (prio = 0; prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++) {
+	for (prio = BASE_JD_PRIO_MEDIUM;
+		prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++) {
 		if (!jsctx_rb_none_to_pull_prio(kctx, js, prio))
 			return false;
 	}
@@ -272,7 +273,8 @@ jsctx_queue_foreach(struct kbase_context *kctx, int js,
 {
 	int prio;
 
-	for (prio = 0; prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++)
+	for (prio = BASE_JD_PRIO_MEDIUM;
+		prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++)
 		jsctx_queue_foreach_prio(kctx, js, prio, callback);
 }
 
@@ -322,7 +324,8 @@ jsctx_rb_peek(struct kbase_context *kctx, int js)
 
 	lockdep_assert_held(&kctx->kbdev->hwaccess_lock);
 
-	for (prio = 0; prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++) {
+	for (prio = BASE_JD_PRIO_MEDIUM;
+		prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++) {
 		struct kbase_jd_atom *katom;
 
 		katom = jsctx_rb_peek_prio(kctx, js, prio);
@@ -1095,7 +1098,8 @@ void kbase_js_update_ctx_priority(struct kbase_context *kctx)
 		/* Determine the new priority for context, as per the priority
 		 * of currently in-use atoms.
 		 */
-		for (prio = 0; prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++) {
+		for (prio = BASE_JD_PRIO_MEDIUM;
+			prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++) {
 			if (kctx->atoms_count[prio]) {
 				new_priority = prio;
 				break;
@@ -1898,7 +1902,6 @@ void kbasep_js_suspend(struct kbase_device *kbdev)
 	struct kbasep_js_device_data *js_devdata;
 	int i;
 	u16 retained = 0u;
-	int nr_privileged_ctx = 0;
 
 	KBASE_DEBUG_ASSERT(kbdev);
 	KBASE_DEBUG_ASSERT(kbase_pm_is_suspending(kbdev));
@@ -1919,16 +1922,14 @@ void kbasep_js_suspend(struct kbase_device *kbdev)
 		if (kctx && !(kbdev->as_free & (1u << i))) {
 			kbase_ctx_sched_retain_ctx_refcount(kctx);
 			retained |= 1u;
-			/* We can only cope with up to 1 privileged context -
-			 * the instrumented context. It'll be suspended by
-			 * disabling instrumentation */
-			if (kbase_ctx_flag(kctx, KCTX_PRIVILEGED)) {
-				++nr_privileged_ctx;
-				WARN_ON(nr_privileged_ctx != 1);
-			}
+			/* This loop will not have an effect on the privileged
+			 * contexts as they would have an extra ref count
+			 * compared to the normal contexts, so they will hold
+			 * on to their address spaces. MMU will re-enabled for
+			 * them on resume.
+			 */
 		}
 	}
-	CSTD_UNUSED(nr_privileged_ctx);
 
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
@@ -1958,7 +1959,8 @@ void kbasep_js_resume(struct kbase_device *kbdev)
 
 	mutex_lock(&js_devdata->queue_mutex);
 	for (js = 0; js < kbdev->gpu_props.num_job_slots; js++) {
-		for (prio = 0; prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++) {
+		for (prio = BASE_JD_PRIO_MEDIUM;
+			prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++) {
 			struct kbase_context *kctx, *n;
 			unsigned long flags;
 

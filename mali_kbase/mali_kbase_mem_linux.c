@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -46,8 +46,9 @@
 
 #include <mali_kbase.h>
 #include <mali_kbase_mem_linux.h>
-#include <mali_kbase_tracepoints.h>
+#include <tl/mali_kbase_tracepoints.h>
 #include <mali_kbase_ioctl.h>
+#include <mmu/mali_kbase_mmu.h>
 
 #if ((KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE) || \
 	(KERNEL_VERSION(5, 0, 0) > LINUX_VERSION_CODE))
@@ -278,7 +279,10 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 	dev_dbg(dev, "Allocating %lld va_pages, %lld commit_pages, %lld extent, 0x%llX flags\n",
 		va_pages, commit_pages, extent, *flags);
 
-	*gpu_va = 0; /* return 0 on failure */
+	if (!(*flags & BASE_MEM_FLAG_MAP_FIXED))
+		*gpu_va = 0; /* return 0 on failure */
+	else
+		dev_err(dev, "Keeping requested GPU VA of 0x%llx\n", (unsigned long long)*gpu_va);
 
 	if (!kbase_check_alloc_flags(*flags)) {
 		dev_warn(dev,
@@ -334,7 +338,9 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 		zone = KBASE_REG_ZONE_CUSTOM_VA;
 	}
 
-	reg = kbase_alloc_free_region(rbtree, 0, va_pages, zone);
+	reg = kbase_alloc_free_region(rbtree, PFN_DOWN(*gpu_va),
+			va_pages, zone);
+
 	if (!reg) {
 		dev_err(dev, "Failed to allocate free region");
 		goto no_region;
@@ -404,7 +410,7 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 
 		*gpu_va = (u64) cookie;
 	} else /* we control the VA */ {
-		if (kbase_gpu_mmap(kctx, reg, 0, va_pages, 1) != 0) {
+		if (kbase_gpu_mmap(kctx, reg, *gpu_va, va_pages, 1) != 0) {
 			dev_warn(dev, "Failed to map memory on GPU");
 			kbase_gpu_vm_unlock(kctx);
 			goto no_mmap;
@@ -1122,7 +1128,8 @@ int kbase_mem_umm_map(struct kbase_context *kctx,
 
 	alloc->imported.umm.current_mapping_usage_count++;
 	if (alloc->imported.umm.current_mapping_usage_count != 1) {
-		if (IS_ENABLED(CONFIG_MALI_DMA_BUF_LEGACY_COMPAT)) {
+		if (IS_ENABLED(CONFIG_MALI_DMA_BUF_LEGACY_COMPAT) ||
+				alloc->imported.umm.need_sync) {
 			if (!kbase_is_region_invalid_or_free(reg)) {
 				err = kbase_mem_do_sync_imported(kctx, reg,
 						KBASE_SYNC_TO_DEVICE);
@@ -1193,7 +1200,8 @@ void kbase_mem_umm_unmap(struct kbase_context *kctx,
 {
 	alloc->imported.umm.current_mapping_usage_count--;
 	if (alloc->imported.umm.current_mapping_usage_count) {
-		if (IS_ENABLED(CONFIG_MALI_DMA_BUF_LEGACY_COMPAT)) {
+		if (IS_ENABLED(CONFIG_MALI_DMA_BUF_LEGACY_COMPAT) ||
+				alloc->imported.umm.need_sync) {
 			if (!kbase_is_region_invalid_or_free(reg)) {
 				int err = kbase_mem_do_sync_imported(kctx, reg,
 						KBASE_SYNC_TO_CPU);
@@ -1258,6 +1266,7 @@ static struct kbase_va_region *kbase_mem_from_umm(struct kbase_context *kctx,
 	struct dma_buf *dma_buf;
 	struct dma_buf_attachment *dma_attachment;
 	bool shared_zone = false;
+	bool need_sync = false;
 	int group_id;
 
 	/* 64-bit address range is the max */
@@ -1297,6 +1306,9 @@ static struct kbase_va_region *kbase_mem_from_umm(struct kbase_context *kctx,
 
 	if (*flags & BASE_MEM_IMPORT_SHARED)
 		shared_zone = true;
+
+	if (*flags & BASE_MEM_IMPORT_SYNC_ON_MAP_UNMAP)
+		need_sync = true;
 
 #ifdef CONFIG_64BIT
 	if (!kbase_ctx_flag(kctx, KCTX_COMPAT)) {
@@ -1353,6 +1365,7 @@ static struct kbase_va_region *kbase_mem_from_umm(struct kbase_context *kctx,
 	reg->gpu_alloc->imported.umm.dma_buf = dma_buf;
 	reg->gpu_alloc->imported.umm.dma_attachment = dma_attachment;
 	reg->gpu_alloc->imported.umm.current_mapping_usage_count = 0;
+	reg->gpu_alloc->imported.umm.need_sync = need_sync;
 	reg->extent = 0;
 
 	if (!IS_ENABLED(CONFIG_MALI_DMA_BUF_MAP_ON_DEMAND)) {
@@ -1406,6 +1419,10 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 	u32 cache_line_alignment = kbase_get_cache_line_alignment(kctx->kbdev);
 	struct kbase_alloc_import_user_buf *user_buf;
 	struct page **pages = NULL;
+
+	/* Flag supported only for dma-buf imported memory */
+	if (*flags & BASE_MEM_IMPORT_SYNC_ON_MAP_UNMAP)
+		return NULL;
 
 	if ((address & (cache_line_alignment - 1)) != 0 ||
 			(size & (cache_line_alignment - 1)) != 0) {
