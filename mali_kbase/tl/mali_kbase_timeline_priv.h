@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -25,6 +25,7 @@
 
 #include <mali_kbase.h>
 #include "mali_kbase_tlstream.h"
+
 
 #include <linux/timer.h>
 #include <linux/atomic.h>

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2018 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2018, 2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -50,12 +50,6 @@ struct kbase_jd_atom;
 
 
 typedef u32 kbase_context_flags;
-
-struct kbasep_atom_req {
-	base_jd_core_req core_req;
-	kbase_context_flags ctx_req;
-	u32 device_nr;
-};
 
 /** Callback function run on all of a context's jobs registered with the Job
  * Scheduler */
@@ -246,24 +240,6 @@ struct kbasep_js_device_data {
 	} runpool_irq;
 
 	/**
-	 * Run Pool mutex, for managing contexts within the runpool.
-	 * Unless otherwise specified, you must hold this lock whilst accessing any
-	 * members that follow
-	 *
-	 * In addition, this is used to access:
-	 * - the kbasep_js_kctx_info::runpool substructure
-	 */
-	struct mutex runpool_mutex;
-
-	/**
-	 * Queue Lock, used to access the Policy's queue of contexts independently
-	 * of the Run Pool.
-	 *
-	 * Of course, you don't need the Run Pool lock to access this.
-	 */
-	struct mutex queue_mutex;
-
-	/**
 	 * Scheduling semaphore. This must be held when calling
 	 * kbase_jm_kick()
 	 */
@@ -299,9 +275,6 @@ struct kbasep_js_device_data {
 	u32 gpu_reset_ticks_dumping; /*< Value for JS_RESET_TICKS_DUMPING */
 	u32 ctx_timeslice_ns;		 /**< Value for JS_CTX_TIMESLICE_NS */
 
-	/**< Value for JS_SOFT_JOB_TIMEOUT */
-	atomic_t soft_job_timeout_ms;
-
 	/** List of suspended soft jobs */
 	struct list_head suspended_soft_jobs_list;
 
@@ -321,6 +294,27 @@ struct kbasep_js_device_data {
 	/* Number of contexts that can either be pulled from or are currently
 	 * running */
 	atomic_t nr_contexts_runnable;
+
+	/** Value for JS_SOFT_JOB_TIMEOUT */
+	atomic_t soft_job_timeout_ms;
+
+	/**
+	 * Queue Lock, used to access the Policy's queue of contexts
+	 * independently of the Run Pool.
+	 *
+	 * Of course, you don't need the Run Pool lock to access this.
+	 */
+	struct mutex queue_mutex;
+
+	/**
+	 * Run Pool mutex, for managing contexts within the runpool.
+	 * Unless otherwise specified, you must hold this lock whilst accessing
+	 * any members that follow
+	 *
+	 * In addition, this is used to access:
+	 * * the kbasep_js_kctx_info::runpool substructure
+	 */
+	struct mutex runpool_mutex;
 };
 
 /**

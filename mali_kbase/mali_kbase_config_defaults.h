@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2013-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2013-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -199,6 +199,15 @@ enum {
  * which is 5 seconds (assuming the GPU is usually clocked at ~500 MHZ).
  */
 #define DEFAULT_PROGRESS_TIMEOUT ((u64)5 * 500 * 1024 * 1024)
+
+/**
+ * Default threshold at which to switch to incremental rendering
+ *
+ * Fraction of the maximum size of an allocation that grows on GPU page fault
+ * that can be used up before the driver switches to incremental rendering,
+ * in 256ths. 0 means disable incremental rendering.
+ */
+#define DEFAULT_IR_THRESHOLD (192)
 
 #endif /* _KBASE_CONFIG_DEFAULTS_H_ */
 

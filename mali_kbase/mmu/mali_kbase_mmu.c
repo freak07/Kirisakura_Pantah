@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -42,6 +42,7 @@
 #include <mali_kbase_reset_gpu.h>
 #include <mmu/mali_kbase_mmu.h>
 #include <mmu/mali_kbase_mmu_internal.h>
+#include <mali_kbase_cs_experimental.h>
 
 #define KBASE_MMU_PAGE_ENTRIES 512
 
@@ -534,6 +535,8 @@ void page_fault_worker(struct work_struct *data)
 	bool grow_2mb_pool;
 	struct kbase_sub_alloc *prealloc_sas[2] = { NULL, NULL };
 	int i;
+	size_t current_backed_size;
+
 
 	faulting_as = container_of(data, struct kbase_as, work_pagefault);
 	fault = &faulting_as->pf_data;
@@ -541,6 +544,9 @@ void page_fault_worker(struct work_struct *data)
 	as_no = faulting_as->number;
 
 	kbdev = container_of(faulting_as, struct kbase_device, as[as_no]);
+	dev_dbg(kbdev->dev,
+		"Entering %s %p, fault_pfn %lld, as_no %d\n",
+		__func__, (void *)data, fault_pfn, as_no);
 
 	/* Grab the context that was already refcounted in kbase_mmu_interrupt()
 	 * Therefore, it cannot be scheduled out of this AS until we explicitly
@@ -684,11 +690,14 @@ page_fault_retry:
 	 */
 	fault_rel_pfn = fault_pfn - region->start_pfn;
 
-	if (fault_rel_pfn < kbase_reg_current_backed_size(region)) {
-		dev_dbg(kbdev->dev, "Page fault @ 0x%llx in allocated region 0x%llx-0x%llx of growable TMEM: Ignoring",
+	current_backed_size = kbase_reg_current_backed_size(region);
+
+	if (fault_rel_pfn < current_backed_size) {
+		dev_dbg(kbdev->dev,
+			"Page fault @ 0x%llx in allocated region 0x%llx-0x%llx of growable TMEM: Ignoring",
 				fault->addr, region->start_pfn,
 				region->start_pfn +
-				kbase_reg_current_backed_size(region));
+				current_backed_size);
 
 		mutex_lock(&kbdev->mmu_hw_mutex);
 
@@ -717,8 +726,9 @@ page_fault_retry:
 	new_pages = reg_grow_calc_extra_pages(kbdev, region, fault_rel_pfn);
 
 	/* cap to max vsize */
-	new_pages = min(new_pages, region->nr_pages -
-			kbase_reg_current_backed_size(region));
+	new_pages = min(new_pages, region->nr_pages - current_backed_size);
+	dev_dbg(kctx->kbdev->dev, "Allocate %zu pages on page fault\n",
+		new_pages);
 
 	if (new_pages == 0) {
 		mutex_lock(&kbdev->mmu_hw_mutex);
@@ -750,8 +760,8 @@ page_fault_retry:
 		u32 op;
 
 		/* alloc success */
-		KBASE_DEBUG_ASSERT(kbase_reg_current_backed_size(region)
-				<= region->nr_pages);
+		WARN_ON(kbase_reg_current_backed_size(region) >
+			region->nr_pages);
 
 		/* set up the new pages */
 		pfn_offset = kbase_reg_current_backed_size(region) - new_pages;
@@ -783,6 +793,29 @@ page_fault_retry:
 		}
 		KBASE_TLSTREAM_AUX_PAGEFAULT(kbdev, kctx->id, as_no,
 				(u64)new_pages);
+		trace_mali_mmu_page_fault_grow(region, fault, new_pages);
+
+#if MALI_INCREMENTAL_RENDERING
+		/* Switch to incremental rendering if we have nearly run out of
+		 * memory in a JIT memory allocation.
+		 */
+		if (region->threshold_pages &&
+			kbase_reg_current_backed_size(region) >
+				region->threshold_pages) {
+
+			dev_dbg(kctx->kbdev->dev,
+				"%zu pages exceeded IR threshold %zu\n",
+				new_pages + current_backed_size,
+				region->threshold_pages);
+
+			if (kbase_mmu_switch_to_ir(kctx, region) >= 0) {
+				dev_dbg(kctx->kbdev->dev,
+					"Get region %p for IR\n",
+					(void *)region);
+				kbase_va_region_alloc_get(kctx, region);
+			}
+		}
+#endif
 
 		/* AS transaction begin */
 		mutex_lock(&kbdev->mmu_hw_mutex);
@@ -871,6 +904,7 @@ page_fault_retry:
 			kbase_mmu_report_fault_and_kill(kctx, faulting_as,
 					"Page allocation failure", fault);
 		} else {
+			dev_dbg(kbdev->dev, "Try again after pool_grow\n");
 			goto page_fault_retry;
 		}
 	}
@@ -886,6 +920,7 @@ fault_done:
 	kbasep_js_runpool_release_ctx(kbdev, kctx);
 
 	atomic_dec(&kbdev->faults_pending);
+	dev_dbg(kbdev->dev, "Leaving page_fault_worker %p\n", (void *)data);
 }
 
 static phys_addr_t kbase_mmu_alloc_pgd(struct kbase_device *kbdev,

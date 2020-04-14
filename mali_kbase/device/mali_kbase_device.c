@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -270,7 +270,12 @@ void kbase_device_id_init(struct kbase_device *kbdev)
 {
 	scnprintf(kbdev->devname, DEVNAME_SIZE, "%s%d", kbase_drv_name,
 			kbase_dev_nr);
-	kbdev->id = kbase_dev_nr++;
+	kbdev->id = kbase_dev_nr;
+}
+
+void kbase_increment_device_id(void)
+{
+	kbase_dev_nr++;
 }
 
 int kbase_device_hwcnt_backend_gpu_init(struct kbase_device *kbdev)

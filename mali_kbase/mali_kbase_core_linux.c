@@ -48,6 +48,9 @@
 #include <mali_kbase_hwaccess_backend.h>
 #include <mali_kbase_hwaccess_time.h>
 #include <mali_kbase_hwaccess_jm.h>
+#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY_VIA_DEBUG_FS
+#include <mali_kbase_hwaccess_instr.h>
+#endif
 #include <mali_kbase_ctx_sched.h>
 #include <mali_kbase_reset_gpu.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
@@ -672,11 +675,11 @@ static int kbase_api_set_flags(struct kbase_file *kfile,
 		js_kctx_info = &kctx->jctx.sched_info;
 		mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 		spin_lock_irqsave(&kctx->kbdev->hwaccess_lock, irq_flags);
-
 		/* Translate the flags */
 		if ((flags->create_flags &
 			BASE_CONTEXT_SYSTEM_MONITOR_SUBMIT_DISABLED) == 0)
 			kbase_ctx_flag_clear(kctx, KCTX_SUBMIT_DISABLED);
+
 
 		spin_unlock_irqrestore(&kctx->kbdev->hwaccess_lock, irq_flags);
 		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
@@ -918,22 +921,26 @@ static int kbase_api_get_ddk_version(struct kbase_context *kctx,
 	return len;
 }
 
-/* Defaults for legacy JIT init ioctl */
+/* Defaults for legacy just-in-time memory allocator initialization
+ * kernel calls
+ */
 #define DEFAULT_MAX_JIT_ALLOCATIONS 255
 #define JIT_LEGACY_TRIM_LEVEL (0) /* No trimming */
 
-static int kbase_api_mem_jit_init_old(struct kbase_context *kctx,
-		struct kbase_ioctl_mem_jit_init_old *jit_init)
+static int kbase_api_mem_jit_init_10_2(struct kbase_context *kctx,
+		struct kbase_ioctl_mem_jit_init_10_2 *jit_init)
 {
 	kctx->jit_version = 1;
 
+	/* since no phys_pages parameter, use the maximum: va_pages */
 	return kbase_region_tracker_init_jit(kctx, jit_init->va_pages,
 			DEFAULT_MAX_JIT_ALLOCATIONS,
-			JIT_LEGACY_TRIM_LEVEL, BASE_MEM_GROUP_DEFAULT);
+			JIT_LEGACY_TRIM_LEVEL, BASE_MEM_GROUP_DEFAULT,
+			jit_init->va_pages);
 }
 
-static int kbase_api_mem_jit_init(struct kbase_context *kctx,
-		struct kbase_ioctl_mem_jit_init *jit_init)
+static int kbase_api_mem_jit_init_11_5(struct kbase_context *kctx,
+		struct kbase_ioctl_mem_jit_init_11_5 *jit_init)
 {
 	int i;
 
@@ -947,9 +954,30 @@ static int kbase_api_mem_jit_init(struct kbase_context *kctx,
 			return -EINVAL;
 	}
 
+	/* since no phys_pages parameter, use the maximum: va_pages */
 	return kbase_region_tracker_init_jit(kctx, jit_init->va_pages,
 			jit_init->max_allocations, jit_init->trim_level,
-			jit_init->group_id);
+			jit_init->group_id, jit_init->va_pages);
+}
+
+static int kbase_api_mem_jit_init(struct kbase_context *kctx,
+		struct kbase_ioctl_mem_jit_init *jit_init)
+{
+	int i;
+
+	kctx->jit_version = 3;
+
+	for (i = 0; i < sizeof(jit_init->padding); i++) {
+		/* Ensure all padding bytes are 0 for potential future
+		 * extension
+		 */
+		if (jit_init->padding[i])
+			return -EINVAL;
+	}
+
+	return kbase_region_tracker_init_jit(kctx, jit_init->va_pages,
+			jit_init->max_allocations, jit_init->trim_level,
+			jit_init->group_id, jit_init->phys_pages);
 }
 
 static int kbase_api_mem_exec_init(struct kbase_context *kctx,
@@ -1381,10 +1409,16 @@ static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				struct kbase_ioctl_get_ddk_version,
 				kctx);
 		break;
-	case KBASE_IOCTL_MEM_JIT_INIT_OLD:
-		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_MEM_JIT_INIT_OLD,
-				kbase_api_mem_jit_init_old,
-				struct kbase_ioctl_mem_jit_init_old,
+	case KBASE_IOCTL_MEM_JIT_INIT_10_2:
+		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_MEM_JIT_INIT_10_2,
+				kbase_api_mem_jit_init_10_2,
+				struct kbase_ioctl_mem_jit_init_10_2,
+				kctx);
+		break;
+	case KBASE_IOCTL_MEM_JIT_INIT_11_5:
+		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_MEM_JIT_INIT_11_5,
+				kbase_api_mem_jit_init_11_5,
+				struct kbase_ioctl_mem_jit_init_11_5,
 				kctx);
 		break;
 	case KBASE_IOCTL_MEM_JIT_INIT:
@@ -1476,12 +1510,14 @@ static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				struct kbase_ioctl_mem_profile_add,
 				kctx);
 		break;
+
 	case KBASE_IOCTL_SOFT_EVENT_UPDATE:
 		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_SOFT_EVENT_UPDATE,
 				kbase_api_soft_event_update,
 				struct kbase_ioctl_soft_event_update,
 				kctx);
 		break;
+
 	case KBASE_IOCTL_STICKY_RESOURCE_MAP:
 		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_STICKY_RESOURCE_MAP,
 				kbase_api_sticky_resource_map,
@@ -1563,7 +1599,7 @@ static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				struct kbase_ioctl_tlstream_stats,
 				kctx);
 		break;
-#endif
+#endif /* MALI_UNIT_TEST */
 	}
 
 	dev_warn(kbdev->dev, "Unknown ioctl 0x%x nr:%d", cmd, _IOC_NR(cmd));
@@ -3692,6 +3728,9 @@ int kbase_device_debugfs_init(struct kbase_device *kbdev)
 
 	kbasep_gpu_memory_debugfs_init(kbdev);
 	kbase_as_fault_debugfs_init(kbdev);
+#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY_VIA_DEBUG_FS
+	kbase_instr_backend_debugfs_init(kbdev);
+#endif
 	/* fops_* variables created by invocations of macro
 	 * MAKE_QUIRK_ACCESSORS() above. */
 	debugfs_create_file("quirks_sc", 0644,
@@ -3746,7 +3785,6 @@ int kbase_device_debugfs_init(struct kbase_device *kbdev)
 			kbdev->mali_debugfs_directory, kbdev,
 			&kbasep_serialize_jobs_debugfs_fops);
 
-
 	return 0;
 
 out:
@@ -3758,14 +3796,6 @@ void kbase_device_debugfs_term(struct kbase_device *kbdev)
 {
 	debugfs_remove_recursive(kbdev->mali_debugfs_directory);
 }
-
-#else /* CONFIG_DEBUG_FS */
-static inline int kbase_device_debugfs_init(struct kbase_device *kbdev)
-{
-	return 0;
-}
-
-static inline void kbase_device_debugfs_term(struct kbase_device *kbdev) { }
 #endif /* CONFIG_DEBUG_FS */
 #endif /* MALI_KBASE_BUILD */
 
@@ -3961,8 +3991,13 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	dev_set_drvdata(kbdev->dev, kbdev);
 
 	err = kbase_device_init(kbdev);
+
 	if (err) {
-		dev_err(kbdev->dev, "Device initialization failed\n");
+		if (err == -EPROBE_DEFER)
+			dev_err(kbdev->dev, "Device initialization Deferred\n");
+		else
+			dev_err(kbdev->dev, "Device initialization failed\n");
+
 		dev_set_drvdata(kbdev->dev, NULL);
 		kbase_device_free(kbdev);
 	} else {
@@ -3970,6 +4005,7 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 		dev_info(kbdev->dev,
 			"Probed as %s\n", dev_name(kbdev->mdev.this_device));
 #endif /* MALI_KBASE_BUILD */
+		kbase_increment_device_id();
 	}
 
 	return err;
@@ -4212,14 +4248,12 @@ MODULE_VERSION(MALI_RELEASE_NAME " (UK version " \
 		__stringify(BASE_UK_VERSION_MAJOR) "." \
 		__stringify(BASE_UK_VERSION_MINOR) ")");
 
-#if defined(CONFIG_MALI_GATOR_SUPPORT) || defined(CONFIG_MALI_SYSTEM_TRACE)
-#define CREATE_TRACE_POINTS
-#endif
 
-#ifdef CONFIG_MALI_GATOR_SUPPORT
+#define CREATE_TRACE_POINTS
 /* Create the trace points (otherwise we just get code to call a tracepoint) */
 #include "mali_linux_trace.h"
 
+#ifdef CONFIG_MALI_GATOR_SUPPORT
 EXPORT_TRACEPOINT_SYMBOL_GPL(mali_job_slots_event);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mali_pm_status);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mali_page_fault_insert_pages);

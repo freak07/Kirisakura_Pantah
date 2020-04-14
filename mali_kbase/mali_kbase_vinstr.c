@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -574,16 +574,6 @@ int kbase_vinstr_hwcnt_reader_setup(
 	if (errcode)
 		goto error;
 
-	errcode = anon_inode_getfd(
-		"[mali_vinstr_desc]",
-		&vinstr_client_fops,
-		vcli,
-		O_RDONLY | O_CLOEXEC);
-	if (errcode < 0)
-		goto error;
-
-	fd = errcode;
-
 	/* Add the new client. No need to reschedule worker, as not periodic */
 	mutex_lock(&vctx->lock);
 
@@ -592,7 +582,26 @@ int kbase_vinstr_hwcnt_reader_setup(
 
 	mutex_unlock(&vctx->lock);
 
+	/* Expose to user-space only once the client is fully initialized */
+	errcode = anon_inode_getfd(
+		"[mali_vinstr_desc]",
+		&vinstr_client_fops,
+		vcli,
+		O_RDONLY | O_CLOEXEC);
+	if (errcode < 0)
+		goto client_installed_error;
+
+	fd = errcode;
+
 	return fd;
+
+client_installed_error:
+	mutex_lock(&vctx->lock);
+
+	vctx->client_count--;
+	list_del(&vcli->node);
+
+	mutex_unlock(&vctx->lock);
 error:
 	kbasep_vinstr_client_destroy(vcli);
 	return errcode;

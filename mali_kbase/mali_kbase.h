@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -76,6 +76,8 @@
 #ifdef CONFIG_GPU_TRACEPOINTS
 #include <trace/events/gpu.h>
 #endif
+
+#include "mali_linux_trace.h"
 
 
 #ifndef u64_to_user_ptr
@@ -155,7 +157,6 @@ int assign_irqs(struct kbase_device *kbdev);
 int kbase_sysfs_init(struct kbase_device *kbdev);
 void kbase_sysfs_term(struct kbase_device *kbdev);
 
-void kbase_device_debugfs_term(struct kbase_device *kbdev);
 
 int kbase_protected_mode_init(struct kbase_device *kbdev);
 void kbase_protected_mode_term(struct kbase_device *kbdev);
@@ -163,7 +164,17 @@ void kbase_protected_mode_term(struct kbase_device *kbdev);
 int power_control_init(struct kbase_device *kbdev);
 void power_control_term(struct kbase_device *kbdev);
 
+#ifdef CONFIG_DEBUG_FS
+void kbase_device_debugfs_term(struct kbase_device *kbdev);
 int kbase_device_debugfs_init(struct kbase_device *kbdev);
+#else /* CONFIG_DEBUG_FS */
+static inline int kbase_device_debugfs_init(struct kbase_device *kbdev)
+{
+	return 0;
+}
+
+static inline void kbase_device_debugfs_term(struct kbase_device *kbdev) { }
+#endif /* CONFIG_DEBUG_FS */
 
 int registers_map(struct kbase_device *kbdev);
 void registers_unmap(struct kbase_device *kbdev);
@@ -219,9 +230,6 @@ void kbase_jd_zap_context(struct kbase_context *kctx);
 bool jd_done_nolock(struct kbase_jd_atom *katom,
 		struct list_head *completed_jobs_ctx);
 void kbase_jd_free_external_resources(struct kbase_jd_atom *katom);
-bool jd_submit_atom(struct kbase_context *kctx,
-			 const struct base_jd_atom_v2 *user_atom,
-			 struct kbase_jd_atom *katom);
 void kbase_jd_dep_clear_locked(struct kbase_jd_atom *katom);
 
 /**
@@ -250,6 +258,22 @@ void kbase_job_done(struct kbase_device *kbdev, u32 done);
  */
 void kbase_job_slot_ctx_priority_check_locked(struct kbase_context *kctx,
 				struct kbase_jd_atom *katom);
+
+/**
+ * kbase_job_slot_softstop_start_rp() - Soft-stop the atom at the start
+ *                                      of a renderpass.
+ * @kctx: Pointer to a kernel base context.
+ * @reg:  Reference of a growable GPU memory region in the same context.
+ *        Takes ownership of the reference if successful.
+ *
+ * Used to switch to incremental rendering if we have nearly run out of
+ * virtual address space in a growable memory region and the atom currently
+ * executing on a job slot is the tiler job chain at the start of a renderpass.
+ *
+ * Return 0 if successful, otherwise a negative error code.
+ */
+int kbase_job_slot_softstop_start_rp(struct kbase_context *kctx,
+		struct kbase_va_region *reg);
 
 void kbase_job_slot_softstop(struct kbase_device *kbdev, int js,
 		struct kbase_jd_atom *target_katom);
@@ -282,6 +306,16 @@ void kbase_event_wakeup(struct kbase_context *kctx);
  */
 int kbasep_jit_alloc_validate(struct kbase_context *kctx,
 					struct base_jit_alloc_info *info);
+
+/**
+ * kbase_jit_retry_pending_alloc() - Retry blocked just-in-time memory
+ *                                   allocations.
+ *
+ * @kctx:	Pointer to the kbase context within which the just-in-time
+ *		memory allocations are to be retried.
+ */
+void kbase_jit_retry_pending_alloc(struct kbase_context *kctx);
+
 /**
  * kbase_free_user_buffer() - Free memory allocated for struct
  *		@kbase_debug_copy_buffer.

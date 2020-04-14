@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -184,6 +184,19 @@ struct kbase_mem_phy_alloc {
  */
 #define PINNED_ON_IMPORT	(1<<31)
 
+/**
+ * enum kbase_jit_report_flags - Flags for just-in-time memory allocation
+ *                               pressure limit functions
+ * @KBASE_JIT_REPORT_ON_ALLOC_OR_FREE: Notifying about an update happening due
+ * to a just-in-time memory allocation or free
+ *
+ * Used to control flow within pressure limit related functions, or to provide
+ * extra debugging information
+ */
+enum kbase_jit_report_flags {
+	KBASE_JIT_REPORT_ON_ALLOC_OR_FREE = (1u << 0)
+};
+
 static inline void kbase_mem_phy_alloc_gpu_mapped(struct kbase_mem_phy_alloc *alloc)
 {
 	KBASE_DEBUG_ASSERT(alloc);
@@ -236,18 +249,35 @@ static inline struct kbase_mem_phy_alloc *kbase_mem_phy_alloc_put(struct kbase_m
 
 /**
  * A GPU memory region, and attributes for CPU mappings.
+ *
+ * @rblink: Node in a red-black tree of memory regions within the same zone of
+ *          the GPU's virtual address space.
+ * @link:   Links to neighboring items in a list of growable memory regions
+ *          that triggered incremental rendering by growing too much.
+ * @rbtree:          Backlink to the red-black tree of memory regions.
+ * @start_pfn:       The Page Frame Number in GPU virtual address space.
+ * @nr_pages:        The size of the region in pages.
+ * @initial_commit:  Initial commit, for aligning the start address and
+ *                   correctly growing KBASE_REG_TILER_ALIGN_TOP regions.
+ * @threshold_pages: If non-zero and the amount of memory committed to a region
+ *                   that can grow on page fault exceeds this number of pages
+ *                   then the driver switches to incremental rendering.
+ * @extent:    Number of pages allocated on page fault.
+ * @cpu_alloc: The physical memory we mmap to the CPU when mapping this region.
+ * @gpu_alloc: The physical memory we mmap to the GPU when mapping this region.
+ * @jit_node:     Links to neighboring regions in the just-in-time memory pool.
+ * @jit_usage_id: The last just-in-time memory usage ID for this region.
+ * @jit_bin_id:   The just-in-time memory bin this region came from.
+ * @va_refcnt:    Number of users of this region. Protected by reg_lock.
  */
 struct kbase_va_region {
 	struct rb_node rblink;
 	struct list_head link;
-
-	struct rb_root *rbtree;	/* Backlink to rb tree */
-
-	u64 start_pfn;		/* The PFN in GPU space */
+	struct rb_root *rbtree;
+	u64 start_pfn;
 	size_t nr_pages;
-	/* Initial commit, for aligning the start address and correctly growing
-	 * KBASE_REG_TILER_ALIGN_TOP regions */
 	size_t initial_commit;
+	size_t threshold_pages;
 
 /* Free region */
 #define KBASE_REG_FREE              (1ul << 0)
@@ -332,6 +362,11 @@ struct kbase_va_region {
  */
 #define KBASE_REG_VA_FREED (1ul << 26)
 
+/* If set, the heap info address points to a u32 holding the used size in bytes;
+ * otherwise it points to a u64 holding the lowest address of unused memory.
+ */
+#define KBASE_REG_HEAP_INFO_IS_SIZE (1ul << 27)
+
 #define KBASE_REG_ZONE_SAME_VA      KBASE_REG_ZONE(0)
 
 /* only used with 32-bit clients */
@@ -357,21 +392,46 @@ struct kbase_va_region {
 
 
 	unsigned long flags;
-
-	size_t extent; /* nr of pages alloc'd on PF */
-
-	struct kbase_mem_phy_alloc *cpu_alloc; /* the one alloc object we mmap to the CPU when mapping this region */
-	struct kbase_mem_phy_alloc *gpu_alloc; /* the one alloc object we mmap to the GPU when mapping this region */
-
-	/* List head used to store the region in the JIT allocation pool */
+	size_t extent;
+	struct kbase_mem_phy_alloc *cpu_alloc;
+	struct kbase_mem_phy_alloc *gpu_alloc;
 	struct list_head jit_node;
-	/* The last JIT usage ID for this region */
 	u16 jit_usage_id;
-	/* The JIT bin this allocation came from */
 	u8 jit_bin_id;
+#if MALI_JIT_PRESSURE_LIMIT
+	/* Pointer to an object in GPU memory defining an end of an allocated
+	 * region
+	 *
+	 * The object can be one of:
+	 * - u32 value defining the size of the region
+	 * - u64 pointer first unused byte in the region
+	 *
+	 * The interpretation of the object depends on
+	 * BASE_JIT_ALLOC_HEAP_INFO_IS_SIZE flag in jit_info_flags - if it is
+	 * set, the heap info object should be interpreted as size.
+	 */
+	u64 heap_info_gpu_addr;
 
-	int    va_refcnt; /* number of users of this va */
+	/* The current estimate of the number of pages used, which in normal
+	 * use is either:
+	 * - the initial estimate == va_pages
+	 * - the actual pages used, as found by a JIT usage report
+	 *
+	 * Note that since the value is calculated from GPU memory after a JIT
+	 * usage report, at any point in time it is allowed to take a random
+	 * value that is no greater than va_pages (e.g. it may be greater than
+	 * gpu_alloc->nents)
+	 */
+	size_t used_pages;
+#endif /* MALI_JIT_PRESSURE_LIMIT */
+
+	int    va_refcnt;
 };
+
+/* Special marker for failed JIT allocations that still must be marked as
+ * in-use
+ */
+#define KBASE_RESERVED_REG_JIT_ALLOC ((struct kbase_va_region *)-1)
 
 static inline bool kbase_is_region_free(struct kbase_va_region *reg)
 {
@@ -411,6 +471,8 @@ static inline struct kbase_va_region *kbase_va_region_alloc_get(
 	WARN_ON(!region->va_refcnt);
 
 	/* non-atomic as kctx->reg_lock is held */
+	dev_dbg(kctx->kbdev->dev, "va_refcnt %d before get %p\n",
+		region->va_refcnt, (void *)region);
 	region->va_refcnt++;
 
 	return region;
@@ -426,6 +488,8 @@ static inline struct kbase_va_region *kbase_va_region_alloc_put(
 
 	/* non-atomic as kctx->reg_lock is held */
 	region->va_refcnt--;
+	dev_dbg(kctx->kbdev->dev, "va_refcnt %d after put %p\n",
+		region->va_refcnt, (void *)region);
 	if (!region->va_refcnt)
 		kbase_region_refcnt_free(region);
 
@@ -905,21 +969,27 @@ struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool);
 int kbase_region_tracker_init(struct kbase_context *kctx);
 
 /**
- * kbase_region_tracker_init_jit - Initialize the JIT region
- * @kctx: kbase context
- * @jit_va_pages: Size of the JIT region in pages
- * @max_allocations: Maximum number of allocations allowed for the JIT region
- * @trim_level: Trim level for the JIT region
- * @group_id: The physical group ID from which to allocate JIT memory.
- *            Valid range is 0..(MEMORY_GROUP_MANAGER_NR_GROUPS-1).
+ * kbase_region_tracker_init_jit - Initialize the just-in-time memory
+ *                                 allocation region
+ * @kctx:             Kbase context.
+ * @jit_va_pages:     Size of the JIT region in pages.
+ * @max_allocations:  Maximum number of allocations allowed for the JIT region.
+ *                    Valid range is 0..%BASE_JIT_ALLOC_COUNT.
+ * @trim_level:       Trim level for the JIT region.
+ *                    Valid range is 0..%BASE_JIT_MAX_TRIM_LEVEL.
+ * @group_id:         The physical group ID from which to allocate JIT memory.
+ *                    Valid range is 0..(%MEMORY_GROUP_MANAGER_NR_GROUPS-1).
+ * @phys_pages_limit: Maximum number of physical pages to use to back the JIT
+ *                    region. Must not exceed @jit_va_pages.
  *
  * Return: 0 if success, negative error code otherwise.
  */
 int kbase_region_tracker_init_jit(struct kbase_context *kctx, u64 jit_va_pages,
-		u8 max_allocations, u8 trim_level, int group_id);
+		int max_allocations, int trim_level, int group_id,
+		u64 phys_pages_limit);
 
 /**
- * kbase_region_tracker_init_exec - Initialize the EXEC_VA region
+ * kbase_region_tracker_init_exec - Initialize the GPU-executable memory region
  * @kctx: kbase context
  * @exec_va_pages: Size of the JIT region in pages.
  *                 It must not be greater than 4 GB.
@@ -1096,8 +1166,6 @@ int kbase_sync_now(struct kbase_context *kctx, struct basep_syncset *sset);
 void kbase_sync_single(struct kbase_context *kctx, struct tagged_addr cpu_pa,
 		struct tagged_addr gpu_pa, off_t offset, size_t size,
 		enum kbase_sync_type sync_fn);
-void kbase_pre_job_sync(struct kbase_context *kctx, struct base_syncset *syncsets, size_t nr);
-void kbase_post_job_sync(struct kbase_context *kctx, struct base_syncset *syncsets, size_t nr);
 
 /* OS specific functions */
 int kbase_mem_free(struct kbase_context *kctx, u64 gpu_addr);
@@ -1426,6 +1494,93 @@ bool kbase_jit_evict(struct kbase_context *kctx);
  * @kctx: kbase context
  */
 void kbase_jit_term(struct kbase_context *kctx);
+
+#if MALI_JIT_PRESSURE_LIMIT
+/**
+ * kbase_trace_jit_report_gpu_mem_trace_enabled - variant of
+ * kbase_trace_jit_report_gpu_mem() that should only be called once the
+ * corresponding tracepoint is verified to be enabled
+ * @kctx: kbase context
+ * @reg:  Just-in-time memory region to trace
+ * @flags: combination of values from enum kbase_jit_report_flags
+ */
+void kbase_trace_jit_report_gpu_mem_trace_enabled(struct kbase_context *kctx,
+		struct kbase_va_region *reg, unsigned int flags);
+#endif /* MALI_JIT_PRESSURE_LIMIT */
+
+/**
+ * kbase_trace_jit_report_gpu_mem - Trace information about the GPU memory used
+ * to make a JIT report
+ * @kctx: kbase context
+ * @reg:  Just-in-time memory region to trace
+ * @flags: combination of values from enum kbase_jit_report_flags
+ *
+ * Information is traced using the trace_mali_jit_report_gpu_mem() tracepoint.
+ *
+ * In case that tracepoint is not enabled, this function should have the same
+ * low overheads as a tracepoint itself (i.e. use of 'jump labels' to avoid
+ * conditional branches)
+ *
+ * This can take the reg_lock on @kctx, do not use in places where this lock is
+ * already held.
+ *
+ * Note: this has to be a macro because at this stage the tracepoints have not
+ * been included. Also gives no opportunity for the compiler to mess up
+ * inlining it.
+ */
+#if MALI_JIT_PRESSURE_LIMIT
+#define kbase_trace_jit_report_gpu_mem(kctx, reg, flags) \
+	do { \
+		if (trace_mali_jit_report_gpu_mem_enabled()) \
+			kbase_trace_jit_report_gpu_mem_trace_enabled( \
+				(kctx), (reg), (flags)); \
+	} while (0)
+#else
+#define kbase_trace_jit_report_gpu_mem(kctx, reg, flags) \
+	CSTD_NOP(kctx, reg, flags)
+#endif /* MALI_JIT_PRESSURE_LIMIT */
+
+#if MALI_JIT_PRESSURE_LIMIT
+/**
+ * kbase_jit_report_update_pressure - safely update the JIT physical page
+ * pressure and JIT region's estimate of used_pages
+ * @kctx: kbase context, to update the current physical pressure
+ * @reg:  Just-in-time memory region to update with @new_used_pages
+ * @new_used_pages: new value of number of pages used in the JIT region
+ * @flags: combination of values from enum kbase_jit_report_flags
+ *
+ * Takes care of:
+ * - correctly updating the pressure given the current reg->used_pages and
+ * new_used_pages
+ * - then updating the %kbase_va_region used_pages member
+ *
+ * Precondition:
+ * - new_used_pages <= reg->nr_pages
+ */
+void kbase_jit_report_update_pressure(struct kbase_context *kctx,
+		struct kbase_va_region *reg, u64 new_used_pages,
+		unsigned int flags);
+
+/**
+ * kbase_mem_jit_trim_pages - Trim JIT regions until sufficient pages have been
+ * freed
+ * @kctx: Pointer to the kbase context whose active JIT allocations will be
+ * checked.
+ * @pages_needed: The maximum number of pages to trim.
+ *
+ * This functions checks all active JIT allocations in @kctx for unused pages
+ * at the end, and trim the backed memory regions of those allocations down to
+ * the used portion and free the unused pages into the page pool.
+ *
+ * Specifying @pages_needed allows us to stop early when there's enough
+ * physical memory freed to sufficiently bring down the total JIT physical page
+ * usage (e.g. to below the pressure limit)
+ *
+ * Return: Total number of successfully freed pages
+ */
+size_t kbase_mem_jit_trim_pages(struct kbase_context *kctx,
+		size_t pages_needed);
+#endif /* MALI_JIT_PRESSURE_LIMIT */
 
 /**
  * kbase_has_exec_va_zone - EXEC_VA zone predicate

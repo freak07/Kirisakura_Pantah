@@ -25,7 +25,6 @@ BACKEND += \
 	backend/gpu/mali_kbase_gpuprops_backend.c \
 	backend/gpu/mali_kbase_irq_linux.c \
 	backend/gpu/mali_kbase_instr_backend.c \
-	backend/gpu/mali_kbase_jm_as.c \
 	backend/gpu/mali_kbase_js_backend.c \
 	backend/gpu/mali_kbase_pm_backend.c \
 	backend/gpu/mali_kbase_pm_driver.c \
@@ -41,6 +40,7 @@ ifeq ($(MALI_USE_CSF),1)
 # empty
 else
 	BACKEND += \
+		backend/gpu/mali_kbase_jm_as.c \
 		backend/gpu/mali_kbase_debug_job_fault_backend.c \
 		backend/gpu/mali_kbase_jm_hw.c \
 		backend/gpu/mali_kbase_jm_rb.c

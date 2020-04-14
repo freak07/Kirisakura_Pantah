@@ -187,7 +187,6 @@ int kbase_dummy_job_wa_execute(struct kbase_device *kbdev, u64 cores)
 		wait(kbdev, SHADER_READY_LO, (cores & U32_MAX), true);
 		if (cores >> 32)
 			wait(kbdev, SHADER_READY_HI, (cores >> 32), true);
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_CLEAR), U32_MAX);
 	}
 
 	if (kbdev->dummy_job_wa.flags & KBASE_DUMMY_JOB_WA_FLAG_SERIALIZE) {

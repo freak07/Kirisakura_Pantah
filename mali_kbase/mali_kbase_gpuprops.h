@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2015,2017,2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2015, 2017, 2019-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -97,7 +97,7 @@ int kbase_device_populate_max_freq(struct kbase_device *kbdev);
  * separate fields (version_status, minor_revision, major_revision, product_id)
  * stored in base_gpu_props::core_props.
  */
-void kbase_gpuprops_update_core_props_gpu_id(base_gpu_props * const gpu_props);
-
+void kbase_gpuprops_update_core_props_gpu_id(
+	struct base_gpu_props * const gpu_props);
 
 #endif				/* _KBASE_GPUPROPS_H_ */

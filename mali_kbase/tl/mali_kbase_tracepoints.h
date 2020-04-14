@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -454,6 +454,10 @@ void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_execute_jit_free_end(
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_errorbarrier(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
+void __kbase_tlstream_tl_kbase_csffw_tlstream_overflow(
+	struct kbase_tlstream *stream,
+	u64 csffw_timestamp,
+	u64 csffw_cycle);
 
 struct kbase_tlstream;
 
@@ -2465,6 +2469,27 @@ struct kbase_tlstream;
 			__kbase_tlstream_tl_kbase_kcpuqueue_execute_errorbarrier(	\
 				__TL_DISPATCH_STREAM(kbdev, obj), \
 				kcpu_queue);	\
+	} while (0)
+
+/**
+ * KBASE_TLSTREAM_TL_KBASE_CSFFW_TLSTREAM_OVERFLOW -
+ *   An overflow has happened with the CSFFW Timeline stream
+ *
+ * @kbdev:	Kbase device
+ * @csffw_timestamp:	Timestamp of a CSFFW event
+ * @csffw_cycle:	Cycle number of a CSFFW event
+ */
+#define KBASE_TLSTREAM_TL_KBASE_CSFFW_TLSTREAM_OVERFLOW(	\
+	kbdev,	\
+	csffw_timestamp,	\
+	csffw_cycle	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_is_enabled);	\
+		if (enabled & BASE_TLSTREAM_ENABLE_CSFFW_TRACEPOINTS)	\
+			__kbase_tlstream_tl_kbase_csffw_tlstream_overflow(	\
+				__TL_DISPATCH_STREAM(kbdev, obj),	\
+				csffw_timestamp, csffw_cycle);	\
 	} while (0)
 
 

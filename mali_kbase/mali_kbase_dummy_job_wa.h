@@ -31,6 +31,7 @@
 				  KBASE_DUMMY_JOB_WA_FLAG_WAIT_POWERUP | \
 				  KBASE_DUMMY_JOB_WA_FLAG_LOGICAL_SHADER_POWER)
 
+
 int kbase_dummy_job_wa_load(struct kbase_device *kbdev);
 void kbase_dummy_job_wa_cleanup(struct kbase_device *kbdev);
 int kbase_dummy_job_wa_execute(struct kbase_device *kbdev, u64 cores);
@@ -39,5 +40,6 @@ static inline bool kbase_dummy_job_wa_enabled(struct kbase_device *kbdev)
 {
 	return (kbdev->dummy_job_wa.ctx != NULL);
 }
+
 
 #endif /* _KBASE_DUMMY_JOB_WORKAROUND_ */

@@ -21,7 +21,7 @@
  *//* SPDX-License-Identifier: GPL-2.0 */
 
 /*
- * (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -35,36 +35,18 @@
 
 #include <linux/kernel.h>
 
-#if MALI_CS_EXPERIMENTAL
-
 /**
- * mali_kbase_has_cs_experimental() - Has the driver been built with
- *   CS_EXPERIMENTAL=y
- *
- * It is preferable to guard cs_experimental code with this rather than #ifdef
- * all through the code.
- *
- * Return: true if built with CS_EXPERIMENTAL false otherwise
- */
-static inline bool mali_kbase_has_cs_experimental(void)
-{
-	return true;
-}
-#else
-static inline bool mali_kbase_has_cs_experimental(void)
-{
-	return false;
-}
-#endif
-
-/**
- * mali_kbase_print_cs_experimental() - Print a string if built with
- *   CS_EXPERIMENTAL=y
+ * mali_kbase_print_cs_experimental() - Print a string for every Core Services
+ * experimental feature that is enabled
  */
 static inline void mali_kbase_print_cs_experimental(void)
 {
-	if (mali_kbase_has_cs_experimental())
-		pr_info("mali_kbase: EXPERIMENTAL (MALI_CS_EXPERIMENTAL) flag enabled");
+#if MALI_JIT_PRESSURE_LIMIT
+	pr_info("mali_kbase: JIT_PRESSURE_LIMIT (experimental) enabled");
+#endif /* MALI_JIT_PRESSURE_LIMIT */
+#if MALI_INCREMENTAL_RENDERING
+	pr_info("mali_kbase: INCREMENTAL_RENDERING (experimental) enabled");
+#endif /* MALI_INCREMENTAL_RENDERING */
 }
 
 #endif /* _KBASE_CS_EXPERIMENTAL_H_ */

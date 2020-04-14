@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -85,6 +85,43 @@ static int kbasep_timeline_io_packet_pending(
 }
 
 /**
+ * copy_stream_header() - copy timeline stream header.
+ *
+ * @buffer:      Pointer to the buffer provided by user.
+ * @size:        Maximum amount of data that can be stored in the buffer.
+ * @copy_len:    Pointer to amount of bytes that has been copied already
+ *               within the read system call.
+ * @hdr:         Pointer to the stream header.
+ * @hdr_size:    Header size.
+ * @hdr_btc:     Pointer to the remaining number of bytes to copy.
+ *
+ * Returns: 0 if success, -1 otherwise.
+ */
+static inline int copy_stream_header(
+	char __user *buffer, size_t size, ssize_t *copy_len,
+	const char *hdr,
+	size_t hdr_size,
+	size_t *hdr_btc)
+{
+	const size_t offset = hdr_size - *hdr_btc;
+	const size_t copy_size = MIN(size - *copy_len, *hdr_btc);
+
+	if (!*hdr_btc)
+		return 0;
+
+	if (WARN_ON(*hdr_btc > hdr_size))
+		return -1;
+
+	if (copy_to_user(&buffer[*copy_len], &hdr[offset], copy_size))
+		return -1;
+
+	*hdr_btc -= copy_size;
+	*copy_len += copy_size;
+
+	return 0;
+}
+
+/**
  * kbasep_timeline_copy_header - copy timeline headers to the user
  * @timeline:    Timeline instance
  * @buffer:      Pointer to the buffer provided by user
@@ -93,51 +130,28 @@ static int kbasep_timeline_io_packet_pending(
  *               within the read system call.
  *
  * This helper function checks if timeline headers have not been sent
- * to the user, and if so, sends them. @ref copy_len is respectively
+ * to the user, and if so, sends them. copy_len is respectively
  * updated.
  *
  * Returns: 0 if success, -1 if copy_to_user has failed.
  */
-static inline int kbasep_timeline_copy_header(
+static inline int kbasep_timeline_copy_headers(
 	struct kbase_timeline *timeline,
 	char __user *buffer,
 	size_t size,
 	ssize_t *copy_len)
 {
-	if (timeline->obj_header_btc) {
-		size_t offset = obj_desc_header_size -
-			timeline->obj_header_btc;
+	if (copy_stream_header(buffer, size, copy_len,
+			obj_desc_header,
+			obj_desc_header_size,
+			&timeline->obj_header_btc))
+		return -1;
 
-		size_t header_cp_size = MIN(
-			size - *copy_len,
-			timeline->obj_header_btc);
-
-		if (copy_to_user(
-			    &buffer[*copy_len],
-			    &obj_desc_header[offset],
-			    header_cp_size))
-			return -1;
-
-		timeline->obj_header_btc -= header_cp_size;
-		*copy_len += header_cp_size;
-	}
-
-	if (timeline->aux_header_btc) {
-		size_t offset = aux_desc_header_size -
-			timeline->aux_header_btc;
-		size_t header_cp_size = MIN(
-			size - *copy_len,
-			timeline->aux_header_btc);
-
-		if (copy_to_user(
-			    &buffer[*copy_len],
-			    &aux_desc_header[offset],
-			    header_cp_size))
-			return -1;
-
-		timeline->aux_header_btc -= header_cp_size;
-		*copy_len += header_cp_size;
-	}
+	if (copy_stream_header(buffer, size, copy_len,
+			aux_desc_header,
+			aux_desc_header_size,
+			&timeline->aux_header_btc))
+		return -1;
 	return 0;
 }
 
@@ -183,7 +197,7 @@ static ssize_t kbasep_timeline_io_read(
 		unsigned int        rb_idx;
 		size_t              rb_size;
 
-		if (kbasep_timeline_copy_header(
+		if (kbasep_timeline_copy_headers(
 			    timeline, buffer, size, &copy_len)) {
 			copy_len = -EFAULT;
 			break;
@@ -304,6 +318,7 @@ static int kbasep_timeline_io_release(struct inode *inode, struct file *filp)
 	CSTD_UNUSED(inode);
 
 	timeline = (struct kbase_timeline *) filp->private_data;
+
 
 	/* Stop autoflush timer before releasing access to streams. */
 	atomic_set(&timeline->autoflush_timer_active, 0);

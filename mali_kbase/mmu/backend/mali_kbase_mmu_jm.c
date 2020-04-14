@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -29,6 +29,7 @@
 #include <mali_kbase_hwaccess_jm.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <mali_kbase_as_fault_debugfs.h>
+#include "../mali_kbase_mmu_internal.h"
 
 void kbase_mmu_get_as_setup(struct kbase_mmu_table *mmut,
 		struct kbase_mmu_setup * const setup)
@@ -191,6 +192,10 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
 {
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
+	dev_dbg(kbdev->dev,
+		"Entering %s kctx %p, as %p\n",
+		__func__, (void *)kctx, (void *)as);
+
 	if (!kctx) {
 		dev_warn(kbdev->dev, "%s in AS%d at 0x%016llx with no context present! Spurious IRQ or SW Design Error?\n",
 				kbase_as_has_bus_fault(as, fault) ?
@@ -254,6 +259,10 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev,
 		WARN_ON(!queue_work(as->pf_wq, &as->work_pagefault));
 		atomic_inc(&kbdev->faults_pending);
 	}
+
+	dev_dbg(kbdev->dev,
+		"Leaving %s kctx %p, as %p\n",
+		__func__, (void *)kctx, (void *)as);
 }
 
 static void validate_protected_page_fault(struct kbase_device *kbdev)
@@ -285,12 +294,14 @@ void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
 	const unsigned long as_bit_mask = (1UL << num_as) - 1;
 	unsigned long flags;
 	u32 new_mask;
-	u32 tmp;
+	u32 tmp, bf_bits, pf_bits;
 
+	dev_dbg(kbdev->dev, "Entering %s irq_stat %u\n",
+		__func__, irq_stat);
 	/* bus faults */
-	u32 bf_bits = (irq_stat >> busfault_shift) & as_bit_mask;
+	bf_bits = (irq_stat >> busfault_shift) & as_bit_mask;
 	/* page faults (note: Ignore ASes with both pf and bf) */
-	u32 pf_bits = ((irq_stat >> pf_shift) & as_bit_mask) & ~bf_bits;
+	pf_bits = ((irq_stat >> pf_shift) & as_bit_mask) & ~bf_bits;
 
 	if (WARN_ON(kbdev == NULL))
 		return;
@@ -388,4 +399,16 @@ void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
 	new_mask |= tmp;
 	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_MASK), new_mask);
 	spin_unlock_irqrestore(&kbdev->mmu_mask_change, flags);
+
+	dev_dbg(kbdev->dev, "Leaving %s irq_stat %u\n",
+		__func__, irq_stat);
+}
+
+int kbase_mmu_switch_to_ir(struct kbase_context *const kctx,
+	struct kbase_va_region *const reg)
+{
+	dev_dbg(kctx->kbdev->dev,
+		"Switching to incremental rendering for region %p\n",
+		(void *)reg);
+	return kbase_job_slot_softstop_start_rp(kctx, reg);
 }

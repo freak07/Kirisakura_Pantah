@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014,2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014,2019-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -90,7 +90,7 @@ void kbase_gpu_wait_cache_clean(struct kbase_device *kbdev);
  * Return: 0 if successful or a negative error code on failure.
  */
 int kbase_gpu_wait_cache_clean_timeout(struct kbase_device *kbdev,
-                                unsigned int wait_timeout_ms);
+		unsigned int wait_timeout_ms);
 
 /**
  * kbase_gpu_cache_clean_wait_complete - Called after the cache cleaning is

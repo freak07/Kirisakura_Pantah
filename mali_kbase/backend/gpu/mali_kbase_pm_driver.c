@@ -319,7 +319,8 @@ static void kbase_pm_invoke(struct kbase_device *kbdev,
 	if (kbase_dummy_job_wa_enabled(kbdev) &&
 	    action == ACTION_PWRON &&
 	    core_type == KBASE_PM_CORE_SHADER &&
-	    !(kbdev->dummy_job_wa.flags & KBASE_DUMMY_JOB_WA_FLAG_LOGICAL_SHADER_POWER)) {
+	    !(kbdev->dummy_job_wa.flags &
+		    KBASE_DUMMY_JOB_WA_FLAG_LOGICAL_SHADER_POWER)) {
 		kbase_dummy_job_wa_execute(kbdev, cores);
 	} else {
 		if (lo != 0)
@@ -938,7 +939,8 @@ static void kbase_pm_shaders_update_state(struct kbase_device *kbdev)
 			 * except at certain points where we can handle it,
 			 * i.e. off and SHADERS_ON_CORESTACK_ON.
 			 */
-			backend->shaders_avail = kbase_pm_ca_get_core_mask(kbdev);
+			backend->shaders_desired_mask =
+				kbase_pm_ca_get_core_mask(kbdev);
 			backend->pm_shaders_core_mask = 0;
 
 			if (backend->shaders_desired &&
@@ -965,6 +967,8 @@ static void kbase_pm_shaders_update_state(struct kbase_device *kbdev)
 
 		case KBASE_SHADERS_OFF_CORESTACK_PEND_ON:
 			if (!stacks_trans && stacks_ready == stacks_avail) {
+				backend->shaders_avail =
+					backend->shaders_desired_mask;
 				kbase_pm_invoke(kbdev, KBASE_PM_CORE_SHADER,
 						backend->shaders_avail, ACTION_PWRON);
 
@@ -990,11 +994,12 @@ static void kbase_pm_shaders_update_state(struct kbase_device *kbdev)
 			break;
 
 		case KBASE_SHADERS_ON_CORESTACK_ON:
-			backend->shaders_avail = kbase_pm_ca_get_core_mask(kbdev);
+			backend->shaders_desired_mask =
+				kbase_pm_ca_get_core_mask(kbdev);
 
 			/* If shaders to change state, trigger a counter dump */
 			if (!backend->shaders_desired ||
-				(backend->shaders_avail != shaders_ready)) {
+				(backend->shaders_desired_mask != shaders_ready)) {
 				backend->hwcnt_desired = false;
 				if (!backend->hwcnt_disabled)
 					kbase_pm_trigger_hwcnt_disable(kbdev);
@@ -1004,7 +1009,7 @@ static void kbase_pm_shaders_update_state(struct kbase_device *kbdev)
 			break;
 
 		case KBASE_SHADERS_ON_CORESTACK_ON_RECHECK:
-			backend->shaders_avail =
+			backend->shaders_desired_mask =
 				kbase_pm_ca_get_core_mask(kbdev);
 
 			if (!backend->hwcnt_disabled) {
@@ -1038,19 +1043,20 @@ static void kbase_pm_shaders_update_state(struct kbase_device *kbdev)
 
 					backend->shaders_state = KBASE_SHADERS_WAIT_OFF_CORESTACK_ON;
 				}
-			} else if (backend->shaders_avail & ~shaders_ready) {
+			} else if (backend->shaders_desired_mask & ~shaders_ready) {
 				/* set cores ready but not available to
 				 * meet KBASE_SHADERS_PEND_ON_CORESTACK_ON
 				 * check pass
 				 */
-				backend->shaders_avail |= shaders_ready;
+				backend->shaders_avail =
+					(backend->shaders_desired_mask | shaders_ready);
 
 				kbase_pm_invoke(kbdev, KBASE_PM_CORE_SHADER,
 						backend->shaders_avail & ~shaders_ready,
 						ACTION_PWRON);
 				backend->shaders_state =
 					KBASE_SHADERS_PEND_ON_CORESTACK_ON;
-			} else if (shaders_ready & ~backend->shaders_avail) {
+			} else if (shaders_ready & ~backend->shaders_desired_mask) {
 				backend->shaders_state =
 					KBASE_SHADERS_WAIT_GPU_IDLE;
 			} else {
@@ -1111,7 +1117,15 @@ static void kbase_pm_shaders_update_state(struct kbase_device *kbdev)
 				 * meet KBASE_SHADERS_PEND_ON_CORESTACK_ON
 				 * check pass
 				 */
-				backend->shaders_avail &= shaders_ready;
+
+				/* shaders_desired_mask shall be a subset of
+				 * shaders_ready
+				 */
+				WARN_ON(backend->shaders_desired_mask & ~shaders_ready);
+				WARN_ON(!(backend->shaders_desired_mask & shaders_ready));
+
+				backend->shaders_avail =
+					backend->shaders_desired_mask;
 				kbase_pm_invoke(kbdev, KBASE_PM_CORE_SHADER,
 						shaders_ready & ~backend->shaders_avail, ACTION_PWROFF);
 				backend->shaders_state = KBASE_SHADERS_PEND_ON_CORESTACK_ON;

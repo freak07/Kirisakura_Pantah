@@ -35,7 +35,6 @@
 
 #include <linux/atomic.h>
 
-#ifdef CONFIG_DEBUG_FS
 /**
  * kbase_context_debugfs_init - Initialize the kctx platform
  *                              specific debugfs
@@ -57,7 +56,6 @@ void kbase_context_debugfs_init(struct kbase_context *const kctx);
  * is compiled for.
  */
 void kbase_context_debugfs_term(struct kbase_context *const kctx);
-#endif /* CONFIG_DEBUG_FS */
 
 /**
  * kbase_create_context() - Create a kernel base context.

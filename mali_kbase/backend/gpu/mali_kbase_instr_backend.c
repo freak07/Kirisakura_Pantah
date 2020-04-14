@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -71,7 +71,11 @@ int kbase_instr_hwcnt_enable_internal(struct kbase_device *kbdev,
 
 	/* Configure */
 	prfcnt_config = kctx->as_nr << PRFCNT_CONFIG_AS_SHIFT;
+#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY_VIA_DEBUG_FS
+	if (kbdev->hwcnt.backend.use_secondary_override)
+#else
 	if (enable->use_secondary)
+#endif
 		prfcnt_config |= 1 << PRFCNT_CONFIG_SETSELECT_SHIFT;
 
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG),
@@ -380,6 +384,10 @@ int kbase_instr_backend_init(struct kbase_device *kbdev)
 
 	kbdev->hwcnt.backend.triggered = 0;
 
+#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY_VIA_DEBUG_FS
+	kbdev->hwcnt.backend.use_secondary_override = false;
+#endif
+
 	kbdev->hwcnt.backend.cache_clean_wq =
 			alloc_workqueue("Mali cache cleaning workqueue", 0, 1);
 	if (NULL == kbdev->hwcnt.backend.cache_clean_wq)
@@ -392,3 +400,12 @@ void kbase_instr_backend_term(struct kbase_device *kbdev)
 {
 	destroy_workqueue(kbdev->hwcnt.backend.cache_clean_wq);
 }
+
+#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY_VIA_DEBUG_FS
+void kbase_instr_backend_debugfs_init(struct kbase_device *kbdev)
+{
+	debugfs_create_bool("hwcnt_use_secondary", S_IRUGO | S_IWUSR,
+		kbdev->mali_debugfs_directory,
+		&kbdev->hwcnt.backend.use_secondary_override);
+}
+#endif

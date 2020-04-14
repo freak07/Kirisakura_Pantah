@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2015-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2015-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -102,7 +102,7 @@
 #define GPU_ID2_PRODUCT_TODX              GPU_ID2_MODEL_MAKE(10, 2)
 #define GPU_ID2_PRODUCT_TGRX              GPU_ID2_MODEL_MAKE(10, 3)
 #define GPU_ID2_PRODUCT_TVAX              GPU_ID2_MODEL_MAKE(10, 4)
-#define GPU_ID2_PRODUCT_LODX              GPU_ID2_MODEL_MAKE(10, 5)
+#define GPU_ID2_PRODUCT_LODX              GPU_ID2_MODEL_MAKE(10, 7)
 #define GPU_ID2_PRODUCT_TTUX              GPU_ID2_MODEL_MAKE(11, 2)
 #define GPU_ID2_PRODUCT_LTUX              GPU_ID2_MODEL_MAKE(11, 3)
 #define GPU_ID2_PRODUCT_TE2X              GPU_ID2_MODEL_MAKE(11, 1)

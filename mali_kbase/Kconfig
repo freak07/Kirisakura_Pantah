@@ -1,5 +1,5 @@
 #
-# (C) COPYRIGHT 2012-2019 ARM Limited. All rights reserved.
+# (C) COPYRIGHT 2012-2020 ARM Limited. All rights reserved.
 #
 # This program is free software and is provided to you under the terms of the
 # GNU General Public License version 2 as published by the Free Software
@@ -262,6 +262,21 @@ config MALI_PRFCNT_SET_SECONDARY
 	  become unavailable. Enabling this option will prevent power management
 	  from working optimally and may cause instrumentation tools to return
 	  bogus results.
+
+	  If unsure, say N.
+
+config MALI_PRFCNT_SET_SECONDARY_VIA_DEBUG_FS
+	bool "Use secondary set of performance counters"
+	depends on MALI_MIDGARD && MALI_EXPERT && !MALI_PRFCNT_SET_SECONDARY && DEBUG_FS
+	default n
+	help
+	  Select this option to make the secondary set of performance counters
+	  available at runtime via debugfs. Kernel features that depend on an
+	  access to the primary set of counters may become unavailable.
+
+	  This feature is unsupported and unstable, and may break at any time.
+	  Enabling this option will prevent power management from working
+	  optimally and may cause instrumentation tools to return bogus results.
 
 	  If unsure, say N.
 

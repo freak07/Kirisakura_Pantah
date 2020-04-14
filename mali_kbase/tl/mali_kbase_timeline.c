@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2015-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2015-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -131,6 +131,7 @@ int kbase_timeline_init(struct kbase_timeline **timeline,
 			  kbasep_timeline_autoflush_timer_callback);
 	result->is_enabled = timeline_is_enabled;
 
+
 	*timeline = result;
 	return 0;
 }
@@ -141,6 +142,7 @@ void kbase_timeline_term(struct kbase_timeline *timeline)
 
 	if (!timeline)
 		return;
+
 
 	for (i = (enum tl_stream_type)0; i < TL_STREAM_TYPE_COUNT; i++)
 		kbase_tlstream_term(&timeline->streams[i]);

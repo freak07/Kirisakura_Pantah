@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2017-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2017-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -145,8 +145,14 @@ void kbase_ctx_sched_release_ctx(struct kbase_context *kctx)
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-	if (atomic_dec_return(&kctx->refcount) == 0)
+	if (atomic_dec_return(&kctx->refcount) == 0) {
 		kbdev->as_free |= (1u << kctx->as_nr);
+		if (kbase_ctx_flag(kctx, KCTX_AS_DISABLED_ON_FAULT)) {
+			kbdev->as_to_kctx[kctx->as_nr] = NULL;
+			kctx->as_nr = KBASEP_AS_NR_INVALID;
+			kbase_ctx_flag_clear(kctx, KCTX_AS_DISABLED_ON_FAULT);
+		}
+	}
 }
 
 void kbase_ctx_sched_remove_ctx(struct kbase_context *kctx)
@@ -186,6 +192,8 @@ void kbase_ctx_sched_restore_all_as(struct kbase_device *kbdev)
 
 				kbase_mmu_update(kbdev, &kctx->mmu,
 					kctx->as_nr);
+				kbase_ctx_flag_clear(kctx,
+					KCTX_AS_DISABLED_ON_FAULT);
 			} else {
 				/* This context might have been assigned an
 				 * AS before, clear it.

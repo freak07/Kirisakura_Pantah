@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -118,6 +118,7 @@ enum tl_msg_id_obj {
 	KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END,
 	KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END,
 	KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_ERRORBARRIER,
+	KBASE_TL_KBASE_CSFFW_TLSTREAM_OVERFLOW,
 	KBASE_OBJ_MSG_COUNT,
 };
 
@@ -136,404 +137,410 @@ enum tl_msg_id_aux {
 	KBASE_AUX_MSG_COUNT,
 };
 
-#define OBJ_TL_LIST \
-	TP_DESC(KBASE_TL_NEW_CTX, \
+#define OBJ_TP_LIST \
+	TRACEPOINT_DESC(KBASE_TL_NEW_CTX, \
 		"object ctx is created", \
 		"@pII", \
 		"ctx,ctx_nr,tgid") \
-	TP_DESC(KBASE_TL_NEW_GPU, \
+	TRACEPOINT_DESC(KBASE_TL_NEW_GPU, \
 		"object gpu is created", \
 		"@pII", \
 		"gpu,gpu_id,core_count") \
-	TP_DESC(KBASE_TL_NEW_LPU, \
+	TRACEPOINT_DESC(KBASE_TL_NEW_LPU, \
 		"object lpu is created", \
 		"@pII", \
 		"lpu,lpu_nr,lpu_fn") \
-	TP_DESC(KBASE_TL_NEW_ATOM, \
+	TRACEPOINT_DESC(KBASE_TL_NEW_ATOM, \
 		"object atom is created", \
 		"@pI", \
 		"atom,atom_nr") \
-	TP_DESC(KBASE_TL_NEW_AS, \
+	TRACEPOINT_DESC(KBASE_TL_NEW_AS, \
 		"address space object is created", \
 		"@pI", \
 		"address_space,as_nr") \
-	TP_DESC(KBASE_TL_DEL_CTX, \
+	TRACEPOINT_DESC(KBASE_TL_DEL_CTX, \
 		"context is destroyed", \
 		"@p", \
 		"ctx") \
-	TP_DESC(KBASE_TL_DEL_ATOM, \
+	TRACEPOINT_DESC(KBASE_TL_DEL_ATOM, \
 		"atom is destroyed", \
 		"@p", \
 		"atom") \
-	TP_DESC(KBASE_TL_LIFELINK_LPU_GPU, \
+	TRACEPOINT_DESC(KBASE_TL_LIFELINK_LPU_GPU, \
 		"lpu is deleted with gpu", \
 		"@pp", \
 		"lpu,gpu") \
-	TP_DESC(KBASE_TL_LIFELINK_AS_GPU, \
+	TRACEPOINT_DESC(KBASE_TL_LIFELINK_AS_GPU, \
 		"address space is deleted with gpu", \
 		"@pp", \
 		"address_space,gpu") \
-	TP_DESC(KBASE_TL_RET_CTX_LPU, \
+	TRACEPOINT_DESC(KBASE_TL_RET_CTX_LPU, \
 		"context is retained by lpu", \
 		"@pp", \
 		"ctx,lpu") \
-	TP_DESC(KBASE_TL_RET_ATOM_CTX, \
+	TRACEPOINT_DESC(KBASE_TL_RET_ATOM_CTX, \
 		"atom is retained by context", \
 		"@pp", \
 		"atom,ctx") \
-	TP_DESC(KBASE_TL_RET_ATOM_LPU, \
+	TRACEPOINT_DESC(KBASE_TL_RET_ATOM_LPU, \
 		"atom is retained by lpu", \
 		"@pps", \
 		"atom,lpu,attrib_match_list") \
-	TP_DESC(KBASE_TL_NRET_CTX_LPU, \
+	TRACEPOINT_DESC(KBASE_TL_NRET_CTX_LPU, \
 		"context is released by lpu", \
 		"@pp", \
 		"ctx,lpu") \
-	TP_DESC(KBASE_TL_NRET_ATOM_CTX, \
+	TRACEPOINT_DESC(KBASE_TL_NRET_ATOM_CTX, \
 		"atom is released by context", \
 		"@pp", \
 		"atom,ctx") \
-	TP_DESC(KBASE_TL_NRET_ATOM_LPU, \
+	TRACEPOINT_DESC(KBASE_TL_NRET_ATOM_LPU, \
 		"atom is released by lpu", \
 		"@pp", \
 		"atom,lpu") \
-	TP_DESC(KBASE_TL_RET_AS_CTX, \
+	TRACEPOINT_DESC(KBASE_TL_RET_AS_CTX, \
 		"address space is retained by context", \
 		"@pp", \
 		"address_space,ctx") \
-	TP_DESC(KBASE_TL_NRET_AS_CTX, \
+	TRACEPOINT_DESC(KBASE_TL_NRET_AS_CTX, \
 		"address space is released by context", \
 		"@pp", \
 		"address_space,ctx") \
-	TP_DESC(KBASE_TL_RET_ATOM_AS, \
+	TRACEPOINT_DESC(KBASE_TL_RET_ATOM_AS, \
 		"atom is retained by address space", \
 		"@pp", \
 		"atom,address_space") \
-	TP_DESC(KBASE_TL_NRET_ATOM_AS, \
+	TRACEPOINT_DESC(KBASE_TL_NRET_ATOM_AS, \
 		"atom is released by address space", \
 		"@pp", \
 		"atom,address_space") \
-	TP_DESC(KBASE_TL_ATTRIB_ATOM_CONFIG, \
+	TRACEPOINT_DESC(KBASE_TL_ATTRIB_ATOM_CONFIG, \
 		"atom job slot attributes", \
 		"@pLLI", \
 		"atom,descriptor,affinity,config") \
-	TP_DESC(KBASE_TL_ATTRIB_ATOM_PRIORITY, \
+	TRACEPOINT_DESC(KBASE_TL_ATTRIB_ATOM_PRIORITY, \
 		"atom priority", \
 		"@pI", \
 		"atom,prio") \
-	TP_DESC(KBASE_TL_ATTRIB_ATOM_STATE, \
+	TRACEPOINT_DESC(KBASE_TL_ATTRIB_ATOM_STATE, \
 		"atom state", \
 		"@pI", \
 		"atom,state") \
-	TP_DESC(KBASE_TL_ATTRIB_ATOM_PRIORITIZED, \
+	TRACEPOINT_DESC(KBASE_TL_ATTRIB_ATOM_PRIORITIZED, \
 		"atom caused priority change", \
 		"@p", \
 		"atom") \
-	TP_DESC(KBASE_TL_ATTRIB_ATOM_JIT, \
+	TRACEPOINT_DESC(KBASE_TL_ATTRIB_ATOM_JIT, \
 		"jit done for atom", \
 		"@pLLILILLL", \
 		"atom,edit_addr,new_addr,jit_flags,mem_flags,j_id,com_pgs,extent,va_pgs") \
-	TP_DESC(KBASE_TL_JIT_USEDPAGES, \
+	TRACEPOINT_DESC(KBASE_TL_JIT_USEDPAGES, \
 		"used pages for jit", \
 		"@LI", \
 		"used_pages,j_id") \
-	TP_DESC(KBASE_TL_ATTRIB_ATOM_JITALLOCINFO, \
+	TRACEPOINT_DESC(KBASE_TL_ATTRIB_ATOM_JITALLOCINFO, \
 		"Information about JIT allocations", \
 		"@pLLLIIIII", \
 		"atom,va_pgs,com_pgs,extent,j_id,bin_id,max_allocs,jit_flags,usg_id") \
-	TP_DESC(KBASE_TL_ATTRIB_ATOM_JITFREEINFO, \
+	TRACEPOINT_DESC(KBASE_TL_ATTRIB_ATOM_JITFREEINFO, \
 		"Information about JIT frees", \
 		"@pI", \
 		"atom,j_id") \
-	TP_DESC(KBASE_TL_ATTRIB_AS_CONFIG, \
+	TRACEPOINT_DESC(KBASE_TL_ATTRIB_AS_CONFIG, \
 		"address space attributes", \
 		"@pLLL", \
 		"address_space,transtab,memattr,transcfg") \
-	TP_DESC(KBASE_TL_EVENT_LPU_SOFTSTOP, \
+	TRACEPOINT_DESC(KBASE_TL_EVENT_LPU_SOFTSTOP, \
 		"softstop event on given lpu", \
 		"@p", \
 		"lpu") \
-	TP_DESC(KBASE_TL_EVENT_ATOM_SOFTSTOP_EX, \
+	TRACEPOINT_DESC(KBASE_TL_EVENT_ATOM_SOFTSTOP_EX, \
 		"atom softstopped", \
 		"@p", \
 		"atom") \
-	TP_DESC(KBASE_TL_EVENT_ATOM_SOFTSTOP_ISSUE, \
+	TRACEPOINT_DESC(KBASE_TL_EVENT_ATOM_SOFTSTOP_ISSUE, \
 		"atom softstop issued", \
 		"@p", \
 		"atom") \
-	TP_DESC(KBASE_TL_EVENT_ATOM_SOFTJOB_START, \
+	TRACEPOINT_DESC(KBASE_TL_EVENT_ATOM_SOFTJOB_START, \
 		"atom soft job has started", \
 		"@p", \
 		"atom") \
-	TP_DESC(KBASE_TL_EVENT_ATOM_SOFTJOB_END, \
+	TRACEPOINT_DESC(KBASE_TL_EVENT_ATOM_SOFTJOB_END, \
 		"atom soft job has completed", \
 		"@p", \
 		"atom") \
-	TP_DESC(KBASE_JD_GPU_SOFT_RESET, \
+	TRACEPOINT_DESC(KBASE_JD_GPU_SOFT_RESET, \
 		"gpu soft reset", \
 		"@p", \
 		"gpu") \
-	TP_DESC(KBASE_TL_KBASE_NEW_DEVICE, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_NEW_DEVICE, \
 		"New KBase Device", \
 		"@III", \
 		"kbase_device_id,kbase_device_gpu_core_count,kbase_device_max_num_csgs") \
-	TP_DESC(KBASE_TL_KBASE_DEVICE_PROGRAM_CSG, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_DEVICE_PROGRAM_CSG, \
 		"CSG is programmed to a slot", \
 		"@III", \
 		"kbase_device_id,gpu_cmdq_grp_handle,kbase_device_csg_slot_index") \
-	TP_DESC(KBASE_TL_KBASE_DEVICE_DEPROGRAM_CSG, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_DEVICE_DEPROGRAM_CSG, \
 		"CSG is deprogrammed from a slot", \
 		"@II", \
 		"kbase_device_id,kbase_device_csg_slot_index") \
-	TP_DESC(KBASE_TL_KBASE_NEW_CTX, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_NEW_CTX, \
 		"New KBase Context", \
 		"@II", \
 		"kernel_ctx_id,kbase_device_id") \
-	TP_DESC(KBASE_TL_KBASE_DEL_CTX, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_DEL_CTX, \
 		"Delete KBase Context", \
 		"@I", \
 		"kernel_ctx_id") \
-	TP_DESC(KBASE_TL_KBASE_NEW_KCPUQUEUE, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_NEW_KCPUQUEUE, \
 		"New KCPU Queue", \
 		"@pII", \
 		"kcpu_queue,kernel_ctx_id,kcpuq_num_pending_cmds") \
-	TP_DESC(KBASE_TL_KBASE_DEL_KCPUQUEUE, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_DEL_KCPUQUEUE, \
 		"Delete KCPU Queue", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_SIGNAL, \
 		"KCPU Queue enqueues Signal on Fence", \
 		"@pp", \
 		"kcpu_queue,fence") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_WAIT, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_FENCE_WAIT, \
 		"KCPU Queue enqueues Wait on Fence", \
 		"@pp", \
 		"kcpu_queue,fence") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
 		"Begin array of KCPU Queue enqueues Wait on Cross Queue Sync Object", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
 		"Array item of KCPU Queue enqueues Wait on Cross Queue Sync Object", \
 		"@pLI", \
 		"kcpu_queue,cqs_obj_gpu_addr,cqs_obj_compare_value") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_WAIT, \
 		"End array of KCPU Queue enqueues Wait on Cross Queue Sync Object", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_CQS_SET, \
 		"Begin array of KCPU Queue enqueues Set on Cross Queue Sync Object", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_CQS_SET, \
 		"Array item of KCPU Queue enqueues Set on Cross Queue Sync Object", \
 		"@pL", \
 		"kcpu_queue,cqs_obj_gpu_addr") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_CQS_SET, \
 		"End array of KCPU Queue enqueues Set on Cross Queue Sync Object", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
 		"Begin array of KCPU Queue enqueues Debug Copy", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
 		"Array item of KCPU Queue enqueues Debug Copy", \
 		"@pL", \
 		"kcpu_queue,debugcopy_dst_size") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_DEBUGCOPY, \
 		"End array of KCPU Queue enqueues Debug Copy", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_MAP_IMPORT, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_MAP_IMPORT, \
 		"KCPU Queue enqueues Map Import", \
 		"@pL", \
 		"kcpu_queue,map_import_buf_gpu_addr") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT, \
 		"KCPU Queue enqueues Unmap Import", \
 		"@pL", \
 		"kcpu_queue,map_import_buf_gpu_addr") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_ENQUEUE_UNMAP_IMPORT_FORCE, \
 		"KCPU Queue enqueues Unmap Import ignoring reference count", \
 		"@pL", \
 		"kcpu_queue,map_import_buf_gpu_addr") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
 		"Begin array of KCPU Queue enqueues JIT Alloc", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
 		"Array item of KCPU Queue enqueues JIT Alloc", \
 		"@pLLLLIIIII", \
 		"kcpu_queue,jit_alloc_gpu_alloc_addr_dest,jit_alloc_va_pages,jit_alloc_commit_pages,jit_alloc_extent,jit_alloc_jit_id,jit_alloc_bin_id,jit_alloc_max_allocations,jit_alloc_flags,jit_alloc_usage_id") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_ALLOC, \
 		"End array of KCPU Queue enqueues JIT Alloc", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_ENQUEUE_JIT_FREE, \
 		"Begin array of KCPU Queue enqueues JIT Free", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_ENQUEUE_JIT_FREE, \
 		"Array item of KCPU Queue enqueues JIT Free", \
 		"@pI", \
 		"kcpu_queue,jit_alloc_jit_id") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_ENQUEUE_JIT_FREE, \
 		"End array of KCPU Queue enqueues JIT Free", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_START, \
 		"KCPU Queue starts a Signal on Fence", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END, \
 		"KCPU Queue ends a Signal on Fence", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_START, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_START, \
 		"KCPU Queue starts a Wait on Fence", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_END, \
 		"KCPU Queue ends a Wait on Fence", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_START, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_START, \
 		"KCPU Queue starts a Wait on an array of Cross Queue Sync Objects", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_END, \
 		"KCPU Queue ends a Wait on an array of Cross Queue Sync Objects", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_SET, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_SET, \
 		"KCPU Queue executes a Set on an array of Cross Queue Sync Objects", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_START, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_START, \
 		"KCPU Queue starts an array of Debug Copys", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_DEBUGCOPY_END, \
 		"KCPU Queue ends an array of Debug Copys", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_START, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_START, \
 		"KCPU Queue starts a Map Import", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_END, \
 		"KCPU Queue ends a Map Import", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_START, \
 		"KCPU Queue starts an Unmap Import", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END, \
 		"KCPU Queue ends an Unmap Import", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_START, \
 		"KCPU Queue starts an Unmap Import ignoring reference count", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END, \
 		"KCPU Queue ends an Unmap Import ignoring reference count", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_ALLOC_START, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_ALLOC_START, \
 		"KCPU Queue starts an array of JIT Allocs", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
 		"Begin array of KCPU Queue ends an array of JIT Allocs", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
 		"Array item of KCPU Queue ends an array of JIT Allocs", \
 		"@pLL", \
 		"kcpu_queue,jit_alloc_gpu_alloc_addr,jit_alloc_mmu_flags") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_ALLOC_END, \
 		"End array of KCPU Queue ends an array of JIT Allocs", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_FREE_START, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_FREE_START, \
 		"KCPU Queue starts an array of JIT Frees", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_BEGIN_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
 		"Begin array of KCPU Queue ends an array of JIT Frees", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
 		"Array item of KCPU Queue ends an array of JIT Frees", \
 		"@pL", \
 		"kcpu_queue,jit_free_pages_used") \
-	TP_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_ARRAY_END_KCPUQUEUE_EXECUTE_JIT_FREE_END, \
 		"End array of KCPU Queue ends an array of JIT Frees", \
 		"@p", \
 		"kcpu_queue") \
-	TP_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_ERRORBARRIER, \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_KCPUQUEUE_EXECUTE_ERRORBARRIER, \
 		"KCPU Queue executes an Error Barrier", \
 		"@p", \
 		"kcpu_queue") \
+	TRACEPOINT_DESC(KBASE_TL_KBASE_CSFFW_TLSTREAM_OVERFLOW, \
+		"An overflow has happened with the CSFFW Timeline stream", \
+		"@LL", \
+		"csffw_timestamp,csffw_cycle") \
 
-#define MIPE_HEADER_BLOB_VAR_NAME    __obj_desc_header
-#define MIPE_HEADER_TP_LIST          OBJ_TL_LIST
-#define MIPE_HEADER_TP_LIST_COUNT    KBASE_OBJ_MSG_COUNT
-#define MIPE_HEADER_PKT_CLASS        TL_PACKET_CLASS_OBJ
+#define MIPE_HEADER_BLOB_VAR_NAME		__obj_desc_header
+#define MIPE_HEADER_STREAM_ID			TL_STREAM_ID_KERNEL
+#define MIPE_HEADER_PKT_CLASS			TL_PACKET_CLASS_OBJ
+#define MIPE_HEADER_TRACEPOINT_LIST		OBJ_TP_LIST
+#define MIPE_HEADER_TRACEPOINT_LIST_SIZE	KBASE_OBJ_MSG_COUNT
 
 #include "mali_kbase_mipe_gen_header.h"
 
 const char   *obj_desc_header = (const char *) &__obj_desc_header;
 const size_t  obj_desc_header_size = sizeof(__obj_desc_header);
 
-#define AUX_TL_LIST \
-	TP_DESC(KBASE_AUX_PM_STATE, \
+#define AUX_TP_LIST \
+	TRACEPOINT_DESC(KBASE_AUX_PM_STATE, \
 		"PM state", \
 		"@IL", \
 		"core_type,core_state_bitset") \
-	TP_DESC(KBASE_AUX_PAGEFAULT, \
+	TRACEPOINT_DESC(KBASE_AUX_PAGEFAULT, \
 		"Page fault", \
 		"@IIL", \
 		"ctx_nr,as_nr,page_cnt_change") \
-	TP_DESC(KBASE_AUX_PAGESALLOC, \
+	TRACEPOINT_DESC(KBASE_AUX_PAGESALLOC, \
 		"Total alloc pages change", \
 		"@IL", \
 		"ctx_nr,page_cnt") \
-	TP_DESC(KBASE_AUX_DEVFREQ_TARGET, \
+	TRACEPOINT_DESC(KBASE_AUX_DEVFREQ_TARGET, \
 		"New device frequency target", \
 		"@L", \
 		"target_freq") \
-	TP_DESC(KBASE_AUX_PROTECTED_ENTER_START, \
+	TRACEPOINT_DESC(KBASE_AUX_PROTECTED_ENTER_START, \
 		"enter protected mode start", \
 		"@p", \
 		"gpu") \
-	TP_DESC(KBASE_AUX_PROTECTED_ENTER_END, \
+	TRACEPOINT_DESC(KBASE_AUX_PROTECTED_ENTER_END, \
 		"enter protected mode end", \
 		"@p", \
 		"gpu") \
-	TP_DESC(KBASE_AUX_PROTECTED_LEAVE_START, \
+	TRACEPOINT_DESC(KBASE_AUX_PROTECTED_LEAVE_START, \
 		"leave protected mode start", \
 		"@p", \
 		"gpu") \
-	TP_DESC(KBASE_AUX_PROTECTED_LEAVE_END, \
+	TRACEPOINT_DESC(KBASE_AUX_PROTECTED_LEAVE_END, \
 		"leave protected mode end", \
 		"@p", \
 		"gpu") \
-	TP_DESC(KBASE_AUX_JIT_STATS, \
+	TRACEPOINT_DESC(KBASE_AUX_JIT_STATS, \
 		"per-bin JIT statistics", \
 		"@IIIIII", \
 		"ctx_nr,bid,max_allocs,allocs,va_pages,ph_pages") \
-	TP_DESC(KBASE_AUX_EVENT_JOB_SLOT, \
+	TRACEPOINT_DESC(KBASE_AUX_EVENT_JOB_SLOT, \
 		"event on a given job slot", \
 		"@pIII", \
 		"ctx,slot_nr,atom_nr,event") \
 
-#define MIPE_HEADER_BLOB_VAR_NAME    __aux_desc_header
-#define MIPE_HEADER_TP_LIST          AUX_TL_LIST
-#define MIPE_HEADER_TP_LIST_COUNT    KBASE_AUX_MSG_COUNT
-#define MIPE_HEADER_PKT_CLASS        TL_PACKET_CLASS_AUX
+#define MIPE_HEADER_BLOB_VAR_NAME		__aux_desc_header
+#define MIPE_HEADER_STREAM_ID        		TL_STREAM_ID_KERNEL
+#define MIPE_HEADER_PKT_CLASS        		TL_PACKET_CLASS_AUX
+#define MIPE_HEADER_TRACEPOINT_LIST		AUX_TP_LIST
+#define MIPE_HEADER_TRACEPOINT_LIST_SIZE	KBASE_AUX_MSG_COUNT
 
 #include "mali_kbase_mipe_gen_header.h"
 
@@ -2984,6 +2991,32 @@ void __kbase_tlstream_tl_kbase_kcpuqueue_execute_errorbarrier(
 	pos = kbasep_serialize_timestamp(buffer, pos);
 	pos = kbasep_serialize_bytes(buffer,
 		pos, &kcpu_queue, sizeof(kcpu_queue));
+
+	kbase_tlstream_msgbuf_release(stream, acq_flags);
+}
+
+void __kbase_tlstream_tl_kbase_csffw_tlstream_overflow(
+	struct kbase_tlstream *stream,
+	u64 csffw_timestamp,
+	u64 csffw_cycle)
+{
+	const u32 msg_id = KBASE_TL_KBASE_CSFFW_TLSTREAM_OVERFLOW;
+	const size_t msg_size = sizeof(msg_id) + sizeof(u64)
+		+ sizeof(csffw_timestamp)
+		+ sizeof(csffw_cycle)
+		;
+	char *buffer;
+	unsigned long acq_flags;
+	size_t pos = 0;
+
+	buffer = kbase_tlstream_msgbuf_acquire(stream, msg_size, &acq_flags);
+
+	pos = kbasep_serialize_bytes(buffer, pos, &msg_id, sizeof(msg_id));
+	pos = kbasep_serialize_timestamp(buffer, pos);
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &csffw_timestamp, sizeof(csffw_timestamp));
+	pos = kbasep_serialize_bytes(buffer,
+		pos, &csffw_cycle, sizeof(csffw_cycle));
 
 	kbase_tlstream_msgbuf_release(stream, acq_flags);
 }

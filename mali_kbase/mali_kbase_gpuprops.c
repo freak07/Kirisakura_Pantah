@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -51,7 +51,8 @@
 #define KBASE_UBFX32(value, offset, size) \
 	(((u32)(value) >> (u32)(offset)) & (u32)((1ULL << (u32)(size)) - 1))
 
-static void kbase_gpuprops_construct_coherent_groups(base_gpu_props * const props)
+static void kbase_gpuprops_construct_coherent_groups(
+	struct base_gpu_props * const props)
 {
 	struct mali_base_gpu_coherent_group *current_group;
 	u64 group_present;
@@ -120,13 +121,14 @@ static void kbase_gpuprops_construct_coherent_groups(base_gpu_props * const prop
 
 /**
  * kbase_gpuprops_get_props - Get the GPU configuration
- * @gpu_props: The &base_gpu_props structure
+ * @gpu_props: The &struct base_gpu_props structure
  * @kbdev: The &struct kbase_device structure for the device
  *
- * Fill the &base_gpu_props structure with values from the GPU configuration
- * registers. Only the raw properties are filled in this function
+ * Fill the &struct base_gpu_props structure with values from the GPU
+ * configuration registers. Only the raw properties are filled in this function.
  */
-static void kbase_gpuprops_get_props(base_gpu_props * const gpu_props, struct kbase_device *kbdev)
+static void kbase_gpuprops_get_props(struct base_gpu_props * const gpu_props,
+	struct kbase_device *kbdev)
 {
 	struct kbase_gpuprops_regdump regdump;
 	int i;
@@ -172,7 +174,8 @@ static void kbase_gpuprops_get_props(base_gpu_props * const gpu_props, struct kb
 	gpu_props->raw_props.thread_tls_alloc = regdump.thread_tls_alloc;
 }
 
-void kbase_gpuprops_update_core_props_gpu_id(base_gpu_props * const gpu_props)
+void kbase_gpuprops_update_core_props_gpu_id(
+	struct base_gpu_props * const gpu_props)
 {
 	gpu_props->core_props.version_status =
 		KBASE_UBFX32(gpu_props->raw_props.gpu_id, 0U, 4);
@@ -186,13 +189,14 @@ void kbase_gpuprops_update_core_props_gpu_id(base_gpu_props * const gpu_props)
 
 /**
  * kbase_gpuprops_calculate_props - Calculate the derived properties
- * @gpu_props: The &base_gpu_props structure
+ * @gpu_props: The &struct base_gpu_props structure
  * @kbdev:     The &struct kbase_device structure for the device
  *
- * Fill the &base_gpu_props structure with values derived from the GPU
+ * Fill the &struct base_gpu_props structure with values derived from the GPU
  * configuration registers
  */
-static void kbase_gpuprops_calculate_props(base_gpu_props * const gpu_props, struct kbase_device *kbdev)
+static void kbase_gpuprops_calculate_props(
+	struct base_gpu_props * const gpu_props, struct kbase_device *kbdev)
 {
 	int i;
 	u32 gpu_id;
@@ -323,7 +327,7 @@ void kbase_gpuprops_set(struct kbase_device *kbdev)
 
 void kbase_gpuprops_set_features(struct kbase_device *kbdev)
 {
-	base_gpu_props *gpu_props;
+	struct base_gpu_props *gpu_props;
 	struct kbase_gpuprops_regdump regdump;
 
 	gpu_props = &kbdev->gpu_props.props;
@@ -396,7 +400,7 @@ void kbase_gpuprops_update_l2_features(struct kbase_device *kbdev)
 {
 	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_L2_CONFIG)) {
 		struct kbase_gpuprops_regdump regdump;
-		base_gpu_props *gpu_props = &kbdev->gpu_props.props;
+		struct base_gpu_props *gpu_props = &kbdev->gpu_props.props;
 
 		/* Check for L2 cache size & hash overrides */
 		if (!kbase_read_l2_config_from_dt(kbdev))

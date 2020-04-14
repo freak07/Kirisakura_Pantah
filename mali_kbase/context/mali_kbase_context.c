@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  *
- * (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -51,8 +51,6 @@ int kbase_context_common_init(struct kbase_context *kctx)
 	kctx->process_mm = NULL;
 	atomic_set(&kctx->nonmapped_pages, 0);
 	atomic_set(&kctx->permanent_mapped_pages, 0);
-	kctx->slots_pullable = 0;
-
 	kctx->tgid = current->tgid;
 	kctx->pid = current->pid;
 
@@ -67,6 +65,8 @@ int kbase_context_common_init(struct kbase_context *kctx)
 	INIT_LIST_HEAD(&kctx->waiting_soft_jobs);
 
 	init_waitqueue_head(&kctx->event_queue);
+	atomic_set(&kctx->event_count, 0);
+	atomic_set(&kctx->event_closed, false);
 
 	bitmap_copy(kctx->cookies, &cookies_mask, BITS_PER_LONG);
 

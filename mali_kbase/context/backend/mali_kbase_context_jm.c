@@ -56,6 +56,18 @@ void kbase_context_debugfs_term(struct kbase_context *const kctx)
 	kbase_debug_job_fault_context_term(kctx);
 }
 KBASE_EXPORT_SYMBOL(kbase_context_debugfs_term);
+#else
+void kbase_context_debugfs_init(struct kbase_context *const kctx)
+{
+	CSTD_UNUSED(kctx);
+}
+KBASE_EXPORT_SYMBOL(kbase_context_debugfs_init);
+
+void kbase_context_debugfs_term(struct kbase_context *const kctx)
+{
+	CSTD_UNUSED(kctx);
+}
+KBASE_EXPORT_SYMBOL(kbase_context_debugfs_term);
 #endif /* CONFIG_DEBUG_FS */
 
 static int kbase_context_kbase_timer_setup(struct kbase_context *kctx)

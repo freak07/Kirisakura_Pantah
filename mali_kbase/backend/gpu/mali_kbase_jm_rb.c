@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2014-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -32,7 +32,6 @@
 #include <mali_kbase_js.h>
 #include <tl/mali_kbase_tracepoints.h>
 #include <mali_kbase_hwcnt_context.h>
-#include <mali_kbase_10969_workaround.h>
 #include <mali_kbase_reset_gpu.h>
 #include <backend/gpu/mali_kbase_cache_policy_backend.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
@@ -832,8 +831,7 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 				break;
 
 			case KBASE_ATOM_GPU_RB_WAITING_BLOCKED:
-				if (katom[idx]->atom_flags &
-						KBASE_KATOM_FLAG_X_DEP_BLOCKED)
+				if (kbase_js_atom_blocked_on_x_dep(katom[idx]))
 					break;
 
 				katom[idx]->gpu_rb_state =
@@ -1007,6 +1005,8 @@ void kbase_backend_run_atom(struct kbase_device *kbdev,
 				struct kbase_jd_atom *katom)
 {
 	lockdep_assert_held(&kbdev->hwaccess_lock);
+	dev_dbg(kbdev->dev, "Backend running atom %p\n", (void *)katom);
+
 	kbase_gpu_enqueue_atom(kbdev, katom);
 	kbase_backend_slot_update(kbdev);
 }
@@ -1064,6 +1064,10 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 {
 	struct kbase_jd_atom *katom = kbase_gpu_inspect(kbdev, js, 0);
 	struct kbase_context *kctx = katom->kctx;
+
+	dev_dbg(kbdev->dev,
+		"Atom %p completed on hw with code 0x%x and job_tail 0x%llx (s:%d)\n",
+		(void *)katom, completion_code, job_tail, js);
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
@@ -1179,19 +1183,19 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 					js, completion_code);
 
 	if (job_tail != 0 && job_tail != katom->jc) {
-		bool was_updated = (job_tail != katom->jc);
+		/* Some of the job has been executed */
+		dev_dbg(kbdev->dev,
+			"Update job chain address of atom %p to resume from 0x%llx\n",
+			(void *)katom, job_tail);
 
-		/* Some of the job has been executed, so we update the job chain
-		 * address to where we should resume from */
 		katom->jc = job_tail;
-		if (was_updated)
-			KBASE_TRACE_ADD_SLOT(kbdev, JM_UPDATE_HEAD, katom->kctx,
-						katom, job_tail, js);
+		KBASE_TRACE_ADD_SLOT(kbdev, JM_UPDATE_HEAD, katom->kctx,
+					katom, job_tail, js);
 	}
 
 	/* Only update the event code for jobs that weren't cancelled */
 	if (katom->event_code != BASE_JD_EVENT_JOB_CANCELLED)
-		katom->event_code = (base_jd_event_code)completion_code;
+		katom->event_code = (enum base_jd_event_code)completion_code;
 
 	/* Complete the job, and start new ones
 	 *
@@ -1241,8 +1245,9 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 		katom = kbase_jm_complete(kbdev, katom, end_timestamp);
 
 	if (katom) {
-		/* Cross-slot dependency has now become runnable. Try to submit
-		 * it. */
+		dev_dbg(kbdev->dev,
+			"Cross-slot dependency %p has become runnable.\n",
+			(void *)katom);
 
 		/* Check if there are lower priority jobs to soft stop */
 		kbase_job_slot_ctx_priority_check_locked(kctx, katom);

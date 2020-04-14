@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2015-2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2015-2020 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -97,7 +97,6 @@ enum tl_stream_type {
 	TL_STREAM_TYPE_OBJ_SUMMARY = TL_STREAM_TYPE_FIRST,
 	TL_STREAM_TYPE_OBJ,
 	TL_STREAM_TYPE_AUX,
-
 	TL_STREAM_TYPE_COUNT
 };
 
