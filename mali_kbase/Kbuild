@@ -21,9 +21,12 @@
 
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= "r24p0-01rel0"
+MALI_RELEASE_NAME ?= "r24p0-01rel0-pixel"
 
 # Paths required for build
+
+# make $(src) as absolute path if it isn't already, by prefixing $(srctree)
+src:=$(if $(patsubst /%,,$(src)),$(srctree)/$(src),$(src))
 KBASE_PATH = $(src)
 KBASE_PLATFORM_PATH = $(KBASE_PATH)/platform_dummy
 UMP_PATH = $(src)/../../../base

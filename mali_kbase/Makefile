@@ -20,10 +20,16 @@
 #
 
 
-KDIR ?= /lib/modules/$(shell uname -r)/build
+KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 
 BUSLOG_PATH_RELATIVE = $(CURDIR)/../../../..
 KBASE_PATH_RELATIVE = $(CURDIR)
+
+KBUILD_OPTIONS += CONFIG_MALI_MIDGARD=m
+KBUILD_OPTIONS += MALI_DEVFREQ=n
+KBUILD_OPTIONS += CONFIG_MALI_EXPERT=y
+KBUILD_OPTIONS += CONFIG_MALI_DMA_BUF_LEGACY_COMPAT=y
+KBUILD_OPTIONS += $(KBUILD_EXTRA) # Extra config if any
 
 ifeq ($(CONFIG_MALI_BUSLOG),y)
 #Add bus logger symbols
@@ -32,7 +38,10 @@ endif
 
 # we get the symbols from modules using KBUILD_EXTRA_SYMBOLS to prevent warnings about unknown functions
 all:
-	$(MAKE) -C $(KDIR) M=$(CURDIR) EXTRA_CFLAGS="-I$(CURDIR)/../../../../include -I$(CURDIR)/../../../../tests/include $(SCONS_CFLAGS)" $(SCONS_CONFIGS) KBUILD_EXTRA_SYMBOLS="$(EXTRA_SYMBOLS)" modules
+	$(MAKE) -C $(KERNEL_SRC) M=$(CURDIR) EXTRA_CFLAGS="-I$(CURDIR) -I$(CURDIR)/../common/include -I$(CURDIR)/../../../../include -I$(CURDIR)/../../../../tests/include $(SCONS_CFLAGS)" $(SCONS_CONFIGS) KBUILD_EXTRA_SYMBOLS="$(EXTRA_SYMBOLS)" modules $(KBUILD_OPTIONS)
+
+modules_install:
+	$(MAKE) -C $(KERNEL_SRC) M=$(CURDIR) modules_install
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
+	$(MAKE) -C $(KERNEL_SRC) M=$(CURDIR) clean
