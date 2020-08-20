@@ -13,7 +13,7 @@
  * level of verbosity.
  */
 enum gpu_log_level {
-	LOG_START = 0,
+	LOG_DISABLED = 0,
 	LOG_DEBUG,
 	LOG_INFO,
 	LOG_WARN,
@@ -29,26 +29,27 @@ enum gpu_log_level {
  * @msg  : A printf syle string to be logged.
  * @...  : Token values for @msg.
  */
-#define GPU_LOG(level, kbdev, msg, args...) \
-do { \
-	if (level >= LOG_WARN) { \
-		switch (level) { \
-		case LOG_DEBUG: \
-			dev_dbg(kbdev->dev, "pixel: " msg, ## args); \
-			break; \
-		case LOG_INFO: \
-			dev_info(kbdev->dev, "pixel: " msg, ## args); \
-			break; \
-		case LOG_WARN: \
-			dev_warn(kbdev->dev, "pixel: " msg, ## args); \
-			break; \
-		case LOG_ERROR: \
-			dev_err(kbdev->dev, "pixel: " msg, ## args); \
-			break; \
-		default: \
-			dev_warn(kbdev->dev, "pixel: Invalid log level"); \
-		} \
-	} \
-} while (0)
+#define GPU_LOG(level, kbdev, msg, args...)                                    	                 \
+	do {                                                                                     \
+		if (level >= ((struct pixel_context *)kbdev->platform_context)->gpu_log_level) { \
+			switch (level) {                                                         \
+			case LOG_DEBUG:                                                          \
+				dev_dbg(kbdev->dev, "pixel: " msg, ##args);                      \
+				break;                                                           \
+			case LOG_INFO:                                                           \
+				dev_info(kbdev->dev, "pixel: " msg, ##args);                     \
+				break;                                                           \
+			case LOG_WARN:                                                           \
+				dev_warn(kbdev->dev, "pixel: " msg, ##args);                     \
+				break;                                                           \
+			case LOG_ERROR:                                                          \
+				dev_err(kbdev->dev, "pixel: " msg, ##args);                      \
+				break;                                                           \
+			default:                                                                 \
+				dev_warn(kbdev->dev,                                             \
+					 "pixel: Invalid log level");                            \
+			}                                                                        \
+		}                                                                                \
+	} while (0)
 
 #endif /* _PIXEL_GPU_DEBUG_H_ */
