@@ -74,6 +74,9 @@ DEFINES += -DMALI_KBASE_BUILD
 ccflags-y += $(DEFINES) -I$(KBASE_PATH)   -I$(KBASE_PLATFORM_PATH) -I$(UMP_PATH) -I$(srctree)/include/linux
 subdir-ccflags-y += $(DEFINES) -I$(KBASE_PATH)   -I$(KBASE_PLATFORM_PATH) -I$(UMP_PATH) -I$(srctree)/include/linux
 
+# Add include path for related GPU modules
+ccflags-y += -I$(src)/../common/include
+
 SRC := \
 	context/mali_kbase_context.c \
 	debug/mali_kbase_debug_ktrace.c \

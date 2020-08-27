@@ -21,9 +21,10 @@
 
 
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
+M ?= $(shell pwd)
 
-BUSLOG_PATH_RELATIVE = $(CURDIR)/../../../..
-KBASE_PATH_RELATIVE = $(CURDIR)
+BUSLOG_PATH_RELATIVE = $(M)/../../../..
+KBASE_PATH_RELATIVE = $(M)
 
 KBUILD_OPTIONS += CONFIG_MALI_MIDGARD=m
 KBUILD_OPTIONS += MALI_DEVFREQ=n
@@ -38,10 +39,10 @@ endif
 
 # we get the symbols from modules using KBUILD_EXTRA_SYMBOLS to prevent warnings about unknown functions
 all:
-	$(MAKE) -C $(KERNEL_SRC) M=$(CURDIR) EXTRA_CFLAGS="-I$(CURDIR) -I$(CURDIR)/../common/include -I$(CURDIR)/../../../../include -I$(CURDIR)/../../../../tests/include $(SCONS_CFLAGS)" $(SCONS_CONFIGS) KBUILD_EXTRA_SYMBOLS="$(EXTRA_SYMBOLS)" modules $(KBUILD_OPTIONS)
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) EXTRA_CFLAGS="-I$(M) -I$(M)/../common/include -I$(M)/../../../../include -I$(M)/../../../../tests/include $(SCONS_CFLAGS)" $(SCONS_CONFIGS) KBUILD_EXTRA_SYMBOLS="$(EXTRA_SYMBOLS)" modules $(KBUILD_OPTIONS) $(@)
 
 modules_install:
-	$(MAKE) -C $(KERNEL_SRC) M=$(CURDIR) modules_install
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) modules_install
 
 clean:
-	$(MAKE) -C $(KERNEL_SRC) M=$(CURDIR) clean
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) clean
