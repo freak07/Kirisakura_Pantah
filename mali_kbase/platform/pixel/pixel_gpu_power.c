@@ -67,6 +67,12 @@ static int gpu_power_on(struct kbase_device *kbdev)
 done:
 	pc->pm.state_lost = false;
 	mutex_unlock(&pc->pm.domain->access_lock);
+
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+	if (ret == 1)
+		gpu_dvfs_event_power_on(kbdev);
+#endif
+
 	return ret;
 }
 
@@ -112,6 +118,12 @@ done:
 		pc->pm.state_lost = true;
 
 	mutex_unlock(&pc->pm.domain->access_lock);
+
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+	if (ret == 1)
+		gpu_dvfs_event_power_off(kbdev);
+#endif
+
 	return ret;
 }
 

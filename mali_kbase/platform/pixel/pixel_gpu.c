@@ -5,6 +5,12 @@
  * Author: Sidath Senanayake <sidaths@google.com>
  */
 
+/* Linux includes */
+#include <linux/of_device.h>
+#ifdef CONFIG_OF
+#include <linux/of.h>
+#endif
+
 /* Mali core includes */
 #include <mali_kbase.h>
 
@@ -42,7 +48,21 @@ static int gpu_pixel_init(struct kbase_device *kbdev)
 		goto done;
 	}
 
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+	ret = gpu_dvfs_init(kbdev);
+	if (ret) {
+		GPU_LOG(LOG_ERROR, kbdev, "DVFS init failed\n");
+		goto done;
+	}
+#endif /* CONFIG_MALI_MIDGARD_DVFS */
+
+	ret = gpu_sysfs_init(kbdev);
+	if (ret) {
+		GPU_LOG(LOG_ERROR, kbdev, "sysfs init failed\n");
+		goto done;
+	}
 	ret = 0;
+
 done:
 	return ret;
 }
@@ -56,6 +76,8 @@ static void gpu_pixel_term(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
+	gpu_sysfs_term(kbdev);
+	gpu_dvfs_term(kbdev);
 	gpu_power_term(kbdev);
 
 	kbdev->platform_context = NULL;
