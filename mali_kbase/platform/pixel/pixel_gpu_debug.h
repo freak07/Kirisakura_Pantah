@@ -24,10 +24,10 @@ enum gpu_log_level {
 /**
  * GPU_LOG() - Register a GPU log entry at a specified level of verbosity.
  *
- * @level: The verbosity of this log message
- * @kbdev: The Mali kbase context the log corresponds to.
- * @msg  : A printf syle string to be logged
- * @...  : Token values for @msg
+ * @level: The verbosity of this log message.
+ * @kbdev: The &struct kbase_device for the GPU.
+ * @msg  : A printf syle string to be logged.
+ * @...  : Token values for @msg.
  */
 #define GPU_LOG(level, kbdev, msg, args...) \
 do { \

@@ -8,27 +8,58 @@
 /* Mali core includes */
 #include <mali_kbase.h>
 
+/* Pixel integration includes */
+#include "mali_kbase_config_platform.h"
+#include "pixel_gpu_debug.h"
+#include "pixel_gpu_control.h"
+
 /**
- * gpu_pixel_init() - Initialization entrypoint for the Pixel integration of the
- * Mali GPU.
+ * gpu_pixel_init() - Initializes the Pixel integration for the Mali GPU.
  *
- * @kbdev: The Mali kbase context in the process of being initialized
+ * @kbdev: The &struct kbase_device for the GPU.
  *
- * Return: An errorcode, or 0 on success.
+ * Return: On success, returns 0. On failure an error code is returned.
  */
 static int gpu_pixel_init(struct kbase_device *kbdev)
 {
-	return 0;
+	int ret;
+
+	struct pixel_context *pc;
+
+	pc = kzalloc(sizeof(struct pixel_context), GFP_KERNEL);
+	if (pc == NULL) {
+		GPU_LOG(LOG_ERROR, kbdev, "failed to alloc platform context struct\n");
+		ret = -ENOMEM;
+		goto done;
+	}
+
+	kbdev->platform_context = pc;
+	pc->kbdev = kbdev;
+
+	ret = gpu_power_init(kbdev);
+	if (ret) {
+		GPU_LOG(LOG_ERROR, kbdev, "power init failed\n");
+		goto done;
+	}
+
+	ret = 0;
+done:
+	return ret;
 }
 
 /**
- * gpu_pixel_term() - Termination call to initiate teardown of structures set up
- * for the Pixel integration of the Mali GPU.
+ * gpu_pixel_term() - Terminates the Pixel integration for the Mali GPU.
  *
- * @kbdev: The Mali kbase context the teardown should occur on
+ * @kbdev: The &struct kbase_device for the GPU.
  */
 static void gpu_pixel_term(struct kbase_device *kbdev)
 {
+	struct pixel_context *pc = kbdev->platform_context;
+
+	gpu_power_term(kbdev);
+
+	kbdev->platform_context = NULL;
+	kfree(pc);
 }
 
 struct kbase_platform_funcs_conf platform_funcs = {
