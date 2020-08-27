@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+
 /*
  *
  * (C) COPYRIGHT 2015, 2017-2019 ARM Limited. All rights reserved.
@@ -20,13 +22,19 @@
  *
  */
 
-#include <mali_kbase.h>
-#include <mali_kbase_defs.h>
+/* Linux incudes */
 #include <linux/pm_runtime.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/regulator/consumer.h>
+
+/* Mali core includes */
+#include <mali_kbase.h>
+#include <mali_kbase_defs.h>
+
+/* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
+#include "pixel_gpu_debug.h"
 
 static void enable_gpu_power_control(struct kbase_device *kbdev)
 {
@@ -78,7 +86,7 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 	int ret = 1; /* Assume GPU has been powered off */
 	int error;
 
-	dev_dbg(kbdev->dev, "pm_callback_power_on %p\n",
+	GPU_LOG(LOG_DEBUG, kbdev, "%s %pK\n", __func__,
 			(void *)kbdev->dev->pm_domain);
 
 	enable_gpu_power_control(kbdev);
@@ -92,14 +100,14 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 		ret = 0;
 	}
 
-	dev_dbg(kbdev->dev, "pm_runtime_get_sync returned %d\n", error);
+	GPU_LOG(LOG_DEBUG, kbdev, "%s returned %d\n", __func__, error);
 
 	return ret;
 }
 
 static void pm_callback_power_off(struct kbase_device *kbdev)
 {
-	dev_dbg(kbdev->dev, "pm_callback_power_off\n");
+	GPU_LOG(LOG_DEBUG, kbdev, "%s\n", __func__);
 
 	pm_runtime_mark_last_busy(kbdev->dev);
 	pm_runtime_put_autosuspend(kbdev->dev);
@@ -114,7 +122,7 @@ static int kbase_device_runtime_init(struct kbase_device *kbdev)
 {
 	int ret = 0;
 
-	dev_dbg(kbdev->dev, "kbase_device_runtime_init\n");
+	GPU_LOG(LOG_DEBUG, kbdev, "%s\n", __func__);
 
 	pm_runtime_set_autosuspend_delay(kbdev->dev, AUTO_SUSPEND_DELAY);
 	pm_runtime_use_autosuspend(kbdev->dev);
@@ -123,7 +131,7 @@ static int kbase_device_runtime_init(struct kbase_device *kbdev)
 	pm_runtime_enable(kbdev->dev);
 
 	if (!pm_runtime_enabled(kbdev->dev)) {
-		dev_warn(kbdev->dev, "pm_runtime not enabled");
+		GPU_LOG(LOG_WARN, kbdev, "pm_runtime not enabled");
 		ret = -ENOSYS;
 	}
 
@@ -132,14 +140,14 @@ static int kbase_device_runtime_init(struct kbase_device *kbdev)
 
 static void kbase_device_runtime_disable(struct kbase_device *kbdev)
 {
-	dev_dbg(kbdev->dev, "kbase_device_runtime_disable\n");
+	GPU_LOG(LOG_DEBUG, kbdev, "%s\n", __func__);
 	pm_runtime_disable(kbdev->dev);
 }
 #endif
 
 static int pm_callback_runtime_on(struct kbase_device *kbdev)
 {
-	dev_dbg(kbdev->dev, "pm_callback_runtime_on\n");
+	GPU_LOG(LOG_DEBUG, kbdev, "%s\n", __func__);
 
 	enable_gpu_power_control(kbdev);
 	return 0;
@@ -147,7 +155,7 @@ static int pm_callback_runtime_on(struct kbase_device *kbdev)
 
 static void pm_callback_runtime_off(struct kbase_device *kbdev)
 {
-	dev_dbg(kbdev->dev, "pm_callback_runtime_off\n");
+	GPU_LOG(LOG_DEBUG, kbdev, "%s\n", __func__);
 
 	disable_gpu_power_control(kbdev);
 }
