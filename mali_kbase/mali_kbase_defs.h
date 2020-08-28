@@ -806,6 +806,10 @@ struct kbase_devfreq_queue_info {
  *                          Job Scheduler
  * @l2_size_override:       Used to set L2 cache size via device tree blob
  * @l2_hash_override:       Used to set L2 cache hash via device tree blob
+ * @job_done_worker:        Worker for job_done work.
+ * @job_done_worker_thread: Thread for job_done work.
+ * @event_worker:           Worker for event work.
+ * @event_worker_thread:    Thread for event work.
  */
 struct kbase_device {
 	u32 hw_quirks_sc;
@@ -1032,6 +1036,11 @@ struct kbase_device {
 
 	struct kbasep_js_device_data js_data;
 
+	struct kthread_worker job_done_worker;
+	struct task_struct *job_done_worker_thread;
+	struct kthread_worker event_worker;
+	struct task_struct *event_worker_thread;
+
 	/* See KBASE_JS_*_PRIORITY_MODE for details. */
 	u32 js_ctx_scheduling_mode;
 
@@ -1220,8 +1229,6 @@ struct kbase_sub_alloc {
  * @event_closed:         Flag set through POST_TERM ioctl, indicates that Driver
  *                        should stop posting events and also inform event handling
  *                        thread that context termination is in progress.
- * @event_workq:          Workqueue for processing work items corresponding to atoms
- *                        that do not return an event to userspace.
  * @event_count:          Count of the posted events to be consumed by Userspace.
  * @event_coalesce_count: Count of the events present in @event_coalesce_list.
  * @flags:                bitmap of enums from kbase_context_flags, indicating the
@@ -1366,7 +1373,7 @@ struct kbase_sub_alloc {
  * @completed_jobs:       List containing completed atoms for which base_jd_event is
  *                        to be posted.
  * @work_count:           Number of work items, corresponding to atoms, currently
- *                        pending on job_done workqueue of @jctx.
+ *                        pending on job_done kthread of @jctx.
  * @soft_job_timeout:     Timer object used for failing/cancelling the waiting
  *                        soft-jobs which have been blocked for more than the
  *                        timeout value used for the soft-jobs
@@ -1454,7 +1461,6 @@ struct kbase_context {
 	struct list_head event_coalesce_list;
 	struct mutex event_mutex;
 	atomic_t event_closed;
-	struct workqueue_struct *event_workq;
 	atomic_t event_count;
 	int event_coalesce_count;
 
