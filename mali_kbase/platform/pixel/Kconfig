@@ -33,5 +33,12 @@ config MALI_PIXEL_GPU_THERMAL
 	default y
 	help
 		Sets up the GPU driver to register for thermal events that
-		 require it to clock down the GPU to remain within thermal
-		 bounds.
+		require it to clock down the GPU to remain within thermal
+		bounds.
+
+config MALI_PIXEL_GPU_SECURE_RENDERING
+	bool "Enable Pixel GPU Secure Rendering Support"
+	depends on MALI_MIDGARD && ION_EXYNOS && EXYNOS_CONTENT_PATH_PROTECTION
+	default y
+	help
+		Enables support for the GPU to render into secure memory.

@@ -163,6 +163,9 @@ struct gpu_dvfs_opp {
  * @pm.status_local_power_mask: Mask to extract power status of the GPU. Set via DT.
  * @pm.autosuspend_delay:       Delay (in ms) before PM runtime should trigger auto suspend.
  *
+ * @tz_protection_enabled:      Storing the secure rendering state of the GPU. Access to this is
+ *                              controlled by the HW access lock for the GPU associated with @kbdev.
+ *
  * @dvfs.lock:                  &struct mutex used to control access to DVFS levels.
  *
  * @dvfs.wq:                    Workqueue for processing DVFS utilization metrics.
@@ -225,6 +228,10 @@ struct pixel_context {
 		struct gpu_dvfs_opp_metrics power_on_metrics;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 	} pm;
+
+#ifdef CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING
+	bool tz_protection_enabled;
+#endif /* CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING */
 
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 	struct {
