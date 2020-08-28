@@ -30,3 +30,6 @@ mali_kbase-$(CONFIG_MALI_MIDGARD_DVFS) += \
 
 mali_kbase-$(CONFIG_MALI_PIXEL_GPU_QOS) += \
 	$(MALI_PLATFORM_DIR)/pixel_gpu_dvfs_qos.o
+
+mali_kbase-$(CONFIG_MALI_PIXEL_GPU_THERMAL) += \
+	$(MALI_PLATFORM_DIR)/pixel_gpu_tmu.o

@@ -29,10 +29,9 @@ static int get_level_from_clock(struct kbase_device *kbdev, int clock)
 	struct pixel_context *pc = kbdev->platform_context;
 	int i;
 
-	for (i = 0; i < pc->dvfs.table_size; i++) {
+	for (i = 0; i < pc->dvfs.table_size; i++)
 		if (pc->dvfs.table[i].clk0 == clock)
 			return i;
-	}
 
 	return -1;
 }
@@ -178,9 +177,21 @@ static ssize_t power_stats_show(struct device *dev, struct device_attribute *att
 	return ret;
 }
 
+static ssize_t tmu_max_freq_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+
+	if (!pc)
+		return -ENODEV;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_tmu_max].clk0);
+}
+
 DEVICE_ATTR_RO(clock_info);
 DEVICE_ATTR_RO(dvfs_table);
 DEVICE_ATTR_RO(power_stats);
+DEVICE_ATTR_RO(tmu_max_freq);
 
 
 /* devfreq-like attributes */
@@ -403,6 +414,7 @@ static struct {
 	{"clock_info", &dev_attr_clock_info},
 	{"dvfs_table", &dev_attr_dvfs_table},
 	{"power_stats", &dev_attr_power_stats},
+	{"tmu_max_freq", &dev_attr_tmu_max_freq},
 	{"available_frequencies", &dev_attr_available_frequencies},
 	{"cur_freq", &dev_attr_cur_freq},
 	{"max_freq", &dev_attr_max_freq},

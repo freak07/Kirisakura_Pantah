@@ -246,6 +246,9 @@ struct pixel_context {
 		int level_min;
 		int level_scaling_max;
 		int level_scaling_min;
+#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
+		int level_tmu_max;
+#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 
 		unsigned int clock_down_hysteresis;
 		unsigned int clock_down_delay;

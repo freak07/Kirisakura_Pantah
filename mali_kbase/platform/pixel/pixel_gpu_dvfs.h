@@ -14,6 +14,9 @@
  * @kbdev: The &struct kbase_device of the GPU.
  * @util:  The integer utilization percentage the GPU is running at.
  *
+ * This function is not expected to take any clock limits into consideration when
+ * recommending the next level.
+ *
  * Context: Expects the DVFS lock to be held by the caller.
  *
  * Return: The index of the next recommended level.
@@ -76,5 +79,10 @@ void gpu_dvfs_qos_reset(struct kbase_device *kbdev);
 int gpu_dvfs_qos_init(struct kbase_device *kbdev);
 void gpu_dvfs_qos_term(struct kbase_device *kbdev);
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+
+#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
+int gpu_tmu_init(struct kbase_device *kbdev);
+void gpu_tmu_term(struct kbase_device *kbdev);
+#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL*/
 
 #endif /* _PIXEL_GPU_DVFS_H_ */

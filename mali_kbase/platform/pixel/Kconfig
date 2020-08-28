@@ -26,3 +26,12 @@ config MALI_PIXEL_GPU_BTS
 		this feature is specified on the GPU device tree entry and
 		allows for setting the BTS scenario to use, and the GPU OPP
 		at which it is triggered.
+
+config MALI_PIXEL_GPU_THERMAL
+	bool "Enable support for constraining GPU clocks due to thermal events"
+	depends on MALI_MIDGARD_DVFS && GPU_THERMAL && EXYNOS_THERMAL_V2
+	default y
+	help
+		Sets up the GPU driver to register for thermal events that
+		 require it to clock down the GPU to remain within thermal
+		 bounds.

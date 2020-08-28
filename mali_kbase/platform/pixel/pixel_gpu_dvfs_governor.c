@@ -29,8 +29,8 @@ static int gpu_dvfs_governor_basic(struct kbase_device *kbdev, int util)
 	struct pixel_context *pc = kbdev->platform_context;
 	struct gpu_dvfs_opp *tbl = pc->dvfs.table;
 	int level = pc->dvfs.level;
-	int level_max = pc->dvfs.level_scaling_max;
-	int level_min = pc->dvfs.level_scaling_min;
+	int level_max = pc->dvfs.level_max;
+	int level_min = pc->dvfs.level_min;
 
 	lockdep_assert_held(&pc->dvfs.lock);
 
@@ -75,6 +75,9 @@ static struct gpu_dvfs_governor_info governors[GPU_DVFS_GOVERNOR_COUNT] = {
  * @kbdev: The &struct kbase_device for the GPU.
  * util:   The utilization percentage on the GPU.
  *
+ * This function ensures that the recommended level conforms to any extant
+ * clock limits.
+ *
  * Return: Returns the level the GPU should run at.
  *
  * Context: Process context. Expects the caller to hold the DVFS lock.
@@ -82,9 +85,26 @@ static struct gpu_dvfs_governor_info governors[GPU_DVFS_GOVERNOR_COUNT] = {
 int gpu_dvfs_governor_get_next_level(struct kbase_device *kbdev, int util)
 {
 	struct pixel_context *pc = kbdev->platform_context;
+	int level, level_min, level_max;
 
 	lockdep_assert_held(&pc->dvfs.lock);
-	return governors[pc->dvfs.governor.curr].evaluate(kbdev, util);
+
+	level_min = pc->dvfs.level_scaling_min;
+	level_max = pc->dvfs.level_scaling_max;
+
+#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
+	/*
+	 * If we have a TMU limit enforced, we restrict what the recommended
+	 * level will be. However, we do allow overriding the TMU limit by
+	 * setting scaling_min_level. Therefore thre is no adjustment to
+	 * level_min below.
+	 */
+	level_max = max(level_max, pc->dvfs.level_tmu_max);
+#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
+
+	level = governors[pc->dvfs.governor.curr].evaluate(kbdev, util);
+
+	return clamp(level, level_max, level_min);
 }
 
 /**

@@ -226,6 +226,12 @@ void gpu_dvfs_update_level_locks(struct kbase_device *kbdev)
 		pc->dvfs.level_target = pc->dvfs.level_scaling_max;
 	else if (pc->dvfs.level > pc->dvfs.level_scaling_min)
 		pc->dvfs.level_target = pc->dvfs.level_scaling_min;
+
+#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
+	/* Check if a TMU limit needs to be applied */
+	if (pc->dvfs.level < pc->dvfs.level_tmu_max)
+		pc->dvfs.level_target = pc->dvfs.level_tmu_max;
+#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 }
 
 /**
@@ -518,7 +524,8 @@ static int gpu_dvfs_get_initial_level(struct kbase_device *kbdev)
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
- * This function calls initializers for the subsystems in DVFS: governors, metrics & qos.
+ * Depending on the compile time options set, this function calls initializers for the subsystems
+ * related to GPU DVFS: governors, metrics, qos & tmu.
  *
  * Return: On success, returns 0. -EINVAL on error.
  */
@@ -550,6 +557,9 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	pc->dvfs.level_min = pc->dvfs.table_size - 1;
 	pc->dvfs.level_scaling_max = pc->dvfs.level_max;
 	pc->dvfs.level_scaling_min = pc->dvfs.level_min;
+#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
+	pc->dvfs.level_tmu_max = pc->dvfs.level_max;
+#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 
 	/* Determine initial state */
 	pc->dvfs.level_start = gpu_dvfs_get_initial_level(kbdev);
@@ -594,12 +604,28 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	}
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
+#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
+	/* Initialize thermal framework */
+	ret = gpu_tmu_init(kbdev);
+	if (ret) {
+		GPU_LOG(LOG_ERROR, kbdev, "DVFS thermal init failed\n");
+		goto fail_tmu_init;
+	}
+#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
+
 	/* Initialize workqueue */
 	pc->dvfs.wq = create_singlethread_workqueue("gpu-dvfs");
 	INIT_WORK(&pc->dvfs.work, gpu_dvfs_worker);
 
 	/* Initialization was successful */
 	goto done;
+
+#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
+fail_tmu_init:
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+	gpu_dvfs_qos_term(kbdev);
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL*/
 
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS
 fail_qos_init:
@@ -624,6 +650,9 @@ void gpu_dvfs_term(struct kbase_device *kbdev)
 
 	destroy_workqueue(pc->dvfs.wq);
 
+#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
+	gpu_tmu_term(kbdev);
+#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS
 	gpu_dvfs_qos_term(kbdev);
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
