@@ -169,6 +169,12 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 
 	lockdep_assert_held(&pc->dvfs.lock);
 
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+	/* If we are clocking up, update QOS frequencies before GPU frequencies */
+	if (next_level < pc->dvfs.level)
+		gpu_dvfs_qos_set(kbdev, next_level);
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+
 	mutex_lock(&pc->pm.domain->access_lock);
 
 	gpu_dvfs_metrics_update(kbdev, next_level, true);
@@ -179,6 +185,12 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 	pc->dvfs.level = next_level;
 
 	mutex_unlock(&pc->pm.domain->access_lock);
+
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+	/* If we are clocking down, update QOS frequencies after GPU frequencies */
+	if (next_level > pc->dvfs.level)
+		gpu_dvfs_qos_set(kbdev, next_level);
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
 	gpu_dvfs_trace_clock(kbdev, true);
 
@@ -286,14 +298,27 @@ static void gpu_dvfs_worker(struct work_struct *data)
 		pc->dvfs.clock_down_delay = pc->dvfs.clock_down_hysteresis;
 		pc->dvfs.level_target = gpu_dvfs_governor_get_next_level(kbdev, util);
 
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+		/* If we have reset our QOS requests due to the GPU going idle, and haven't
+		 * changed level, we need to request the QOS values for that level again
+		 */
+		if (pc->dvfs.level_target == pc->dvfs.level && !pc->dvfs.qos.enabled)
+			gpu_dvfs_qos_set(kbdev, pc->dvfs.level_target);
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+
 		if (pc->dvfs.level_target != pc->dvfs.level) {
 			GPU_LOG(LOG_DEBUG, kbdev, "util=%d results in level change (%d->%d)\n",
 				util, pc->dvfs.level, pc->dvfs.level_target);
 			gpu_dvfs_set_new_level(kbdev, pc->dvfs.level_target);
 		}
+
 	} else if (pc->dvfs.clock_down_delay) {
-		if (--pc->dvfs.clock_down_delay == 0)
+		if (--pc->dvfs.clock_down_delay == 0) {
 			pc->dvfs.level_target = pc->dvfs.level_scaling_min;
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+			gpu_dvfs_qos_reset(kbdev);
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+		}
 	}
 
 	mutex_unlock(&pc->dvfs.lock);
@@ -493,7 +518,7 @@ static int gpu_dvfs_get_initial_level(struct kbase_device *kbdev)
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
- * This function calls initializers for the subsystems in DVFS: governors and metrics.
+ * This function calls initializers for the subsystems in DVFS: governors, metrics & qos.
  *
  * Return: On success, returns 0. -EINVAL on error.
  */
@@ -560,12 +585,26 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 		goto fail_metrics_init;
 	}
 
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+	/* Initialize QOS framework */
+	ret = gpu_dvfs_qos_init(kbdev);
+	if (ret) {
+		GPU_LOG(LOG_ERROR, kbdev, "DVFS QOS init failed\n");
+		goto fail_qos_init;
+	}
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+
 	/* Initialize workqueue */
 	pc->dvfs.wq = create_singlethread_workqueue("gpu-dvfs");
 	INIT_WORK(&pc->dvfs.work, gpu_dvfs_worker);
 
 	/* Initialization was successful */
 	goto done;
+
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+fail_qos_init:
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+	gpu_dvfs_metrics_term(kbdev);
 
 fail_metrics_init:
 	gpu_dvfs_governor_term(kbdev);
@@ -585,6 +624,9 @@ void gpu_dvfs_term(struct kbase_device *kbdev)
 
 	destroy_workqueue(pc->dvfs.wq);
 
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+	gpu_dvfs_qos_term(kbdev);
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 	gpu_dvfs_metrics_term(kbdev);
 	gpu_dvfs_governor_term(kbdev);
 }

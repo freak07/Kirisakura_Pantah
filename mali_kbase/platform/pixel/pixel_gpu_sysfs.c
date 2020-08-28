@@ -58,6 +58,37 @@ static ssize_t clock_info_show(struct device *dev, struct device_attribute *attr
 		pc->dvfs.table[pc->dvfs.level_target].clk0,
 		pc->dvfs.table[pc->dvfs.level_target].clk1);
 
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+
+#ifdef CONFIG_MALI_PIXEL_GPU_BTS
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+		"GPU Bus Traffic Shaping  :%s\n",
+		(pc->dvfs.qos.bts.enabled ? "on" : "off"));
+#endif /* CONFIG_MALI_PIXEL_GPU_BTS */
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+		"QOS status               : %s\n"
+		" INT min clock           : %d kHz\n"
+		" MIF min clock           : %d kHz\n"
+		" CPU cluster 0 min clock : %d kHz\n"
+		" CPU cluster 1 min clock : %d kHz\n",
+
+		(pc->dvfs.qos.enabled ? "on" : "off"),
+		pc->dvfs.table[pc->dvfs.level_target].qos.int_min,
+		pc->dvfs.table[pc->dvfs.level_target].qos.mif_min,
+		pc->dvfs.table[pc->dvfs.level_target].qos.cpu0_min,
+		pc->dvfs.table[pc->dvfs.level_target].qos.cpu1_min);
+
+	if (pc->dvfs.table[pc->dvfs.level_target].qos.cpu2_max == CPU_FREQ_MAX)
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+			" CPU cluster 2 max clock : (no limit)\n");
+	else
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+			" CPU cluster 2 max clock : %d kHz\n",
+			pc->dvfs.table[pc->dvfs.level_target].qos.cpu2_max);
+
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+
 	return ret;
 }
 

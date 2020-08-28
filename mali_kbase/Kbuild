@@ -60,7 +60,9 @@ DEFINES = \
 
 # Pixel integration defines
 DEFINES += \
-	-DCONFIG_MALI_MIDGARD_DVFS=y
+	-DCONFIG_MALI_MIDGARD_DVFS=y \
+	-DCONFIG_MALI_PIXEL_GPU_QOS=y \
+	-DCONFIG_MALI_PIXEL_GPU_BTS=y
 
 ifeq ($(KBUILD_EXTMOD),)
 # in-tree

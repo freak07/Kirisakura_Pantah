@@ -67,7 +67,11 @@ extern struct kbase_platform_funcs_conf platform_funcs;
 #if IS_ENABLED(CONFIG_EXYNOS_PD)
 #include <soc/google/exynos-pd.h>
 #endif
-
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+#include <soc/google/exynos_pm_qos.h>
+#endif /* CONFIG_MALI_MIDGARD_DVFS */
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
 /* Pixel integration includes */
 #ifdef CONFIG_MALI_MIDGARD_DVFS
@@ -194,6 +198,18 @@ struct gpu_dvfs_opp {
  * @dvfs.governor.curr:  The currently enabled DVFS governor.
  * @dvfs.governor.delay: Governor specific variable. The basic governor uses this to store the
  *                       remaining ticks before a lower throughput level will be set.
+ *
+ * @dvfs.qos.enabled:       Stores whether QOS requests have been set.
+ * @dvfs.qos.level_last:    The level for which QOS requests were made. Negative if no QOS is set.
+ * @dvfs.qos.int_min:       QOS request structure for setting minimum INT clock
+ * @dvfs.qos.mif_min:       QOS request structure for setting minimum MIF clock
+ * @dvfs.qos.cpu0_min:      QOS request structure for setting minimum CPU cluster 0 (little) clock
+ * @dvfs.qos.cpu1_min:      QOS request structure for setting minimum CPU cluster 1 (medium) clock
+ * @dvfs.qos.cpu2_max:      QOS request structure for setting maximum CPU cluster 2 (big) clock
+ *
+ * @dvfs.qos.bts.enabled:   Stores whether Bus Traffic Shaping is currently enabled
+ * @dvfs.qos.bts.threshold: The DVFS level at which Bus Traffic Shaping will be enabled. Set via DT.
+ * @dvfs.qos.bts.scenario:  The index of the Bus Traffic Shaping scenario to be used. Set via DT.
  */
 struct pixel_context {
 	struct kbase_device *kbdev;
@@ -242,6 +258,26 @@ struct pixel_context {
 			enum gpu_dvfs_governor_type curr;
 			int delay;
 		} governor;
+
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+		struct {
+			bool enabled;
+			int level_last;
+			struct exynos_pm_qos_request int_min;
+			struct exynos_pm_qos_request mif_min;
+			struct exynos_pm_qos_request cpu0_min;
+			struct exynos_pm_qos_request cpu1_min;
+			struct exynos_pm_qos_request cpu2_max;
+
+#ifdef CONFIG_MALI_PIXEL_GPU_BTS
+			struct {
+				bool enabled;
+				int threshold;
+				unsigned int scenario;
+			} bts;
+#endif /* CONFIG_MALI_PIXEL_GPU_BTS */
+		} qos;
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 	} dvfs;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 };

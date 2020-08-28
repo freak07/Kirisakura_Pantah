@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-2.0
+
+#
+# Mali Pixel integration configuration
+#
+# Copyright 2020 Google LLC.
+#
+
+config MALI_PIXEL_GPU_QOS
+	bool "Enable QOS requests for GPU"
+	depends on MALI_MIDGARD_DVFS && PM_DEVFREQ && CPU_FREQ
+	default y
+	help
+		Turns on quality of service (QOS) requests on MIF, INT
+		and the CPU clusters based on GPU utilization. Frequency
+		values, thresholds and hysteresis valus are specified for
+		each GPU OPP in the GPU device tree entry.
+
+config MALI_PIXEL_GPU_BTS
+	bool "Enable Bus Traffic Shaping for GPU"
+	depends on MALI_PIXEL_GPU_QOS && EXYNOS_BTS
+	default y
+	help
+		Enables the setting of Bus Traffic Shaping scenarios when
+		GPU utilization is at a specific level. Configuration for
+		this feature is specified on the GPU device tree entry and
+		allows for setting the BTS scenario to use, and the GPU OPP
+		at which it is triggered.

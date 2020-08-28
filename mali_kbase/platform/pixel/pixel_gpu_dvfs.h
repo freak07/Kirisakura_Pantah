@@ -70,4 +70,11 @@ void gpu_dvfs_governor_term(struct kbase_device *kbdev);
 
 void gpu_dvfs_update_level_locks(struct kbase_device *kbdev);
 
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+void gpu_dvfs_qos_set(struct kbase_device *kbdev, int level);
+void gpu_dvfs_qos_reset(struct kbase_device *kbdev);
+int gpu_dvfs_qos_init(struct kbase_device *kbdev);
+void gpu_dvfs_qos_term(struct kbase_device *kbdev);
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+
 #endif /* _PIXEL_GPU_DVFS_H_ */
