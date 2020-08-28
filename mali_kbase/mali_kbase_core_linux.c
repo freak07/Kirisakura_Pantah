@@ -3281,6 +3281,10 @@ static const struct protected_mode_ops kbasep_native_protected_ops = {
 	.protected_mode_disable = kbasep_protected_mode_disable
 };
 
+#ifndef PLATFORM_PROTECTED_CALLBACKS
+#define PLATFORM_PROTECTED_CALLBACKS (&kbasep_native_protected_ops)
+#endif /* PLATFORM_PROTECTED_CALLBACKS */
+
 int kbase_protected_mode_init(struct kbase_device *kbdev)
 {
 	/* Use native protected ops */
@@ -3289,7 +3293,7 @@ int kbase_protected_mode_init(struct kbase_device *kbdev)
 	if (!kbdev->protected_dev)
 		return -ENOMEM;
 	kbdev->protected_dev->data = kbdev;
-	kbdev->protected_ops = &kbasep_native_protected_ops;
+	kbdev->protected_ops = PLATFORM_PROTECTED_CALLBACKS;
 	INIT_WORK(&kbdev->protected_mode_hwcnt_disable_work,
 		kbasep_protected_mode_hwcnt_disable_worker);
 	kbdev->protected_mode_hwcnt_desired = true;
