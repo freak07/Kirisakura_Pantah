@@ -50,10 +50,8 @@
 #include <mali_kbase_ioctl.h>
 #include <mmu/mali_kbase_mmu.h>
 
-#if ((KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE) || \
-	(KERNEL_VERSION(5, 0, 0) > LINUX_VERSION_CODE))
-/* Enable workaround for ion for kernels prior to v5.0.0 and from v5.3.0
- * onwards.
+#if (KERNEL_VERSION(5, 0, 0) > LINUX_VERSION_CODE)
+/* Enable workaround for ion for kernels prior to v5.0.0
  *
  * For kernels prior to v4.12, workaround is needed as ion lacks the cache
  * maintenance in begin_cpu_access and end_cpu_access methods.
@@ -76,7 +74,7 @@
  * import. The same problem can if there is another importer of dma-buf
  * memory.
  *
- * Workaround can be safely disabled for kernels between v5.0.0 and v5.2.2,
+ * Workaround can be safely disabled for kernels after v5.0.0
  * as all the above stated issues are not there.
  *
  * dma_sync_sg_for_* calls will be made directly as a workaround using the
