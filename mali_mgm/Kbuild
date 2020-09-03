@@ -19,4 +19,10 @@
 #
 #
 
+# make $(src) as absolute path if it isn't already, by prefixing $(srctree)
+src:=$(if $(patsubst /%,,$(src)),$(srctree)/$(src),$(src))
+
+# Add include path for related GPU modules
+ccflags-y += -I$(src)/../common/include
+
 obj-$(CONFIG_MALI_MEMORY_GROUP_MANAGER) := memory_group_manager.o

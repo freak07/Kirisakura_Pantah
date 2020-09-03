@@ -21,15 +21,18 @@
 
 # linux build system bootstrap for out-of-tree module
 
-# default to building for the host
-ARCH ?= $(shell uname -m)
+KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
+M ?= $(shell pwd)
 
-ifeq ($(KDIR),)
-$(error Must specify KDIR to point to the kernel to target))
-endif
+KBUILD_OPTIONS += CONFIG_MALI_MEMORY_GROUP_MANAGER=m
+
+KBUILD_OPTIONS += $(KBUILD_EXTRA) # Extra config if any
 
 all:
-	$(MAKE) ARCH=$(ARCH) -C $(KDIR) M=$(CURDIR) EXTRA_CFLAGS="-I$(CURDIR)/../../../include" modules CONFIG_MALI_MEMORY_GROUP_MANAGER=m
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) EXTRA_CFLAGS="-I$(M) -I$(M)/../common/include" modules $(KBUILD_OPTIONS) $(@)
+
+modules_install:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) modules_install
 
 clean:
-	$(MAKE) ARCH=$(ARCH) -C $(KDIR) M=$(CURDIR) clean
+	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
