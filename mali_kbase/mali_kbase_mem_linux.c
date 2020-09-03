@@ -1440,6 +1440,15 @@ static struct kbase_va_region *kbase_mem_from_umm(struct kbase_context *kctx,
 	reg->flags |= KBASE_REG_GPU_NX;	/* UMM is always No eXecute */
 	reg->flags &= ~KBASE_REG_GROWABLE;	/* UMM cannot be grown */
 
+	if (kbase_device_is_cpu_coherent(kctx->kbdev)) {
+		/*
+		 * Assume that all other HW blocks interacting with this mapping
+		 * either write directly to DRAM, or use caches that are
+		 * snoopable by the GPU.
+		 */
+		reg->flags |= KBASE_REG_SHARE_BOTH;
+	}
+
 	if (*flags & BASE_MEM_PROTECTED)
 		reg->flags |= KBASE_REG_PROTECTED;
 
