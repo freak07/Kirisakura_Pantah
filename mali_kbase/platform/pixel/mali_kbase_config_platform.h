@@ -60,8 +60,9 @@ extern struct kbase_platform_funcs_conf platform_funcs;
 /* Linux includes */
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 #include <linux/atomic.h>
+#include <linux/thermal.h>
 #include <linux/workqueue.h>
-#endif
+#endif /* CONFIG_MALI_MIDGARD_DVFS */
 
 /* SOC level includes */
 #if IS_ENABLED(CONFIG_EXYNOS_PD)
@@ -253,9 +254,6 @@ struct pixel_context {
 		int level_min;
 		int level_scaling_max;
 		int level_scaling_min;
-#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
-		int level_tmu_max;
-#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 
 		unsigned int clock_down_hysteresis;
 		unsigned int clock_down_delay;
@@ -288,6 +286,13 @@ struct pixel_context {
 #endif /* CONFIG_MALI_PIXEL_GPU_BTS */
 		} qos;
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+
+#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
+		struct {
+			struct thermal_cooling_device *cdev;
+			int level_limit;
+		} tmu;
+#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 	} dvfs;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 };

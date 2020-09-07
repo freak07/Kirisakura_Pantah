@@ -185,7 +185,7 @@ static ssize_t tmu_max_freq_show(struct device *dev, struct device_attribute *at
 	if (!pc)
 		return -ENODEV;
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_tmu_max].clk0);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.tmu.level_limit].clk0);
 }
 
 DEVICE_ATTR_RO(clock_info);

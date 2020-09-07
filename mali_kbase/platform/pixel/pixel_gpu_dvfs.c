@@ -229,8 +229,8 @@ void gpu_dvfs_update_level_locks(struct kbase_device *kbdev)
 
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
 	/* Check if a TMU limit needs to be applied */
-	if (pc->dvfs.level < pc->dvfs.level_tmu_max)
-		pc->dvfs.level_target = pc->dvfs.level_tmu_max;
+	if (pc->dvfs.level < pc->dvfs.tmu.level_limit)
+		pc->dvfs.level_target = pc->dvfs.tmu.level_limit;
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 }
 
@@ -558,7 +558,7 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	pc->dvfs.level_scaling_max = pc->dvfs.level_max;
 	pc->dvfs.level_scaling_min = pc->dvfs.level_min;
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
-	pc->dvfs.level_tmu_max = pc->dvfs.level_max;
+	pc->dvfs.tmu.level_limit = pc->dvfs.level_max;
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 
 	/* Determine initial state */

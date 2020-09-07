@@ -10,6 +10,7 @@
 
 /* SOC includes */
 #include <soc/google/tmu.h>
+#include <soc/google/gpu_cooling.h>
 
 /* Mali core includes */
 #include <mali_kbase.h>
@@ -27,8 +28,9 @@
  *
  * Return: The number of DVFS operating points.
  */
-int gpu_tmu_get_num_levels(struct kbase_device *kbdev)
+static int gpu_tmu_get_num_levels(void *gpu_drv_data)
 {
+	struct kbase_device *kbdev = gpu_drv_data;
 	struct pixel_context *pc = kbdev->platform_context;
 
 	return pc->dvfs.table_size;
@@ -45,8 +47,9 @@ int gpu_tmu_get_num_levels(struct kbase_device *kbdev)
  * Return: If an invalid level is provided, returns -1, otherwise 0. Values
  *         returned in &clk0 and &clk1 are in kHZ.
  */
-int gpu_tmu_get_freqs_for_level(struct kbase_device *kbdev, int level, int *clk0, int *clk1)
+static int gpu_tmu_get_freqs_for_level(void *gpu_drv_data, int level, int *clk0, int *clk1)
 {
+	struct kbase_device *kbdev = gpu_drv_data;
 	struct pixel_context *pc = kbdev->platform_context;
 
 	if (level < 0 || level >= pc->dvfs.table_size)
@@ -72,8 +75,9 @@ int gpu_tmu_get_freqs_for_level(struct kbase_device *kbdev, int level, int *clk0
  * Return: If an invalid level is provided, returns -1, otherwise 0. Values
  *         returned in &vol0 and &vol1 are in mV.
  */
-int gpu_tmu_get_vols_for_level(struct kbase_device *kbdev, int level, int *vol0, int *vol1)
+static int gpu_tmu_get_vols_for_level(void *gpu_drv_data, int level, int *vol0, int *vol1)
 {
+	struct kbase_device *kbdev = gpu_drv_data;
 	struct pixel_context *pc = kbdev->platform_context;
 
 	if (level < 0 || level >= pc->dvfs.table_size)
@@ -97,8 +101,9 @@ int gpu_tmu_get_vols_for_level(struct kbase_device *kbdev, int level, int *vol0,
  *
  * Return: The current DVFS operating point level.
  */
-int gpu_tmu_get_cur_level(struct kbase_device *kbdev)
+static int gpu_tmu_get_cur_level(void *gpu_drv_data)
 {
+	struct kbase_device *kbdev = gpu_drv_data;
 	struct pixel_context *pc = kbdev->platform_context;
 	int level;
 
@@ -116,8 +121,9 @@ int gpu_tmu_get_cur_level(struct kbase_device *kbdev)
  *
  * Return: The utilization level of the GPU. This is an integer percentage.
  */
-int gpu_tmu_get_cur_util(struct kbase_device *kbdev)
+static int gpu_tmu_get_cur_util(void *gpu_drv_data)
 {
+	struct kbase_device *kbdev = gpu_drv_data;
 	struct pixel_context *pc = kbdev->platform_context;
 	int util = 0;
 
@@ -126,6 +132,14 @@ int gpu_tmu_get_cur_util(struct kbase_device *kbdev)
 
 	return util;
 }
+
+static struct gpufreq_cooling_query_fns tmu_query_fns = {
+	.get_num_levels = &gpu_tmu_get_num_levels,
+	.get_freqs_for_level = &gpu_tmu_get_freqs_for_level,
+	.get_vols_for_level = &gpu_tmu_get_vols_for_level,
+	.get_cur_level = &gpu_tmu_get_cur_level,
+	.get_cur_util = &gpu_tmu_get_cur_util
+};
 
 /**
  * get_level_from_tmu_data() - Translates GPU cooling data to a target DVFS level
@@ -140,8 +154,9 @@ int gpu_tmu_get_cur_util(struct kbase_device *kbdev)
  * cooling device on GS101 which is a target OPP level. This function simply
  * validates that this is a valid level.
  */
-static int get_level_from_tmu_data(struct kbase_device *kbdev, int data)
+static int get_level_from_tmu_data(void *gpu_drv_data, int data)
 {
+	struct kbase_device *kbdev = gpu_drv_data;
 	struct pixel_context *pc = kbdev->platform_context;
 
 	if (data >= 0 && data < pc->dvfs.table_size)
@@ -149,17 +164,6 @@ static int get_level_from_tmu_data(struct kbase_device *kbdev, int data)
 
 	return -1;
 }
-
-/**
- * struct gpu_tmu_notification_data - data to store TMU data for GPU driver
- *
- * @gpu_drv_data: Pointer to GPU driver data.
- * @data:         Payload of this event.
- */
-struct gpu_tmu_notification_data {
-	void *gpu_drv_data;
-	int data;
-};
 
 /**
  * gpu_tmu_notifier() - Processes incoming TMU notifications.
@@ -208,7 +212,7 @@ static int gpu_tmu_notifier(struct notifier_block *notifier, unsigned long event
 
 	/* Update the TMU lock level */
 	mutex_lock(&pc->dvfs.lock);
-	pc->dvfs.level_tmu_max = level;
+	pc->dvfs.tmu.level_limit = level;
 	gpu_dvfs_update_level_locks(kbdev);
 	mutex_unlock(&pc->dvfs.lock);
 
@@ -229,7 +233,21 @@ static struct notifier_block gpu_tmu_nb = {
  */
 int gpu_tmu_init(struct kbase_device *kbdev)
 {
-	exynos_gpu_add_notifier(&gpu_tmu_nb);
+	struct pixel_context *pc = kbdev->platform_context;
+	struct device_node *np = kbdev->dev->of_node;
+	struct thermal_cooling_device *dev;
+
+	dev = gpufreq_cooling_register(np, kbdev, &tmu_query_fns);
+
+	if (IS_ERR(dev)) {
+		GPU_LOG(LOG_ERROR, kbdev,
+			"%s: Error when registering gpu as a cooling device\n", __func__);
+		return PTR_ERR(dev);
+	}
+
+	gpufreq_cooling_add_notifier(&gpu_tmu_nb);
+	pc->dvfs.tmu.cdev = dev;
+
 	return 0;
 }
 
@@ -237,10 +255,11 @@ int gpu_tmu_init(struct kbase_device *kbdev)
  * gpu_tmu_term() - Terminates the Pixel GPU TMU handling subsystem.
  *
  * @kbdev: The &struct kbase_device for the GPU.
- *
- * Note that this function currently doesn't do anything.
  */
 void gpu_tmu_term(struct kbase_device *kbdev)
 {
+	struct pixel_context *pc = kbdev->platform_context;
+
+	gpufreq_cooling_unregister(pc->dvfs.tmu.cdev);
 }
 

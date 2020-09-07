@@ -99,7 +99,7 @@ int gpu_dvfs_governor_get_next_level(struct kbase_device *kbdev, int util)
 	 * setting scaling_min_level. Therefore thre is no adjustment to
 	 * level_min below.
 	 */
-	level_max = max(level_max, pc->dvfs.level_tmu_max);
+	level_max = max(level_max, pc->dvfs.tmu.level_limit);
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 
 	level = governors[pc->dvfs.governor.curr].evaluate(kbdev, util);
