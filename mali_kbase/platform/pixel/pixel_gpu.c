@@ -129,6 +129,7 @@ static int gpu_pixel_init(struct kbase_device *kbdev)
 	int ret;
 
 	struct pixel_context *pc;
+	enum gpu_log_level level;
 
 	pc = kzalloc(sizeof(struct pixel_context), GFP_KERNEL);
 	if (pc == NULL) {
@@ -141,7 +142,16 @@ static int gpu_pixel_init(struct kbase_device *kbdev)
 	pc->kbdev = kbdev;
 
 	/* gpu log init */
+
 	pc->gpu_log_level = LOG_INFO;
+
+	if (of_property_read_u32(kbdev->dev->of_node, "gpu_log_level", &level)) {
+		GPU_LOG(LOG_INFO, kbdev, "reading GPU log level from device tree failed\n");
+	} else if (level >= LOG_DISABLED && level < LOG_END) {
+		pc->gpu_log_level = level;
+	} else {
+		GPU_LOG(LOG_WARN, kbdev, "invalid GPU log level input from device tree\n");
+	}
 
 	ret = gpu_power_init(kbdev);
 	if (ret) {
