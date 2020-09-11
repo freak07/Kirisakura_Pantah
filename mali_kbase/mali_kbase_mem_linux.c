@@ -2568,7 +2568,7 @@ static int kbasep_reg_mmap(struct kbase_context *kctx,
 						reg->nr_pages, 1) != 0) {
 		dev_err(kctx->kbdev->dev, "%s:%d\n", __FILE__, __LINE__);
 		/* Unable to map in GPU space. */
-		WARN_ON(1);
+		WARN_ON_ONCE(1); /* TODO: b/162291137 */
 		err = -ENOMEM;
 		goto out;
 	}
