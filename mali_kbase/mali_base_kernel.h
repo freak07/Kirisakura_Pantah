@@ -43,9 +43,9 @@ struct base_mem_handle {
 
 #define BASE_MAX_COHERENT_GROUPS 16
 
-#if defined CDBG_ASSERT
+#if defined(CDBG_ASSERT)
 #define LOCAL_ASSERT CDBG_ASSERT
-#elif defined KBASE_DEBUG_ASSERT
+#elif defined(KBASE_DEBUG_ASSERT)
 #define LOCAL_ASSERT KBASE_DEBUG_ASSERT
 #else
 #error assert macro not defined!
@@ -715,6 +715,10 @@ static inline int base_mem_group_id_get(base_mem_alloc_flags flags)
 			BASEP_MEM_GROUP_ID_SHIFT);
 }
 
+#define BASE_MEM_GROUP_ID_SET(id) \
+	(((base_mem_alloc_flags)(id) << BASEP_MEM_GROUP_ID_SHIFT) & \
+	 BASE_MEM_GROUP_ID_MASK)
+
 /**
  * base_mem_group_id_set() - Set group ID into base_mem_alloc_flags
  * @id: group ID(0~15) you want to encode
@@ -732,9 +736,13 @@ static inline base_mem_alloc_flags base_mem_group_id_set(int id)
 	LOCAL_ASSERT(id >= 0);
 	LOCAL_ASSERT(id < BASE_MEM_GROUP_COUNT);
 
-	return ((base_mem_alloc_flags)id << BASEP_MEM_GROUP_ID_SHIFT) &
-		BASE_MEM_GROUP_ID_MASK;
+	return BASE_MEM_GROUP_ID_SET(id);
 }
+
+#define BASE_CONTEXT_MMU_GROUP_ID_SET(group_id) \
+	(BASEP_CONTEXT_MMU_GROUP_ID_MASK & \
+	 ((base_context_create_flags)(group_id) << \
+	  BASEP_CONTEXT_MMU_GROUP_ID_SHIFT))
 
 /**
  * base_context_mmu_group_id_set - Encode a memory group ID in
@@ -751,9 +759,7 @@ static inline base_context_create_flags base_context_mmu_group_id_set(
 {
 	LOCAL_ASSERT(group_id >= 0);
 	LOCAL_ASSERT(group_id < BASE_MEM_GROUP_COUNT);
-	return BASEP_CONTEXT_MMU_GROUP_ID_MASK &
-		((base_context_create_flags)group_id <<
-		BASEP_CONTEXT_MMU_GROUP_ID_SHIFT);
+	return BASE_CONTEXT_MMU_GROUP_ID_SET(group_id);
 }
 
 /**
