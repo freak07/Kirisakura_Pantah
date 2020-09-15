@@ -132,13 +132,16 @@ static int gpu_pixel_init(struct kbase_device *kbdev)
 
 	pc = kzalloc(sizeof(struct pixel_context), GFP_KERNEL);
 	if (pc == NULL) {
-		GPU_LOG(LOG_ERROR, kbdev, "failed to alloc platform context struct\n");
+		dev_err(kbdev->dev, "pixel: failed to alloc platform context struct\n");
 		ret = -ENOMEM;
 		goto done;
 	}
 
 	kbdev->platform_context = pc;
 	pc->kbdev = kbdev;
+
+	/* gpu log init */
+	pc->gpu_log_level = LOG_INFO;
 
 	ret = gpu_power_init(kbdev);
 	if (ret) {

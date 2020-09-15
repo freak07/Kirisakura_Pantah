@@ -75,6 +75,7 @@ extern struct kbase_platform_funcs_conf platform_funcs;
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
 /* Pixel integration includes */
+#include "pixel_gpu_debug.h"
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 #include "pixel_gpu_dvfs.h"
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
@@ -158,6 +159,8 @@ struct gpu_dvfs_opp {
  *
  * @kbdev:                      The &struct kbase_device for the GPU.
  *
+ * @gpu_log_level: Stores the log level which can be used as a default
+ *
  * @pm.state_lost:              Stores whether GPU state has been lost or not.
  * @pm.domain:                  The power domain the GPU is in.
  * @pm.status_reg_offset:       Register offset to the G3D status in the PMU. Set via DT.
@@ -218,6 +221,7 @@ struct gpu_dvfs_opp {
 struct pixel_context {
 	struct kbase_device *kbdev;
 
+	enum gpu_log_level gpu_log_level;
 	struct {
 		bool state_lost;
 		struct exynos_pm_domain *domain;

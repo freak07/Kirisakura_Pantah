@@ -38,6 +38,62 @@ static int get_level_from_clock(struct kbase_device *kbdev, int clock)
 
 /* Custom attributes */
 
+static ssize_t gpu_log_level_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+
+	int ret = 0;
+
+	if (!pc)
+		return -ENODEV;
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+			 "LOG_DISABLED %s\n"
+			 "LOG_DEBUG %s\n"
+			 "LOG_INFO  %s\n"
+			 "LOG_WARN  %s\n"
+			 "LOG_ERROR %s\n",
+			 (pc->gpu_log_level == LOG_DISABLED ? "<" : ""),
+			 (pc->gpu_log_level == LOG_DEBUG ? "<" : ""),
+			 (pc->gpu_log_level == LOG_INFO ? "<" : ""),
+			 (pc->gpu_log_level == LOG_WARN ? "<" : ""),
+			 (pc->gpu_log_level == LOG_ERROR ? "<" : ""));
+
+	return ret;
+
+}
+
+static ssize_t gpu_log_level_store(struct device *dev, struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+	enum gpu_log_level log_level;
+
+	if (!pc)
+		return -ENODEV;
+
+	if (sysfs_streq(buf, "LOG_DISABLED"))
+		log_level = LOG_DISABLED;
+	else if (sysfs_streq(buf, "LOG_DEBUG"))
+		log_level = LOG_DEBUG;
+	else if (sysfs_streq(buf, "LOG_INFO"))
+		log_level = LOG_INFO;
+	else if (sysfs_streq(buf, "LOG_WARN"))
+		log_level = LOG_WARN;
+	else if (sysfs_streq(buf, "LOG_ERROR"))
+		log_level = LOG_ERROR;
+	else
+		return -EINVAL;
+
+	pc->gpu_log_level = log_level;
+
+	return count;
+
+}
+
 static ssize_t clock_info_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	ssize_t ret = 0;
@@ -188,6 +244,7 @@ static ssize_t tmu_max_freq_show(struct device *dev, struct device_attribute *at
 	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.tmu.level_limit].clk0);
 }
 
+DEVICE_ATTR_RW(gpu_log_level);
 DEVICE_ATTR_RO(clock_info);
 DEVICE_ATTR_RO(dvfs_table);
 DEVICE_ATTR_RO(power_stats);
@@ -388,6 +445,7 @@ static ssize_t governor_store(struct device *dev, struct device_attribute *attr,
 	return ret;
 }
 
+
 /* Define devfreq-like attributes */
 DEVICE_ATTR_RO(available_frequencies);
 DEVICE_ATTR_RO(cur_freq);
@@ -411,21 +469,21 @@ static struct {
 	const char *name;
 	const struct device_attribute *attr;
 } attribs[] = {
-	{"clock_info", &dev_attr_clock_info},
-	{"dvfs_table", &dev_attr_dvfs_table},
-	{"power_stats", &dev_attr_power_stats},
-	{"tmu_max_freq", &dev_attr_tmu_max_freq},
-	{"available_frequencies", &dev_attr_available_frequencies},
-	{"cur_freq", &dev_attr_cur_freq},
-	{"max_freq", &dev_attr_max_freq},
-	{"min_freq", &dev_attr_min_freq},
-	{"scaling_max_freq", &dev_attr_scaling_max_freq},
-	{"scaling_min_freq", &dev_attr_scaling_min_freq},
-	{"time_in_state", &dev_attr_time_in_state},
-	{"available_governors", &dev_attr_available_governors},
-	{"governor", &dev_attr_governor}
+	{ "gpu_log_level", &dev_attr_gpu_log_level },
+	{ "clock_info", &dev_attr_clock_info },
+	{ "dvfs_table", &dev_attr_dvfs_table },
+	{ "power_stats", &dev_attr_power_stats },
+	{ "tmu_max_freq", &dev_attr_tmu_max_freq },
+	{ "available_frequencies", &dev_attr_available_frequencies },
+	{ "cur_freq", &dev_attr_cur_freq },
+	{ "max_freq", &dev_attr_max_freq },
+	{ "min_freq", &dev_attr_min_freq },
+	{ "scaling_max_freq", &dev_attr_scaling_max_freq },
+	{ "scaling_min_freq", &dev_attr_scaling_min_freq },
+	{ "time_in_state", &dev_attr_time_in_state },
+	{ "available_governors", &dev_attr_available_governors },
+	{ "governor", &dev_attr_governor }
 };
-
 
 /**
  * gpu_sysfs_init() - Initializes the Pixel GPU sysfs system.
