@@ -144,6 +144,18 @@ static ssize_t clock_info_show(struct device *dev, struct device_attribute *attr
 
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
+#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
+
+	if (pc->dvfs.tmu.level_limit >= 0 && pc->dvfs.tmu.level_limit < pc->dvfs.table_size)
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+			"Thermal level limit:\n"
+			" gpu0 clock (top level)   : %d kHz\n"
+			" gpu1 clock (shaders)     : %d kHz\n",
+			pc->dvfs.table[pc->dvfs.tmu.level_limit].clk0,
+			pc->dvfs.table[pc->dvfs.tmu.level_limit].clk1);
+
+#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
+
 	return ret;
 }
 
