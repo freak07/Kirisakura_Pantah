@@ -260,6 +260,7 @@ void gpu_tmu_term(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
+	gpufreq_cooling_remove_notifier(&gpu_tmu_nb);
 	gpufreq_cooling_unregister(pc->dvfs.tmu.cdev);
 }
 
