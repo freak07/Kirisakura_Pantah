@@ -46,6 +46,7 @@
 #include <linux/vmalloc.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
+#include <linux/kthread.h>
 
 #include "mali_base_kernel.h"
 #include <mali_kbase_linux.h>
@@ -213,9 +214,9 @@ void kbase_jd_exit(struct kbase_context *kctx);
  * kbase_jd_submit - Submit atoms to the job dispatcher
  *
  * @kctx: The kbase context to submit to
- * @user_addr: The address in user space of the struct base_jd_atom_v2 array
+ * @user_addr: The address in user space of the struct base_jd_atom array
  * @nr_atoms: The number of atoms in the array
- * @stride: sizeof(struct base_jd_atom_v2)
+ * @stride: sizeof(struct base_jd_atom)
  * @uk6_atom: true if the atoms are legacy atoms (struct base_jd_atom_v2_uk6)
  *
  * Return: 0 on success or error code
@@ -226,7 +227,7 @@ int kbase_jd_submit(struct kbase_context *kctx,
 
 /**
  * kbase_jd_done_worker - Handle a job completion
- * @data: a &struct work_struct
+ * @data: a &struct kthread_work
  *
  * This function requeues the job from the runpool (if it was soft-stopped or
  * removed from NEXT registers).
@@ -241,7 +242,7 @@ int kbase_jd_submit(struct kbase_context *kctx,
  * Handles retrying submission outside of IRQ context if it failed from within
  * IRQ context.
  */
-void kbase_jd_done_worker(struct work_struct *data);
+void kbase_jd_done_worker(struct kthread_work *data);
 
 void kbase_jd_done(struct kbase_jd_atom *katom, int slot_nr, ktime_t *end_timestamp,
 		kbasep_js_atom_done_code done_code);
@@ -457,7 +458,7 @@ void kbase_pm_metrics_stop(struct kbase_device *kbdev);
 
 /**
  * Return the atom's ID, as was originally supplied by userspace in
- * base_jd_atom_v2::atom_number
+ * base_jd_atom::atom_number
  */
 static inline int kbase_jd_atom_id(struct kbase_context *kctx, struct kbase_jd_atom *katom)
 {

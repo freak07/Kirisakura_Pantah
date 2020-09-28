@@ -49,11 +49,11 @@
 #include <tl/mali_kbase_tracepoints.h>
 #include <mali_kbase_ioctl.h>
 #include <mmu/mali_kbase_mmu.h>
+#include <mali_kbase_caps.h>
+#include <mali_kbase_trace_gpu_mem.h>
 
-#if ((KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE) || \
-	(KERNEL_VERSION(5, 0, 0) > LINUX_VERSION_CODE))
-/* Enable workaround for ion for kernels prior to v5.0.0 and from v5.3.0
- * onwards.
+#if (KERNEL_VERSION(5, 0, 0) > LINUX_VERSION_CODE)
+/* Enable workaround for ion for kernels prior to v5.0.0
  *
  * For kernels prior to v4.12, workaround is needed as ion lacks the cache
  * maintenance in begin_cpu_access and end_cpu_access methods.
@@ -76,7 +76,7 @@
  * import. The same problem can if there is another importer of dma-buf
  * memory.
  *
- * Workaround can be safely disabled for kernels between v5.0.0 and v5.2.2,
+ * Workaround can be safely disabled for kernels after v5.0.0
  * as all the above stated issues are not there.
  *
  * dma_sync_sg_for_* calls will be made directly as a workaround using the
@@ -372,9 +372,11 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 	} else
 		reg->threshold_pages = 0;
 
-	if (*flags & (BASE_MEM_GROW_ON_GPF|BASE_MEM_TILER_ALIGN_TOP)) {
+	if (*flags & BASE_MEM_GROW_ON_GPF) {
 		/* kbase_check_alloc_sizes() already checks extent is valid for
 		 * assigning to reg->extent */
+		reg->extent = extent;
+	} else if (*flags & BASE_MEM_TILER_ALIGN_TOP) {
 		reg->extent = extent;
 	} else {
 		reg->extent = 0;
@@ -436,6 +438,17 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 		*gpu_va = reg->start_pfn << PAGE_SHIFT;
 	}
 
+#if MALI_JIT_PRESSURE_LIMIT_BASE
+	if (*flags & BASEP_MEM_PERFORM_JIT_TRIM) {
+		kbase_jit_done_phys_increase(kctx, commit_pages);
+
+		mutex_lock(&kctx->jit_evict_lock);
+		WARN_ON(!list_empty(&reg->jit_node));
+		list_add(&reg->jit_node, &kctx->jit_active_head);
+		mutex_unlock(&kctx->jit_evict_lock);
+	}
+#endif /* MALI_JIT_PRESSURE_LIMIT_BASE */
+
 	kbase_gpu_vm_unlock(kctx);
 	return reg;
 
@@ -443,6 +456,13 @@ no_mmap:
 no_cookie:
 no_kern_mapping:
 no_mem:
+#if MALI_JIT_PRESSURE_LIMIT_BASE
+	if (*flags & BASEP_MEM_PERFORM_JIT_TRIM) {
+		kbase_gpu_vm_lock(kctx);
+		kbase_jit_done_phys_increase(kctx, commit_pages);
+		kbase_gpu_vm_unlock(kctx);
+	}
+#endif /* MALI_JIT_PRESSURE_LIMIT_BASE */
 	kbase_mem_phy_alloc_put(reg->cpu_alloc);
 	kbase_mem_phy_alloc_put(reg->gpu_alloc);
 invalid_flags:
@@ -511,14 +531,23 @@ int kbase_mem_query(struct kbase_context *kctx,
 			*out |= BASE_MEM_COHERENT_SYSTEM;
 		if (KBASE_REG_SHARE_IN & reg->flags)
 			*out |= BASE_MEM_COHERENT_LOCAL;
-		if (kctx->api_version >= KBASE_API_VERSION(11, 2)) {
-			/* Prior to 11.2, these were known about by user-side
-			 * but we did not return them. Returning some of these
-			 * caused certain clients that were not expecting them
-			 * to fail, so we omit all of them as a special-case
-			 * for compatibility reasons */
+		if (mali_kbase_supports_mem_grow_on_gpf(kctx->api_version)) {
+			/* Prior to this version, this was known about by
+			 * user-side but we did not return them. Returning
+			 * it caused certain clients that were not expecting
+			 * it to fail, so we omit it as a special-case for
+			 * compatibility reasons
+			 */
 			if (KBASE_REG_PF_GROW & reg->flags)
 				*out |= BASE_MEM_GROW_ON_GPF;
+		}
+		if (mali_kbase_supports_mem_protected(kctx->api_version)) {
+			/* Prior to this version, this was known about by
+			 * user-side but we did not return them. Returning
+			 * it caused certain clients that were not expecting
+			 * it to fail, so we omit it as a special-case for
+			 * compatibility reasons
+			 */
 			if (KBASE_REG_PROTECTED & reg->flags)
 				*out |= BASE_MEM_PROTECTED;
 		}
@@ -705,6 +734,7 @@ void kbase_mem_evictable_mark_reclaim(struct kbase_mem_phy_alloc *alloc)
 			kbdev,
 			kctx->id,
 			(u64)new_page_count);
+	kbase_trace_gpu_mem_usage_dec(kbdev, kctx, alloc->nents);
 }
 
 /**
@@ -731,6 +761,7 @@ void kbase_mem_evictable_unmark_reclaim(struct kbase_mem_phy_alloc *alloc)
 			kbdev,
 			kctx->id,
 			(u64)new_page_count);
+	kbase_trace_gpu_mem_usage_inc(kbdev, kctx, alloc->nents);
 }
 
 int kbase_mem_evictable_make(struct kbase_mem_phy_alloc *gpu_alloc)
@@ -1056,6 +1087,8 @@ static void kbase_mem_umm_unmap_attachment(struct kbase_context *kctx,
 				 alloc->imported.umm.sgt, DMA_BIDIRECTIONAL);
 	alloc->imported.umm.sgt = NULL;
 
+	kbase_remove_dma_buf_usage(kctx, alloc);
+
 	memset(pa, 0xff, sizeof(*pa) * alloc->nents);
 	alloc->nents = 0;
 }
@@ -1123,6 +1156,7 @@ static int kbase_mem_umm_map_attachment(struct kbase_context *kctx,
 
 	/* Update nents as we now have pages to map */
 	alloc->nents = count;
+	kbase_add_dma_buf_usage(kctx, alloc);
 
 	return 0;
 
@@ -1383,6 +1417,7 @@ static struct kbase_va_region *kbase_mem_from_umm(struct kbase_context *kctx,
 	reg->gpu_alloc->imported.umm.dma_attachment = dma_attachment;
 	reg->gpu_alloc->imported.umm.current_mapping_usage_count = 0;
 	reg->gpu_alloc->imported.umm.need_sync = need_sync;
+	reg->gpu_alloc->imported.umm.kctx = kctx;
 	reg->extent = 0;
 
 	if (!IS_ENABLED(CONFIG_MALI_DMA_BUF_MAP_ON_DEMAND)) {
@@ -2024,7 +2059,7 @@ static int kbase_mem_shrink_gpu_mapping(struct kbase_context *const kctx,
 int kbase_mem_commit(struct kbase_context *kctx, u64 gpu_addr, u64 new_pages)
 {
 	u64 old_pages;
-	u64 delta;
+	u64 delta = 0;
 	int res = -EINVAL;
 	struct kbase_va_region *reg;
 	bool read_locked = false;
@@ -2052,6 +2087,9 @@ int kbase_mem_commit(struct kbase_context *kctx, u64 gpu_addr, u64 new_pages)
 		goto out_unlock;
 
 	if (0 == (reg->flags & KBASE_REG_GROWABLE))
+		goto out_unlock;
+
+	if (reg->flags & KBASE_REG_ACTIVE_JIT_ALLOC)
 		goto out_unlock;
 
 	/* Would overflow the VA region */
@@ -2215,8 +2253,6 @@ static void kbase_cpu_vm_close(struct vm_area_struct *vma)
 	kbase_mem_phy_alloc_put(map->alloc);
 	kfree(map);
 }
-
-KBASE_EXPORT_TEST_API(kbase_cpu_vm_close);
 
 static struct kbase_aliased *get_aliased_alloc(struct vm_area_struct *vma,
 					struct kbase_va_region *reg,
@@ -2570,7 +2606,7 @@ static int kbasep_reg_mmap(struct kbase_context *kctx,
 						reg->nr_pages, 1) != 0) {
 		dev_err(kctx->kbdev->dev, "%s:%d\n", __FILE__, __LINE__);
 		/* Unable to map in GPU space. */
-		WARN_ON(1);
+		WARN_ON_ONCE(1); /* TODO: b/162291137 */
 		err = -ENOMEM;
 		goto out;
 	}
@@ -2935,9 +2971,9 @@ KBASE_EXPORT_TEST_API(kbase_vunmap);
 
 static void kbasep_add_mm_counter(struct mm_struct *mm, int member, long value)
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 5, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
 	/* To avoid the build breakage due to an unexported kernel symbol
-	 * 'mm_trace_rss_stat' from later kernels, i.e. from V5.5.0 onwards,
+	 * 'mm_trace_rss_stat' from later kernels, i.e. from V4.19.0 onwards,
 	 * we inline here the equivalent of 'add_mm_counter()' from linux
 	 * kernel V5.4.0~8.
 	 */

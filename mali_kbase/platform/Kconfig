@@ -28,3 +28,4 @@
 # Where xxx is the platform name is the name set in MALI_PLATFORM_NAME
 #
 
+source "drivers/gpu/arm/mali/platform/pixel/Kconfig"

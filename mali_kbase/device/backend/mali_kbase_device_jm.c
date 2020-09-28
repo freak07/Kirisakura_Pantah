@@ -43,6 +43,7 @@
 #include <backend/gpu/mali_kbase_js_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <mali_kbase_dummy_job_wa.h>
+#include <backend/gpu/mali_kbase_clk_rate_trace_mgr.h>
 
 /**
  * kbase_backend_late_init - Perform any backend-specific initialization.
@@ -178,8 +179,11 @@ static const struct kbase_device_init dev_init[] = {
 			"Job JS devdata initialization failed"},
 	{kbase_device_timeline_init, kbase_device_timeline_term,
 			"Timeline stream initialization failed"},
-	{kbase_device_hwcnt_backend_gpu_init,
-			kbase_device_hwcnt_backend_gpu_term,
+	{kbase_clk_rate_trace_manager_init,
+			kbase_clk_rate_trace_manager_term,
+			"Clock rate trace manager initialization failed"},
+	{kbase_device_hwcnt_backend_jm_init,
+			kbase_device_hwcnt_backend_jm_term,
 			"GPU hwcnt backend creation failed"},
 	{kbase_device_hwcnt_context_init, kbase_device_hwcnt_context_term,
 			"GPU hwcnt context initialization failed"},
@@ -254,6 +258,20 @@ int kbase_device_init(struct kbase_device *kbdev)
 			kbase_device_term_partial(kbdev, i);
 			break;
 		}
+	}
+
+	kthread_init_worker(&kbdev->job_done_worker);
+	kbdev->job_done_worker_thread = kthread_run(kthread_worker_fn,
+		&kbdev->job_done_worker, "mali_jd_thread");
+	if (IS_ERR(kbdev->job_done_worker_thread)) {
+		err = -ENOMEM;
+	}
+
+	kthread_init_worker(&kbdev->event_worker);
+	kbdev->event_worker_thread = kthread_run(kthread_worker_fn,
+		&kbdev->event_worker, "mali_event_thread");
+	if (IS_ERR(kbdev->event_worker_thread)) {
+		err = -ENOMEM;
 	}
 
 	return err;

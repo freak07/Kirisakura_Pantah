@@ -21,14 +21,24 @@
 
 
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
+M ?= $(shell pwd)
 
-BUSLOG_PATH_RELATIVE = $(CURDIR)/../../../..
-KBASE_PATH_RELATIVE = $(CURDIR)
+BUSLOG_PATH_RELATIVE = $(M)/../../../..
+KBASE_PATH_RELATIVE = $(M)
 
 KBUILD_OPTIONS += CONFIG_MALI_MIDGARD=m
 KBUILD_OPTIONS += MALI_DEVFREQ=n
 KBUILD_OPTIONS += CONFIG_MALI_EXPERT=y
 KBUILD_OPTIONS += CONFIG_MALI_DMA_BUF_LEGACY_COMPAT=y
+
+# Pixel integration Kbuild options
+KBUILD_OPTIONS += CONFIG_MALI_PLATFORM_NAME="pixel"
+KBUILD_OPTIONS += CONFIG_MALI_MIDGARD_DVFS=y
+KBUILD_OPTIONS += CONFIG_MALI_PIXEL_GPU_QOS=y
+KBUILD_OPTIONS += CONFIG_MALI_PIXEL_GPU_QOS=y
+KBUILD_OPTIONS += CONFIG_MALI_PIXEL_GPU_THERMAL=y
+KBUILD_OPTIONS += CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING=y
+
 KBUILD_OPTIONS += $(KBUILD_EXTRA) # Extra config if any
 
 ifeq ($(CONFIG_MALI_BUSLOG),y)
@@ -38,10 +48,10 @@ endif
 
 # we get the symbols from modules using KBUILD_EXTRA_SYMBOLS to prevent warnings about unknown functions
 all:
-	$(MAKE) -C $(KERNEL_SRC) M=$(CURDIR) EXTRA_CFLAGS="-I$(CURDIR) -I$(CURDIR)/../common/include -I$(CURDIR)/../../../../include -I$(CURDIR)/../../../../tests/include $(SCONS_CFLAGS)" $(SCONS_CONFIGS) KBUILD_EXTRA_SYMBOLS="$(EXTRA_SYMBOLS)" modules $(KBUILD_OPTIONS)
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) EXTRA_CFLAGS="-I$(M) -I$(M)/../common/include -I$(M)/../../../../tests/include $(SCONS_CFLAGS)" $(SCONS_CONFIGS) KBUILD_EXTRA_SYMBOLS="$(EXTRA_SYMBOLS)" modules $(KBUILD_OPTIONS) $(@)
 
 modules_install:
-	$(MAKE) -C $(KERNEL_SRC) M=$(CURDIR) modules_install
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) modules_install
 
 clean:
-	$(MAKE) -C $(KERNEL_SRC) M=$(CURDIR) clean
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) clean
