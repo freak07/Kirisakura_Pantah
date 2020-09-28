@@ -141,7 +141,6 @@ void gpu_dvfs_metrics_term(struct kbase_device *kbdev)
 static void gpu_dvfs_trace_clock(struct kbase_device *kbdev, bool power_on)
 {
 	struct pixel_context *pc = kbdev->platform_context;
-	int proc = raw_smp_processor_id();
 	int gpu0 = 0;
 	int gpu1 = 0;
 
@@ -150,8 +149,8 @@ static void gpu_dvfs_trace_clock(struct kbase_device *kbdev, bool power_on)
 		gpu1 = cal_dfs_get_rate(pc->dvfs.gpu1_cal_id);
 	}
 
-	trace_clock_set_rate("gpu0", gpu0, proc);
-	trace_clock_set_rate("gpu1", gpu1, proc);
+	/* TODO sidaths: Report clock change to AGI (b/169571973) */
+	GPU_LOG(LOG_DEBUG, kbdev, "clk0: %d clk1: %d\n", gpu0, gpu1);
 }
 
 /**
