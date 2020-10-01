@@ -224,11 +224,17 @@ KBASE_EXPORT_TEST_API(kbase_pm_metrics_is_active);
 void kbase_pm_metrics_start(struct kbase_device *kbdev)
 {
 	unsigned long flags;
+	bool update = true;
 
 	spin_lock_irqsave(&kbdev->pm.backend.metrics.lock, flags);
-	kbdev->pm.backend.metrics.timer_active = true;
+	if (!kbdev->pm.backend.metrics.timer_active)
+		kbdev->pm.backend.metrics.timer_active = true;
+	else
+		update = false;
 	spin_unlock_irqrestore(&kbdev->pm.backend.metrics.lock, flags);
-	hrtimer_start(&kbdev->pm.backend.metrics.timer,
+
+	if (update)
+		hrtimer_start(&kbdev->pm.backend.metrics.timer,
 			HR_TIMER_DELAY_MSEC(kbdev->pm.dvfs_period),
 			HRTIMER_MODE_REL);
 }
@@ -236,11 +242,17 @@ void kbase_pm_metrics_start(struct kbase_device *kbdev)
 void kbase_pm_metrics_stop(struct kbase_device *kbdev)
 {
 	unsigned long flags;
+	bool update = true;
 
 	spin_lock_irqsave(&kbdev->pm.backend.metrics.lock, flags);
-	kbdev->pm.backend.metrics.timer_active = false;
+	if (kbdev->pm.backend.metrics.timer_active)
+		kbdev->pm.backend.metrics.timer_active = false;
+	else
+		update = false;
 	spin_unlock_irqrestore(&kbdev->pm.backend.metrics.lock, flags);
-	hrtimer_cancel(&kbdev->pm.backend.metrics.timer);
+
+	if (update)
+		hrtimer_cancel(&kbdev->pm.backend.metrics.timer);
 }
 
 

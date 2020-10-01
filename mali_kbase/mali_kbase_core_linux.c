@@ -4369,6 +4369,10 @@ static int kbase_device_suspend(struct device *dev)
 
 	kbase_pm_suspend(kbdev);
 
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+	kbase_pm_metrics_stop(kbdev);
+#endif
+
 #if defined(CONFIG_MALI_DEVFREQ) && \
 		(LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
 	dev_dbg(dev, "Callback %s\n", __func__);
@@ -4397,6 +4401,10 @@ static int kbase_device_resume(struct device *dev)
 		return -ENODEV;
 
 	kbase_pm_resume(kbdev);
+
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+	kbase_pm_metrics_start(kbdev);
+#endif
 
 #if defined(CONFIG_MALI_DEVFREQ) && \
 		(LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
@@ -4432,6 +4440,10 @@ static int kbase_device_runtime_suspend(struct device *dev)
 		return -ENODEV;
 
 	dev_dbg(dev, "Callback %s\n", __func__);
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+	kbase_pm_metrics_stop(kbdev);
+#endif
+
 #if defined(CONFIG_MALI_DEVFREQ) && \
 		(LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
 	if (kbdev->devfreq)
@@ -4470,6 +4482,10 @@ static int kbase_device_runtime_resume(struct device *dev)
 		ret = kbdev->pm.backend.callback_power_runtime_on(kbdev);
 		dev_dbg(dev, "runtime resume\n");
 	}
+
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+	kbase_pm_metrics_start(kbdev);
+#endif
 
 #if defined(CONFIG_MALI_DEVFREQ) && \
 		(LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
