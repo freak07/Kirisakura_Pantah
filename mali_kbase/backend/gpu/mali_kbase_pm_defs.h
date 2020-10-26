@@ -170,6 +170,7 @@ struct kbasep_pm_metrics {
  *  @values: The current values of the power management metrics. The
  *           kbase_pm_get_dvfs_metrics() function is used to compare these
  *           current values with the saved values from a previous invocation.
+ *  @initialized: tracks whether metrics_state has been initialized or not.
  *  @timer: timer to regularly make DVFS decisions based on the power
  *           management metrics.
  *  @timer_active: boolean indicating @timer is running
@@ -189,6 +190,7 @@ struct kbasep_pm_metrics_state {
 	struct kbasep_pm_metrics values;
 
 #ifdef CONFIG_MALI_MIDGARD_DVFS
+	bool initialized;
 	struct hrtimer timer;
 	bool timer_active;
 	struct kbasep_pm_metrics dvfs_last;

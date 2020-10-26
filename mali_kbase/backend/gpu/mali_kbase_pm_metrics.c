@@ -95,7 +95,7 @@ int kbasep_pm_metrics_init(struct kbase_device *kbdev)
 	hrtimer_init(&kbdev->pm.backend.metrics.timer, CLOCK_MONOTONIC,
 							HRTIMER_MODE_REL);
 	kbdev->pm.backend.metrics.timer.function = dvfs_callback;
-
+	kbdev->pm.backend.metrics.initialized = true;
 	kbase_pm_metrics_start(kbdev);
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 
@@ -115,6 +115,7 @@ void kbasep_pm_metrics_term(struct kbase_device *kbdev)
 	spin_unlock_irqrestore(&kbdev->pm.backend.metrics.lock, flags);
 
 	hrtimer_cancel(&kbdev->pm.backend.metrics.timer);
+	kbdev->pm.backend.metrics.initialized = false;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 }
 
@@ -226,6 +227,9 @@ void kbase_pm_metrics_start(struct kbase_device *kbdev)
 	unsigned long flags;
 	bool update = true;
 
+	if (unlikely(!kbdev->pm.backend.metrics.initialized))
+		return;
+
 	spin_lock_irqsave(&kbdev->pm.backend.metrics.lock, flags);
 	if (!kbdev->pm.backend.metrics.timer_active)
 		kbdev->pm.backend.metrics.timer_active = true;
@@ -243,6 +247,9 @@ void kbase_pm_metrics_stop(struct kbase_device *kbdev)
 {
 	unsigned long flags;
 	bool update = true;
+
+	if (unlikely(!kbdev->pm.backend.metrics.initialized))
+		return;
 
 	spin_lock_irqsave(&kbdev->pm.backend.metrics.lock, flags);
 	if (kbdev->pm.backend.metrics.timer_active)
