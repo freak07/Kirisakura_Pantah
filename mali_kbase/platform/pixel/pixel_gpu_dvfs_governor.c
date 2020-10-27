@@ -73,7 +73,7 @@ static struct gpu_dvfs_governor_info governors[GPU_DVFS_GOVERNOR_COUNT] = {
  * gpu_dvfs_governor_get_next_level() - Requests the current governor to suggest the next level.
  *
  * @kbdev: The &struct kbase_device for the GPU.
- * util:   The utilization percentage on the GPU.
+ * @util:   The utilization percentage on the GPU.
  *
  * This function ensures that the recommended level conforms to any extant
  * clock limits.
@@ -136,7 +136,6 @@ int gpu_dvfs_governor_set_governor(struct kbase_device *kbdev, enum gpu_dvfs_gov
 /**
  * gpu_dvfs_governor_get_id() - Given a valid governor name, returns its ID.
  *
- * @kbdev: The &struct kbase_device for the GPU.
  * @name:  A string contrining the name of the governor.
  *
  * Return: the &enum gpu_dvfs_governor_type for @name. If not found, returns

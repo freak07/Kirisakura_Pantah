@@ -471,7 +471,7 @@ DEVICE_ATTR_RW(governor);
 
 /* Initialization code */
 
-/**
+/*
  * attribs - An array containing all sysfs files for the Pixel GPU sysfs system.
  *
  * This array contains the list of all files that will be set up and removed by the Pixel GPU sysfs

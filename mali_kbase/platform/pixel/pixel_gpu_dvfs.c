@@ -18,6 +18,7 @@
 
 /* Mali core includes */
 #include <mali_kbase.h>
+#include <backend/gpu/mali_kbase_pm_internal.h>
 
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
@@ -101,7 +102,7 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
  *
  * Return: This function currently always returns 0 for success.
  */
-int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
+static int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
@@ -126,7 +127,7 @@ int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
  *
  * Note that this function currently doesn't do anything.
  */
-void gpu_dvfs_metrics_term(struct kbase_device *kbdev)
+static void gpu_dvfs_metrics_term(struct kbase_device *kbdev)
 {
 }
 

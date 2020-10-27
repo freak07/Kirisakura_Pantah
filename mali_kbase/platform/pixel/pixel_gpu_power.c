@@ -278,7 +278,7 @@ static void pm_callback_power_runtime_term(struct kbase_device *kbdev)
 
 #endif /* KBASE_PM_RUNTIME */
 
-/**
+/*
  * Callbacks linking power management code in the core Mali driver with code in
  * The Pixel integration. For more information on the fields below, see the
  * documentation for each function assigned below, and &struct kbase_pm_callback_conf.
