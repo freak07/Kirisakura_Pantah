@@ -30,23 +30,13 @@ extern "C" {
 #include <asm-generic/ioctl.h>
 #include <linux/types.h>
 
+#if MALI_USE_CSF
+#include "csf/mali_kbase_csf_ioctl.h"
+#else
 #include "jm/mali_kbase_jm_ioctl.h"
+#endif /* MALI_USE_CSF */
 
 #define KBASE_IOCTL_TYPE 0x80
-
-/**
- * struct kbase_ioctl_version_check - Check version compatibility with kernel
- *
- * @major: Major version number
- * @minor: Minor version number
- */
-struct kbase_ioctl_version_check {
-	__u16 major;
-	__u16 minor;
-};
-
-#define KBASE_IOCTL_VERSION_CHECK \
-	_IOWR(KBASE_IOCTL_TYPE, 0, struct kbase_ioctl_version_check)
 
 /**
  * struct kbase_ioctl_set_flags - Set kernel context creation flags

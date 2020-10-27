@@ -260,7 +260,11 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 #ifdef CONFIG_MALI_DMA_FENCE
 	if (implicit_sync) {
 		info.resv_objs = kmalloc_array(katom->nr_extres,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
 					sizeof(struct reservation_object *),
+#else
+					sizeof(struct dma_resv *),
+#endif
 					GFP_KERNEL);
 		if (!info.resv_objs) {
 			err_ret_val = -ENOMEM;
@@ -278,7 +282,7 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 #endif /* CONFIG_MALI_DMA_FENCE */
 
 	/* Take the processes mmap lock */
-	down_read(&current->mm->mmap_sem);
+	down_read(kbase_mem_get_process_mmap_lock());
 
 	/* need to keep the GPU VM locked while we set up UMM buffers */
 	kbase_gpu_vm_lock(katom->kctx);
@@ -315,8 +319,11 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 #ifdef CONFIG_MALI_DMA_FENCE
 		if (implicit_sync &&
 		    reg->gpu_alloc->type == KBASE_MEM_TYPE_IMPORTED_UMM) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
 			struct reservation_object *resv;
-
+#else
+			struct dma_resv *resv;
+#endif
 			resv = reg->gpu_alloc->imported.umm.dma_buf->resv;
 			if (resv)
 				kbase_dma_fence_add_reservation(resv, &info,
@@ -338,7 +345,7 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 	kbase_gpu_vm_unlock(katom->kctx);
 
 	/* Release the processes mmap lock */
-	up_read(&current->mm->mmap_sem);
+	up_read(kbase_mem_get_process_mmap_lock());
 
 #ifdef CONFIG_MALI_DMA_FENCE
 	if (implicit_sync) {
@@ -363,7 +370,7 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 #ifdef CONFIG_MALI_DMA_FENCE
 failed_dma_fence_setup:
 	/* Lock the processes mmap lock */
-	down_read(&current->mm->mmap_sem);
+	down_read(kbase_mem_get_process_mmap_lock());
 
 	/* lock before we unmap */
 	kbase_gpu_vm_lock(katom->kctx);
@@ -379,7 +386,7 @@ failed_dma_fence_setup:
 	kbase_gpu_vm_unlock(katom->kctx);
 
 	/* Release the processes mmap lock */
-	up_read(&current->mm->mmap_sem);
+	up_read(kbase_mem_get_process_mmap_lock());
 
  early_err_out:
 	kfree(katom->extres);
@@ -894,6 +901,8 @@ static bool jd_submit_atom(struct kbase_context *const kctx,
 	int i;
 	int sched_prio;
 	bool will_fail = false;
+	unsigned long flags;
+	enum kbase_jd_atom_state status;
 
 	dev_dbg(kbdev->dev, "User did JD submit atom %p\n", (void *)katom);
 
@@ -1208,6 +1217,17 @@ static bool jd_submit_atom(struct kbase_context *const kctx,
 		/* If job was cancelled then resolve immediately */
 		if (katom->event_code != BASE_JD_EVENT_JOB_CANCELLED)
 			return need_to_try_schedule_context;
+
+		/* Synchronize with backend reset */
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		status = katom->status;
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+		if (status == KBASE_JD_ATOM_STATE_HW_COMPLETED) {
+			dev_dbg(kctx->kbdev->dev,
+					"Atom %d cancelled on HW\n",
+					kbase_jd_atom_id(katom->kctx, katom));
+			return need_to_try_schedule_context;
+		}
 	}
 
 	/* This is a pure dependency. Resolve it immediately */

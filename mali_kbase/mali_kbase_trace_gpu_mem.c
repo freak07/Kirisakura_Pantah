@@ -221,7 +221,7 @@ void kbase_add_dma_buf_usage(struct kbase_context *kctx,
 	mutex_unlock(&kbdev->dma_buf_lock);
 }
 
-#ifndef CONFIG_TRACE_GPU_MEM
+#if !defined(CONFIG_TRACE_GPU_MEM) && !MALI_CUSTOMER_RELEASE
 #define CREATE_TRACE_POINTS
 #include "mali_gpu_mem_trace.h"
 #endif

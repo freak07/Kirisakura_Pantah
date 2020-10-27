@@ -156,13 +156,14 @@ int kbase_context_common_init(struct kbase_context *kctx)
 
 	init_waitqueue_head(&kctx->event_queue);
 	atomic_set(&kctx->event_count, 0);
+#if !MALI_USE_CSF
 	atomic_set(&kctx->event_closed, false);
-
-	bitmap_copy(kctx->cookies, &cookies_mask, BITS_PER_LONG);
-
 #ifdef CONFIG_GPU_TRACEPOINTS
 	atomic_set(&kctx->jctx.work_id, 0);
 #endif
+#endif
+
+	bitmap_copy(kctx->cookies, &cookies_mask, BITS_PER_LONG);
 
 	kctx->id = atomic_add_return(1, &(kctx->kbdev->ctx_num)) - 1;
 

@@ -33,29 +33,10 @@ struct kbase_hwcnt_dump_buffer;
 /**
  * enum kbase_hwcnt_gpu_group_type - GPU hardware counter group types, used to
  *                                   identify metadata groups.
- * @KBASE_HWCNT_GPU_GROUP_TYPE_V4: GPU V4 group type.
  * @KBASE_HWCNT_GPU_GROUP_TYPE_V5: GPU V5 group type.
  */
 enum kbase_hwcnt_gpu_group_type {
-	KBASE_HWCNT_GPU_GROUP_TYPE_V4 = 0x10,
-	KBASE_HWCNT_GPU_GROUP_TYPE_V5,
-};
-
-/**
- * enum kbase_hwcnt_gpu_v4_block_type - GPU V4 hardware counter block types,
- *                                      used to identify metadata blocks.
- * @KBASE_HWCNT_GPU_V4_BLOCK_TYPE_SHADER:   Shader block.
- * @KBASE_HWCNT_GPU_V4_BLOCK_TYPE_TILER:    Tiler block.
- * @KBASE_HWCNT_GPU_V4_BLOCK_TYPE_MMU_L2:   MMU/L2 block.
- * @KBASE_HWCNT_GPU_V4_BLOCK_TYPE_JM:       Job Manager block.
- * @KBASE_HWCNT_GPU_V4_BLOCK_TYPE_RESERVED: Reserved block.
- */
-enum kbase_hwcnt_gpu_v4_block_type {
-	KBASE_HWCNT_GPU_V4_BLOCK_TYPE_SHADER = 0x20,
-	KBASE_HWCNT_GPU_V4_BLOCK_TYPE_TILER,
-	KBASE_HWCNT_GPU_V4_BLOCK_TYPE_MMU_L2,
-	KBASE_HWCNT_GPU_V4_BLOCK_TYPE_JM,
-	KBASE_HWCNT_GPU_V4_BLOCK_TYPE_RESERVED,
+	KBASE_HWCNT_GPU_GROUP_TYPE_V5 = 0x10,
 };
 
 /**
@@ -93,21 +74,6 @@ struct kbase_hwcnt_physical_enable_map {
 };
 
 /**
- * struct kbase_hwcnt_gpu_v4_info - Information about hwcnt blocks on v4 GPUs.
- * @cg_count: Core group count.
- * @cgs:      Non-NULL pointer to array of cg_count coherent group structures.
- * @clk_cnt:  Number of clock domains available.
- *
- * V4 devices are Mali-T6xx or Mali-T72x, and have one or more core groups,
- * where each core group may have a physically different layout.
- */
-struct kbase_hwcnt_gpu_v4_info {
-	size_t cg_count;
-	const struct mali_base_gpu_coherent_group *cgs;
-	u8 clk_cnt;
-};
-
-/**
  * struct kbase_hwcnt_gpu_v5_info - Information about hwcnt blocks on v5 GPUs.
  * @l2_count:   L2 cache count.
  * @core_mask:  Shader core mask. May be sparse.
@@ -123,15 +89,11 @@ struct kbase_hwcnt_gpu_v5_info {
  * struct kbase_hwcnt_gpu_info - Tagged union with information about the current
  *                               GPU's hwcnt blocks.
  * @type: GPU type.
- * @v4:   Info filled in if a v4 GPU.
  * @v5:   Info filled in if a v5 GPU.
  */
 struct kbase_hwcnt_gpu_info {
 	enum kbase_hwcnt_gpu_group_type type;
-	union {
-		struct kbase_hwcnt_gpu_v4_info v4;
-		struct kbase_hwcnt_gpu_v5_info v5;
-	};
+	struct kbase_hwcnt_gpu_v5_info v5;
 };
 
 /**
