@@ -18,6 +18,7 @@
 
 /* Mali core includes */
 #include <mali_kbase.h>
+#include <backend/gpu/mali_kbase_pm_internal.h>
 
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
@@ -101,7 +102,7 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
  *
  * Return: This function currently always returns 0 for success.
  */
-int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
+static int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
@@ -126,7 +127,7 @@ int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
  *
  * Note that this function currently doesn't do anything.
  */
-void gpu_dvfs_metrics_term(struct kbase_device *kbdev)
+static void gpu_dvfs_metrics_term(struct kbase_device *kbdev)
 {
 }
 
@@ -251,6 +252,8 @@ void gpu_dvfs_event_power_on(struct kbase_device *kbdev)
 	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, true);
 	mutex_unlock(&pc->dvfs.lock);
 
+	cancel_delayed_work(&pc->dvfs.clockdown_work);
+
 	gpu_dvfs_trace_clock(kbdev, true);
 }
 
@@ -271,11 +274,41 @@ void gpu_dvfs_event_power_off(struct kbase_device *kbdev)
 	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, false);
 	mutex_unlock(&pc->dvfs.lock);
 
+	queue_delayed_work(pc->dvfs.clockdown_wq, &pc->dvfs.clockdown_work,
+		pc->dvfs.clockdown_hysteresis);
+
 	gpu_dvfs_trace_clock(kbdev, false);
 }
 
 /**
- * gpu_dvfs_worker() - The main DVFS entry point for the Pixel GPU integration.
+ * gpu_dvfs_clockdown_worker() - Handles the GPU post-power down timeout
+ *
+ * @data: Delayed worker data structure, used to determine the corresponding GPU context.
+ *
+ * This function is called after the GPU has been powered down for a specified duration and is
+ * responsible for reverting the GPU to its default, low-throughput operating point and releasing
+ * any QOS votes that were previously made.
+ *
+ * Context: Process context. Takes and releases the DVFS lock.
+ */
+static void gpu_dvfs_clockdown_worker(struct work_struct *data)
+{
+	struct delayed_work *dw = to_delayed_work(data);
+	struct pixel_context *pc = container_of(dw, struct pixel_context, dvfs.clockdown_work);
+	struct kbase_device *kbdev = pc->kbdev;
+
+	mutex_lock(&pc->dvfs.lock);
+
+	pc->dvfs.level_target = pc->dvfs.level_scaling_min;
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
+	gpu_dvfs_qos_reset(kbdev);
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+
+	mutex_unlock(&pc->dvfs.lock);
+}
+
+/**
+ * gpu_dvfs_control_worker() - The main DVFS entry point for the Pixel GPU integration.
  *
  * @data: Worker data structure, used to determine the corresponding GPU context.
  *
@@ -285,27 +318,25 @@ void gpu_dvfs_event_power_off(struct kbase_device *kbdev)
  * If the GPU is powered on, the reported utilization is used to determine whether a level change is
  * required via the current governor and if so, make that change.
  *
- * If the GPU is powered off, this function determines whether the GPU should be clocked down
- * depending on how long the gpu has been powered off for.
+ * If the GPU is powered off, no action is taken.
  *
  * Context: Process context. Takes and releases the DVFS lock.
  */
-static void gpu_dvfs_worker(struct work_struct *data)
+static void gpu_dvfs_control_worker(struct work_struct *data)
 {
-	struct pixel_context *pc = container_of(data, struct pixel_context, dvfs.work);
+	struct pixel_context *pc = container_of(data, struct pixel_context, dvfs.control_work);
 	struct kbase_device *kbdev = pc->kbdev;
 	int util;
 
 	mutex_lock(&pc->dvfs.lock);
 
-	util = atomic_read(&pc->dvfs.util);
-
 	if (gpu_power_status(kbdev)) {
-		pc->dvfs.clock_down_delay = pc->dvfs.clock_down_hysteresis;
+		util = atomic_read(&pc->dvfs.util);
 		pc->dvfs.level_target = gpu_dvfs_governor_get_next_level(kbdev, util);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS
-		/* If we have reset our QOS requests due to the GPU going idle, and haven't
+		/*
+		 * If we have reset our QOS requests due to the GPU going idle, and haven't
 		 * changed level, we need to request the QOS values for that level again
 		 */
 		if (pc->dvfs.level_target == pc->dvfs.level && !pc->dvfs.qos.enabled)
@@ -318,13 +349,6 @@ static void gpu_dvfs_worker(struct work_struct *data)
 			gpu_dvfs_set_new_level(kbdev, pc->dvfs.level_target);
 		}
 
-	} else if (pc->dvfs.clock_down_delay) {
-		if (--pc->dvfs.clock_down_delay == 0) {
-			pc->dvfs.level_target = pc->dvfs.level_scaling_min;
-#ifdef CONFIG_MALI_PIXEL_GPU_QOS
-			gpu_dvfs_qos_reset(kbdev);
-#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
-		}
 	}
 
 	mutex_unlock(&pc->dvfs.lock);
@@ -353,7 +377,7 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation,
 	struct pixel_context *pc = kbdev->platform_context;
 
 	atomic_set(&pc->dvfs.util, utilisation);
-	queue_work(pc->dvfs.wq, &pc->dvfs.work);
+	queue_work(pc->dvfs.control_wq, &pc->dvfs.control_work);
 
 	return 1;
 }
@@ -572,14 +596,12 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	pc->dvfs.level_target = pc->dvfs.level_start;
 
 	/* Initialize power down hysteresis */
-	if (of_property_read_u32(np, "gpu_dvfs_clock_down_hysteresis",
-		&pc->dvfs.clock_down_hysteresis)) {
-		GPU_LOG(LOG_ERROR, kbdev, "DVFS clock down hysteresis not set in DT");
+	if (of_property_read_u32(np, "gpu_dvfs_clockdown_hysteresis",
+		&pc->dvfs.clockdown_hysteresis)) {
+		GPU_LOG(LOG_ERROR, kbdev, "DVFS clock down hysteresis not set in DT\n");
 		ret = -EINVAL;
 		goto done;
 	}
-
-	pc->dvfs.clock_down_delay = pc->dvfs.clock_down_hysteresis;
 
 	/* Initialize DVFS governors */
 	ret = gpu_dvfs_governor_init(kbdev);
@@ -613,9 +635,12 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	}
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 
-	/* Initialize workqueue */
-	pc->dvfs.wq = create_singlethread_workqueue("gpu-dvfs");
-	INIT_WORK(&pc->dvfs.work, gpu_dvfs_worker);
+	/* Initialize workqueues */
+	pc->dvfs.control_wq = create_singlethread_workqueue("gpu-dvfs-control");
+	INIT_WORK(&pc->dvfs.control_work, gpu_dvfs_control_worker);
+
+	pc->dvfs.clockdown_wq = create_singlethread_workqueue("gpu-dvfs-clockdown");
+	INIT_DELAYED_WORK(&pc->dvfs.clockdown_work, gpu_dvfs_clockdown_worker);
 
 	/* Initialization was successful */
 	goto done;
@@ -648,7 +673,8 @@ void gpu_dvfs_term(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
-	destroy_workqueue(pc->dvfs.wq);
+	destroy_workqueue(pc->dvfs.clockdown_wq);
+	destroy_workqueue(pc->dvfs.control_wq);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
 	gpu_tmu_term(kbdev);

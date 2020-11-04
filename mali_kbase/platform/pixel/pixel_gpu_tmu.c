@@ -24,7 +24,8 @@
 /**
  * gpu_tmu_get_num_levels() - Returns the number of DVFS OPPs
  *
- * @kbdev: The &struct kbase_device for the GPU.
+ * @gpu_drv_data: The data provided to the cooling driver via
+ *                &gpufreq_cooling_register in &gpu_tmu_init.
  *
  * Return: The number of DVFS operating points.
  */
@@ -39,7 +40,8 @@ static int gpu_tmu_get_num_levels(void *gpu_drv_data)
 /**
  * gpu_tmu_get_freqs_for_level() - Returns the frequencies for a DVFS OPP
  *
- * @kbdev: The &struct kbase_device for the GPU.
+ * @gpu_drv_data: The data provided to the cooling driver via
+ *                &gpufreq_cooling_register in &gpu_tmu_init.
  * @level: The level of the DVFS OPP table to query.
  * @clk0:  Pointer to write the gpu0 clock into. Set to NULL if not required.
  * @clk1:  Pointer to write the gpu1 clock into. Set to NULL if not required.
@@ -67,7 +69,8 @@ static int gpu_tmu_get_freqs_for_level(void *gpu_drv_data, int level, int *clk0,
 /**
  * gpu_tmu_get_vols_for_level() - Returns the frequencies for a DVFS OPP
  *
- * @kbdev: The &struct kbase_device for the GPU.
+ * @gpu_drv_data: The data provided to the cooling driver via
+ *                &gpufreq_cooling_register in &gpu_tmu_init.
  * @level: The level of the DVFS OPP table to query.
  * @vol0:  Pointer to write the gpu0 voltage into. Set to NULL if not required.
  * @vol1:  Pointer to write the gpu1 voltage into. Set to NULL if not required.
@@ -95,7 +98,8 @@ static int gpu_tmu_get_vols_for_level(void *gpu_drv_data, int level, int *vol0, 
 /**
  * gpu_tmu_get_cur_level() - Returns current DVFS OPP level
  *
- * @kbdev: The &struct kbase_device for the GPU.
+ * @gpu_drv_data: The data provided to the cooling driver via
+ *                &gpufreq_cooling_register in &gpu_tmu_init.
  *
  * Context: Process context. Takes and releases the DVFS lock.
  *
@@ -117,7 +121,8 @@ static int gpu_tmu_get_cur_level(void *gpu_drv_data)
 /**
  * gpu_tmu_get_cur_util() - Returns the utilization of the GPU
  *
- * @kbdev: The &struct kbase_device for the GPU.
+ * @gpu_drv_data: The data provided to the cooling driver via
+ *                &gpufreq_cooling_register in &gpu_tmu_init.
  *
  * Return: The utilization level of the GPU. This is an integer percentage.
  */
@@ -144,8 +149,9 @@ static struct gpufreq_cooling_query_fns tmu_query_fns = {
 /**
  * get_level_from_tmu_data() - Translates GPU cooling data to a target DVFS level
  *
- * @kbdev: The &struct kbase_device for the GPU.
- * @data:  Integer value passed by the GPU cooling driver.
+ * @gpu_drv_data: The data provided to the cooling driver via
+ *                &gpufreq_cooling_register in &gpu_tmu_init.
+ * @data:         Integer value passed by the GPU cooling driver.
  *
  * Return: The target DVFS operating point level indicated by the GPU cooling
  *         driver.

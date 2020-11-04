@@ -70,6 +70,7 @@ static inline vm_fault_t vmf_insert_pfn_prot(struct vm_area_struct *vma,
  * @lp_size:  The number of allocated large(2MB) pages
  * @insert_pfn: The number of calls to map pages for CPU access.
  * @update_gpu_pte: The number of calls to update GPU page table entries.
+ * @ptid: The partition ID for this group
  * @pbha: The PBHA bits assigned to this group,
  * @state: The lifecycle state of the partition associated with this group
  * This structure allows page allocation information to be displayed via
@@ -497,7 +498,7 @@ static void mgm_resize_callback(void *data, int id, size_t size_allocated)
 {
 	/* Currently we don't do anything on partition resize */
 	struct mgm_groups *const mgm_data = (struct mgm_groups *)data;
-	dev_dbg(mgm_data->dev, "Resize callback called, size_allocated: %d\n",
+	dev_dbg(mgm_data->dev, "Resize callback called, size_allocated: %zu\n",
 		size_allocated);
 }
 
@@ -552,11 +553,11 @@ static void mgm_term_data(struct mgm_groups *data)
 		if (atomic_read(&group->size) != 0)
 			dev_warn(data->dev,
 				"%zu 0-order pages in group(%d) leaked\n",
-				atomic_read(&group->size), i);
+				(size_t)atomic_read(&group->size), i);
 		if (atomic_read(&group->lp_size) != 0)
 			dev_warn(data->dev,
 				"%zu 9 order pages in group(%d) leaked\n",
-				atomic_read(&group->lp_size), i);
+				(size_t)atomic_read(&group->lp_size), i);
 
 		/* Disable partition indices and free the partition */
 		switch (group->state) {

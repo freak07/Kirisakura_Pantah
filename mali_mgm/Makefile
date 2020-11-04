@@ -28,8 +28,8 @@ KBUILD_OPTIONS += CONFIG_MALI_MEMORY_GROUP_MANAGER=m
 
 KBUILD_OPTIONS += $(KBUILD_EXTRA) # Extra config if any
 
-all:
-	$(MAKE) -C $(KERNEL_SRC) M=$(M) EXTRA_CFLAGS="-I$(M) -I$(M)/../common/include" modules $(KBUILD_OPTIONS) $(@)
+modules:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) W=1 EXTRA_CFLAGS="-I$(M) -I$(M)/../common/include" modules $(KBUILD_OPTIONS) $(@)
 
 modules_install:
 	$(MAKE) -C $(KERNEL_SRC) M=$(M) modules_install

@@ -172,11 +172,17 @@ struct gpu_dvfs_opp {
  *
  * @dvfs.lock:                  &struct mutex used to control access to DVFS levels.
  *
- * @dvfs.wq:                    Workqueue for processing DVFS utilization metrics.
- * @dvfs.work:                  &struct work_struct storing link to Pixel GPU code to convert
+ * @dvfs.control_wq:            Workqueue for processing DVFS utilization metrics.
+ * @dvfs.control_work:          &struct work_struct storing link to Pixel GPU code to convert
  *                              incoming utilization data from the Mali driver into DVFS changes on
  *                              the GPU.
  * @dvfs.util:                  Stores incoming utilization metrics from the Mali driver.
+ * @dvfs.clockdown_wq:          Delayed workqueue for clocking down the GPU after it has been idle
+ *                              for a period of time.
+ * @dvfs.clockdown_work:        &struct delayed_work_struct storing link to Pixel GPU code to set
+ *                              the GPU to its minimum throughput level.
+ * @dvfs.clockdown_hysteresis:  The time (in ms) the GPU can remained powered off before being set
+ *                              to the minimum throughput level. Set via DT.
  *
  * @dvfs.gpu0_cal_id:           ID for the GPU Top Level clock domain. Set via DT.
  * @dvfs.gpu1_cal_id:           ID for the GPU shader stack clock domain. Set via DT.
@@ -190,12 +196,6 @@ struct gpu_dvfs_opp {
  * @dvfs.level_min:             The minimum throughput level available of the GPU. Set via DT.
  * @dvfs.level_scaling_max:     The maximum throughput level the GPU can run at. Set via sysfs.
  * @dvfs.level_scaling_min:     The minimum throughput level the GPU can run at. Set via sysfs.
- *
- * @dvfs.clock_down_hysteresis: The number of ticks the GPU can remained powered off before being
- *                              set to the minimum throughput level. Set via DT.
- * @dvfs.clock_down_delay:      Remaining ticks before the GPU reverts to the lowest throughput
- *                              level. This is reset to @dvfs.clock_down_hysteresis should the GPU
- *                              power on.
  *
  * @dvfs.metrics_last_time:        The last time (in ns) since device boot that the DVFS metric
  *                                 logic was run.
@@ -242,9 +242,13 @@ struct pixel_context {
 	struct {
 		struct mutex lock;
 
-		struct workqueue_struct *wq;
-		struct work_struct work;
+		struct workqueue_struct *control_wq;
+		struct work_struct control_work;
 		atomic_t util;
+
+		struct workqueue_struct *clockdown_wq;
+		struct delayed_work clockdown_work;
+		unsigned int clockdown_hysteresis;
 
 		int gpu0_cal_id;
 		int gpu1_cal_id;
@@ -258,9 +262,6 @@ struct pixel_context {
 		int level_min;
 		int level_scaling_max;
 		int level_scaling_min;
-
-		unsigned int clock_down_hysteresis;
-		unsigned int clock_down_delay;
 
 		u64 metrics_last_time;
 		bool metrics_last_power_state;
