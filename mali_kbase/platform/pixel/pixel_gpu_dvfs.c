@@ -19,6 +19,7 @@
 /* Mali core includes */
 #include <mali_kbase.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
+#include <mali_power_gpu_frequency_trace.h>
 
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
@@ -153,6 +154,9 @@ static void gpu_dvfs_trace_clock(struct kbase_device *kbdev, bool power_on)
 
 	trace_clock_set_rate("gpu0", gpu0, proc);
 	trace_clock_set_rate("gpu1", gpu1, proc);
+
+	trace_gpu_frequency(gpu0, 0);
+	trace_gpu_frequency(gpu1, 1);
 }
 
 /**
