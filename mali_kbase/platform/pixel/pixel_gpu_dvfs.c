@@ -405,7 +405,8 @@ static int find_voltage_for_freq(unsigned int clock, unsigned int *vol,
 
 	for (i = 0; i < arr_length; i++) {
 		if (arr[i].rate == clock) {
-			*vol = arr[i].volt;
+			if (vol)
+				*vol = arr[i].volt;
 			return 0;
 		}
 	}
@@ -474,7 +475,14 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		goto err;
 	}
 
-	of_property_read_u32_array(np, "gpu_dvfs_table", of_data_int_array, dvfs_table_size);
+	/* We detect which ASV table the GPU is running by checking which
+	 * operating points are available from ECT. We check for 200MHz on the
+	 * GPU shader cores as this is only available in the ASV v0.3.
+	 */
+	if (find_voltage_for_freq(200000, NULL, gpu1_vf_map, gpu1_level_count))
+		of_property_read_u32_array(np, "gpu_dvfs_table_v1", of_data_int_array, dvfs_table_size);
+	else
+		of_property_read_u32_array(np, "gpu_dvfs_table_v2", of_data_int_array, dvfs_table_size);
 
 	/* Process DVFS table data from device tree and store it in OPP table */
 	for (i = 0; i < dvfs_table_row_num; i++) {
