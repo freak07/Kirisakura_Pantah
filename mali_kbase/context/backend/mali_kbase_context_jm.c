@@ -140,6 +140,8 @@ static const struct kbase_context_init context_init[] = {
 	{ kbasep_js_kctx_init, kbasep_js_kctx_term,
 	  "JS kctx initialization failed" },
 	{ kbase_jd_init, kbase_jd_exit, "JD initialization failed" },
+	{kbasep_platform_context_init, kbasep_platform_context_term,
+	  "Platform callback for kctx initialization failed"},
 	{ kbase_context_submit_check, NULL, NULL },
 };
 

@@ -1553,6 +1553,7 @@ struct kbase_sub_alloc {
  * @atoms_count:          Number of GPU atoms currently in use, per priority
  * @create_flags:         Flags used in context creation.
  * @kinstr_jm:            Kernel job manager instrumentation context handle
+ * @platform_data:        Pointer to platform specific per-context data.
  *
  * A kernel base context is an entity among which the GPU is scheduled.
  * Each context has its own GPU address space.
@@ -1699,6 +1700,8 @@ struct kbase_context {
 #if !MALI_USE_CSF
 	struct kbase_kinstr_jm *kinstr_jm;
 #endif
+
+	void* platform_data;
 };
 
 #ifdef CONFIG_MALI_CINSTR_GWT
