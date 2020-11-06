@@ -25,4 +25,8 @@ void gpu_dvfs_term(struct kbase_device *kbdev);
 int gpu_sysfs_init(struct kbase_device *kbdev);
 void gpu_sysfs_term(struct kbase_device *kbdev);
 
+/* Kernel context callbacks */
+int gpu_dvfs_kctx_init(struct kbase_context *kctx);
+void gpu_dvfs_kctx_term(struct kbase_context *kctx);
+
 #endif /* _PIXEL_GPU_CONTROL_H_ */

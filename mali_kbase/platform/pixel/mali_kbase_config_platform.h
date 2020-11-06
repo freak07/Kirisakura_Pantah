@@ -157,6 +157,9 @@ struct gpu_dvfs_opp {
 		int cpu2_max;
 	} qos;
 };
+
+/* Forward declaration of per-UID metrics */
+struct gpu_dvfs_metrics_uid_stats;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 
 /**
@@ -277,6 +280,9 @@ struct pixel_context {
 			u64 last_time;
 			bool last_power_state;
 			int last_level;
+			spinlock_t uid_lock;
+			struct gpu_dvfs_metrics_uid_stats *js_uid_stats[BASE_JM_MAX_NR_SLOTS];
+			struct list_head uid_stats_list;
 		} metrics;
 
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS
