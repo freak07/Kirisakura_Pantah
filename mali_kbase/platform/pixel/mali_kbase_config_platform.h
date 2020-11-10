@@ -202,10 +202,10 @@ struct gpu_dvfs_opp {
  * @dvfs.level_scaling_max:     The maximum throughput level the GPU can run at. Set via sysfs.
  * @dvfs.level_scaling_min:     The minimum throughput level the GPU can run at. Set via sysfs.
  *
- * @dvfs.metrics_last_time:        The last time (in ns) since device boot that the DVFS metric
+ * @dvfs.metrics.last_time:        The last time (in ns) since device boot that the DVFS metric
  *                                 logic was run.
- * @dvfs.metrics_last_power_state: The GPU's power state when the DVFS metric logic was last run.
- * @dvfs.metrics_last_level:       The GPU's level when the DVFS metric logic was last run.
+ * @dvfs.metrics.last_power_state: The GPU's power state when the DVFS metric logic was last run.
+ * @dvfs.metrics.last_level:       The GPU's level when the DVFS metric logic was last run.
  *
  * @dvfs.governor.curr:  The currently enabled DVFS governor.
  * @dvfs.governor.delay: Governor specific variable. The basic governor uses this to store the
@@ -268,14 +268,16 @@ struct pixel_context {
 		int level_scaling_max;
 		int level_scaling_min;
 
-		u64 metrics_last_time;
-		bool metrics_last_power_state;
-		int metrics_last_level;
-
 		struct {
 			enum gpu_dvfs_governor_type curr;
 			int delay;
 		} governor;
+
+		struct {
+			u64 last_time;
+			bool last_power_state;
+			int last_level;
+		} metrics;
 
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS
 		struct {

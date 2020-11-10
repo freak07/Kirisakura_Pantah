@@ -8,6 +8,8 @@
 #ifndef _PIXEL_GPU_DVFS_H_
 #define _PIXEL_GPU_DVFS_H_
 
+/* Governor */
+
 /**
  * typedef gpu_dvfs_governor_logic_fn - Determines the next level based on utilization.
  *
@@ -71,7 +73,14 @@ ssize_t gpu_dvfs_governor_print_curr(struct kbase_device *kbdev, char *buf, ssiz
 int gpu_dvfs_governor_init(struct kbase_device *kbdev);
 void gpu_dvfs_governor_term(struct kbase_device *kbdev);
 
-void gpu_dvfs_update_level_locks(struct kbase_device *kbdev);
+/* Metrics */
+
+void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, bool power_on);
+void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool power_state);
+int gpu_dvfs_metrics_init(struct kbase_device *kbdev);
+void gpu_dvfs_metrics_term(struct kbase_device *kbdev);
+
+/* QOS */
 
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS
 void gpu_dvfs_qos_set(struct kbase_device *kbdev, int level);
@@ -80,9 +89,15 @@ int gpu_dvfs_qos_init(struct kbase_device *kbdev);
 void gpu_dvfs_qos_term(struct kbase_device *kbdev);
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
+/* Thermal */
+
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
 int gpu_tmu_init(struct kbase_device *kbdev);
 void gpu_tmu_term(struct kbase_device *kbdev);
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL*/
+
+/* Common */
+
+void gpu_dvfs_update_level_locks(struct kbase_device *kbdev);
 
 #endif /* _PIXEL_GPU_DVFS_H_ */
