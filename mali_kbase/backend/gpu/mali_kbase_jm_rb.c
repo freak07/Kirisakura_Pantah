@@ -288,6 +288,8 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 		katom->gpu_rb_state = KBASE_ATOM_GPU_RB_READY;
 		kbase_pm_metrics_update(kbdev, end_timestamp);
 
+		kbasep_platform_event_atom_complete(katom);
+
 		if (katom->core_req & BASE_JD_REQ_PERMON)
 			kbase_pm_release_gpu_cycle_counter_nolock(kbdev);
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
@@ -990,6 +992,8 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 				 * metrics. */
 				kbase_pm_metrics_update(kbdev,
 						&katom[idx]->start_timestamp);
+
+				kbasep_platform_event_atom_submit(katom[idx]);
 
 				/* ***TRANSITION TO HIGHER STATE*** */
 				/* fallthrough */
