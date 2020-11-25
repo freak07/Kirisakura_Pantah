@@ -19,7 +19,7 @@
 /* Mali core includes */
 #include <mali_kbase.h>
 #ifdef CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING
-#include <mali_kbase_device_internal.h>
+#include <device/mali_kbase_device_internal.h>
 #endif /* CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING */
 
 /* Pixel integration includes */

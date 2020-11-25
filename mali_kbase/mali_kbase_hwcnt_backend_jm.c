@@ -34,7 +34,11 @@
 #endif
 #include "backend/gpu/mali_kbase_clk_rate_trace_mgr.h"
 
+#if MALI_USE_CSF
+#include "mali_kbase_ctx_sched.h"
+#else
 #include "backend/gpu/mali_kbase_pm_internal.h"
+#endif
 
 /**
  * struct kbase_hwcnt_backend_jm_info - Information used to create an instance
@@ -132,8 +136,10 @@ static void kbasep_hwcnt_backend_jm_cc_enable(
 
 	if (kbase_hwcnt_clk_enable_map_enabled(
 		    clk_enable_map, KBASE_CLOCK_DOMAIN_TOP)) {
+#if !MALI_USE_CSF
 		/* turn on the cycle counter */
 		kbase_pm_request_gpu_cycle_counter_l2_is_on(kbdev);
+#endif
 		/* Read cycle count for top clock domain. */
 		kbase_backend_get_gpu_time_norequest(
 			kbdev, &cycle_count, NULL, NULL);
@@ -186,11 +192,13 @@ static void kbasep_hwcnt_backend_jm_cc_disable(
 	struct kbase_clk_rate_trace_manager *rtm = &kbdev->pm.clk_rtm;
 	u64 clk_enable_map = backend_jm->clk_enable_map;
 
+#if !MALI_USE_CSF
 	if (kbase_hwcnt_clk_enable_map_enabled(
 		clk_enable_map, KBASE_CLOCK_DOMAIN_TOP)) {
 		/* turn off the cycle counter */
-		kbase_pm_release_gpu_cycle_counter(backend_jm->kctx->kbdev);
+		kbase_pm_release_gpu_cycle_counter(kbdev);
 	}
+#endif
 	if (kbase_hwcnt_clk_enable_map_enabled(
 		clk_enable_map, KBASE_CLOCK_DOMAIN_SHADER_CORES)) {
 
@@ -488,6 +496,9 @@ static void kbasep_hwcnt_backend_jm_destroy(
 		return;
 
 	if (backend->kctx) {
+#if MALI_USE_CSF
+		unsigned long flags;
+#endif
 		struct kbase_context *kctx = backend->kctx;
 		struct kbase_device *kbdev = kctx->kbdev;
 
@@ -498,7 +509,13 @@ static void kbasep_hwcnt_backend_jm_destroy(
 			kbasep_hwcnt_backend_jm_dump_free(
 				kctx, backend->gpu_dump_va);
 
+#if MALI_USE_CSF
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbase_ctx_sched_release_ctx(kctx);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+#else
 		kbasep_js_release_privileged_ctx(kbdev, kctx);
+#endif
 		kbase_destroy_context(kctx);
 	}
 
@@ -516,7 +533,9 @@ static int kbasep_hwcnt_backend_jm_create(
 	const struct kbase_hwcnt_backend_jm_info *info,
 	struct kbase_hwcnt_backend_jm **out_backend)
 {
-
+#if MALI_USE_CSF
+	unsigned long flags;
+#endif
 	int errcode;
 	struct kbase_device *kbdev;
 	struct kbase_hwcnt_backend_jm *backend = NULL;
@@ -537,7 +556,17 @@ static int kbasep_hwcnt_backend_jm_create(
 	if (!backend->kctx)
 		goto alloc_error;
 
+#if MALI_USE_CSF
+	kbase_pm_context_active(kbdev);
+	mutex_lock(&kbdev->mmu_hw_mutex);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbase_ctx_sched_retain_ctx(backend->kctx);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	mutex_unlock(&kbdev->mmu_hw_mutex);
+	kbase_pm_context_idle(kbdev);
+#else
 	kbasep_js_schedule_privileged_ctx(kbdev, backend->kctx);
+#endif
 
 	errcode = kbasep_hwcnt_backend_jm_dump_alloc(
 		info, backend->kctx, &backend->gpu_dump_va);

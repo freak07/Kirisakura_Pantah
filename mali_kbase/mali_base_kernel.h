@@ -697,7 +697,11 @@ struct base_gpu_props {
 	struct mali_base_gpu_coherent_group_info coherency_info;
 };
 
+#if MALI_USE_CSF
+#include "csf/mali_base_csf_kernel.h"
+#else
 #include "jm/mali_base_jm_kernel.h"
+#endif
 
 /**
  * base_mem_group_id_get() - Get group ID from flags
@@ -733,8 +737,10 @@ static inline int base_mem_group_id_get(base_mem_alloc_flags flags)
  */
 static inline base_mem_alloc_flags base_mem_group_id_set(int id)
 {
-	LOCAL_ASSERT(id >= 0);
-	LOCAL_ASSERT(id < BASE_MEM_GROUP_COUNT);
+	if ((id < 0) || (id >= BASE_MEM_GROUP_COUNT)) {
+		/* Set to default value when id is out of range. */
+		id = BASE_MEM_GROUP_DEFAULT;
+	}
 
 	return BASE_MEM_GROUP_ID_SET(id);
 }

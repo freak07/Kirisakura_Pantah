@@ -27,17 +27,6 @@
 #include "backend/gpu/mali_kbase_model_dummy.h"
 #endif
 
-#define KBASE_HWCNT_V4_BLOCKS_PER_GROUP 8
-#define KBASE_HWCNT_V4_SC_BLOCKS_PER_GROUP 4
-#define KBASE_HWCNT_V4_MAX_GROUPS \
-	(KBASE_HWCNT_AVAIL_MASK_BITS / KBASE_HWCNT_V4_BLOCKS_PER_GROUP)
-#define KBASE_HWCNT_V4_HEADERS_PER_BLOCK 4
-#define KBASE_HWCNT_V4_COUNTERS_PER_BLOCK 60
-#define KBASE_HWCNT_V4_VALUES_PER_BLOCK \
-	(KBASE_HWCNT_V4_HEADERS_PER_BLOCK + KBASE_HWCNT_V4_COUNTERS_PER_BLOCK)
-/* Index of the PRFCNT_EN header into a V4 counter block */
-#define KBASE_HWCNT_V4_PRFCNT_EN_HEADER 2
-
 #define KBASE_HWCNT_V5_BLOCK_TYPE_COUNT 4
 #define KBASE_HWCNT_V5_HEADERS_PER_BLOCK 4
 #define KBASE_HWCNT_V5_COUNTERS_PER_BLOCK 60
@@ -45,128 +34,6 @@
 	(KBASE_HWCNT_V5_HEADERS_PER_BLOCK + KBASE_HWCNT_V5_COUNTERS_PER_BLOCK)
 /* Index of the PRFCNT_EN header into a V5 counter block */
 #define KBASE_HWCNT_V5_PRFCNT_EN_HEADER 2
-
-/**
- * kbasep_hwcnt_backend_gpu_metadata_v4_create() - Create hardware counter
- *                                                 metadata for a v4 GPU.
- * @v4_info:  Non-NULL pointer to hwcnt info for a v4 GPU.
- * @metadata: Non-NULL pointer to where created metadata is stored on success.
- *
- * Return: 0 on success, else error code.
- */
-static int kbasep_hwcnt_backend_gpu_metadata_v4_create(
-	const struct kbase_hwcnt_gpu_v4_info *v4_info,
-	const struct kbase_hwcnt_metadata **metadata)
-{
-	size_t grp;
-	int errcode = -ENOMEM;
-	struct kbase_hwcnt_description desc;
-	struct kbase_hwcnt_group_description *grps;
-	size_t avail_mask_bit;
-
-	WARN_ON(!v4_info);
-	WARN_ON(!metadata);
-
-	/* Check if there are enough bits in the availability mask to represent
-	 * all the hardware counter blocks in the system.
-	 */
-	if (v4_info->cg_count > KBASE_HWCNT_V4_MAX_GROUPS)
-		return -EINVAL;
-
-	grps = kcalloc(v4_info->cg_count, sizeof(*grps), GFP_KERNEL);
-	if (!grps)
-		goto clean_up;
-
-	desc.grp_cnt = v4_info->cg_count;
-	desc.grps = grps;
-
-	for (grp = 0; grp < v4_info->cg_count; grp++) {
-		size_t blk;
-		size_t sc;
-		const u64 core_mask = v4_info->cgs[grp].core_mask;
-		struct kbase_hwcnt_block_description *blks = kcalloc(
-			KBASE_HWCNT_V4_BLOCKS_PER_GROUP,
-			sizeof(*blks),
-			GFP_KERNEL);
-
-		if (!blks)
-			goto clean_up;
-
-		grps[grp].type = KBASE_HWCNT_GPU_GROUP_TYPE_V4;
-		grps[grp].blk_cnt = KBASE_HWCNT_V4_BLOCKS_PER_GROUP;
-		grps[grp].blks = blks;
-
-		for (blk = 0; blk < KBASE_HWCNT_V4_BLOCKS_PER_GROUP; blk++) {
-			blks[blk].inst_cnt = 1;
-			blks[blk].hdr_cnt =
-				KBASE_HWCNT_V4_HEADERS_PER_BLOCK;
-			blks[blk].ctr_cnt =
-				KBASE_HWCNT_V4_COUNTERS_PER_BLOCK;
-		}
-
-		for (sc = 0; sc < KBASE_HWCNT_V4_SC_BLOCKS_PER_GROUP; sc++) {
-			blks[sc].type = core_mask & (1ull << sc) ?
-				KBASE_HWCNT_GPU_V4_BLOCK_TYPE_SHADER :
-				KBASE_HWCNT_GPU_V4_BLOCK_TYPE_RESERVED;
-		}
-
-		blks[4].type = KBASE_HWCNT_GPU_V4_BLOCK_TYPE_TILER;
-		blks[5].type = KBASE_HWCNT_GPU_V4_BLOCK_TYPE_MMU_L2;
-		blks[6].type = KBASE_HWCNT_GPU_V4_BLOCK_TYPE_RESERVED;
-		blks[7].type = (grp == 0) ?
-			KBASE_HWCNT_GPU_V4_BLOCK_TYPE_JM :
-			KBASE_HWCNT_GPU_V4_BLOCK_TYPE_RESERVED;
-
-		WARN_ON(KBASE_HWCNT_V4_BLOCKS_PER_GROUP != 8);
-	}
-
-	/* Initialise the availability mask */
-	desc.avail_mask = 0;
-	avail_mask_bit = 0;
-
-	for (grp = 0; grp < desc.grp_cnt; grp++) {
-		size_t blk;
-		const struct kbase_hwcnt_block_description *blks =
-			desc.grps[grp].blks;
-		for (blk = 0; blk < desc.grps[grp].blk_cnt; blk++) {
-			WARN_ON(blks[blk].inst_cnt != 1);
-			if (blks[blk].type !=
-			    KBASE_HWCNT_GPU_V4_BLOCK_TYPE_RESERVED)
-				desc.avail_mask |= (1ull << avail_mask_bit);
-
-			avail_mask_bit++;
-		}
-	}
-
-	desc.clk_cnt = v4_info->clk_cnt;
-
-	errcode = kbase_hwcnt_metadata_create(&desc, metadata);
-
-	/* Always clean up, as metadata will make a copy of the input args */
-clean_up:
-	if (grps) {
-		for (grp = 0; grp < v4_info->cg_count; grp++)
-			kfree(grps[grp].blks);
-		kfree(grps);
-	}
-	return errcode;
-}
-
-/**
- * kbasep_hwcnt_backend_gpu_v4_dump_bytes() - Get the raw dump buffer size for a
- *                                            V4 GPU.
- * @v4_info: Non-NULL pointer to hwcnt info for a v4 GPU.
- *
- * Return: Size of buffer the V4 GPU needs to perform a counter dump.
- */
-static size_t kbasep_hwcnt_backend_gpu_v4_dump_bytes(
-	const struct kbase_hwcnt_gpu_v4_info *v4_info)
-{
-	return v4_info->cg_count *
-		KBASE_HWCNT_V4_BLOCKS_PER_GROUP *
-		KBASE_HWCNT_V4_VALUES_PER_BLOCK *
-		KBASE_HWCNT_VALUE_BYTES;
-}
 
 /**
  * kbasep_hwcnt_backend_gpu_metadata_v5_create() - Create hardware counter
@@ -336,18 +203,11 @@ int kbase_hwcnt_gpu_metadata_create(
 	if (!info || !out_metadata || !out_dump_bytes)
 		return -EINVAL;
 
-	switch (info->type) {
-	case KBASE_HWCNT_GPU_GROUP_TYPE_V4:
-		dump_bytes = kbasep_hwcnt_backend_gpu_v4_dump_bytes(&info->v4);
-		errcode = kbasep_hwcnt_backend_gpu_metadata_v4_create(
-			&info->v4, &metadata);
-		break;
-	case KBASE_HWCNT_GPU_GROUP_TYPE_V5:
+	if (info->type == KBASE_HWCNT_GPU_GROUP_TYPE_V5) {
 		dump_bytes = kbasep_hwcnt_backend_gpu_v5_dump_bytes(&info->v5);
 		errcode = kbasep_hwcnt_backend_gpu_metadata_v5_create(
 			&info->v5, use_secondary, &metadata);
-		break;
-	default:
+	} else {
 		return -EINVAL;
 	}
 	if (errcode)
@@ -383,27 +243,13 @@ static bool is_block_type_shader(
 {
 	bool is_shader = false;
 
-	switch (grp_type) {
-	case KBASE_HWCNT_GPU_GROUP_TYPE_V4:
-		/* blk-value in [0, KBASE_HWCNT_V4_SC_BLOCKS_PER_GROUP-1]
-		 * corresponds to a shader, or its implementation
-		 * reserved. As such, here we use the blk index value to
-		 * tell the reserved case.
-		 */
-		if (blk_type == KBASE_HWCNT_GPU_V4_BLOCK_TYPE_SHADER ||
-		    (blk < KBASE_HWCNT_V4_SC_BLOCKS_PER_GROUP &&
-		     blk_type == KBASE_HWCNT_GPU_V4_BLOCK_TYPE_RESERVED))
-			is_shader = true;
-		break;
-	case KBASE_HWCNT_GPU_GROUP_TYPE_V5:
-		if (blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC ||
-		    blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC2)
-			is_shader = true;
-		break;
-	default:
-		/* Warn on unknown group type */
-		WARN_ON(true);
-	}
+	/* Warn on unknown group type */
+	if (WARN_ON(grp_type != KBASE_HWCNT_GPU_GROUP_TYPE_V5))
+		return false;
+
+	if (blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC ||
+	    blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC2)
+		is_shader = true;
 
 	return is_shader;
 }
@@ -418,7 +264,6 @@ int kbase_hwcnt_gpu_dump_get(
 	const struct kbase_hwcnt_metadata *metadata;
 	const u32 *dump_src;
 	size_t src_offset, grp, blk, blk_inst;
-	size_t grp_prev = 0;
 	u64 core_mask = pm_core_mask;
 
 	if (!dst || !src || !dst_enable_map ||
@@ -442,18 +287,6 @@ int kbase_hwcnt_gpu_dump_get(
 		const bool is_shader_core = is_block_type_shader(
 			kbase_hwcnt_metadata_group_type(metadata, grp),
 			blk_type, blk);
-
-		if (grp != grp_prev) {
-			/* grp change would only happen with V4. V5 and
-			 * further are envisaged to be single group
-			 * scenario only. Here needs to drop the lower
-			 * group core-mask by shifting right with
-			 * KBASE_HWCNT_V4_SC_BLOCKS_PER_GROUP.
-			 */
-			core_mask = pm_core_mask >>
-				KBASE_HWCNT_V4_SC_BLOCKS_PER_GROUP;
-			grp_prev = grp;
-		}
 
 		/* Early out if no values in the dest block are enabled */
 		if (kbase_hwcnt_enable_map_block_enabled(
@@ -600,29 +433,8 @@ void kbase_hwcnt_gpu_enable_map_to_physical(
 		const u64 *blk_map = kbase_hwcnt_enable_map_block_instance(
 			src, grp, blk, blk_inst);
 
-		switch ((enum kbase_hwcnt_gpu_group_type)grp_type) {
-		case KBASE_HWCNT_GPU_GROUP_TYPE_V4:
-			WARN_ON(blk_val_cnt != KBASE_HWCNT_V4_VALUES_PER_BLOCK);
-			switch ((enum kbase_hwcnt_gpu_v4_block_type)blk_type) {
-			case KBASE_HWCNT_GPU_V4_BLOCK_TYPE_SHADER:
-				shader_bm |= *blk_map;
-				break;
-			case KBASE_HWCNT_GPU_V4_BLOCK_TYPE_TILER:
-				tiler_bm |= *blk_map;
-				break;
-			case KBASE_HWCNT_GPU_V4_BLOCK_TYPE_MMU_L2:
-				mmu_l2_bm |= *blk_map;
-				break;
-			case KBASE_HWCNT_GPU_V4_BLOCK_TYPE_JM:
-				fe_bm |= *blk_map;
-				break;
-			case KBASE_HWCNT_GPU_V4_BLOCK_TYPE_RESERVED:
-				break;
-			default:
-				WARN_ON(true);
-			}
-			break;
-		case KBASE_HWCNT_GPU_GROUP_TYPE_V5:
+		if ((enum kbase_hwcnt_gpu_group_type)grp_type ==
+		    KBASE_HWCNT_GPU_GROUP_TYPE_V5) {
 			WARN_ON(blk_val_cnt != KBASE_HWCNT_V5_VALUES_PER_BLOCK);
 			switch ((enum kbase_hwcnt_gpu_v5_block_type)blk_type) {
 			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_JM:
@@ -642,8 +454,7 @@ void kbase_hwcnt_gpu_enable_map_to_physical(
 			default:
 				WARN_ON(true);
 			}
-			break;
-		default:
+		} else {
 			WARN_ON(true);
 		}
 	}
@@ -697,29 +508,8 @@ void kbase_hwcnt_gpu_enable_map_from_physical(
 		u64 *blk_map = kbase_hwcnt_enable_map_block_instance(
 			dst, grp, blk, blk_inst);
 
-		switch ((enum kbase_hwcnt_gpu_group_type)grp_type) {
-		case KBASE_HWCNT_GPU_GROUP_TYPE_V4:
-			WARN_ON(blk_val_cnt != KBASE_HWCNT_V4_VALUES_PER_BLOCK);
-			switch ((enum kbase_hwcnt_gpu_v4_block_type)blk_type) {
-			case KBASE_HWCNT_GPU_V4_BLOCK_TYPE_SHADER:
-				*blk_map = shader_bm;
-				break;
-			case KBASE_HWCNT_GPU_V4_BLOCK_TYPE_TILER:
-				*blk_map = tiler_bm;
-				break;
-			case KBASE_HWCNT_GPU_V4_BLOCK_TYPE_MMU_L2:
-				*blk_map = mmu_l2_bm;
-				break;
-			case KBASE_HWCNT_GPU_V4_BLOCK_TYPE_JM:
-				*blk_map = fe_bm;
-				break;
-			case KBASE_HWCNT_GPU_V4_BLOCK_TYPE_RESERVED:
-				break;
-			default:
-				WARN_ON(true);
-			}
-			break;
-		case KBASE_HWCNT_GPU_GROUP_TYPE_V5:
+		if ((enum kbase_hwcnt_gpu_group_type)grp_type ==
+		    KBASE_HWCNT_GPU_GROUP_TYPE_V5) {
 			WARN_ON(blk_val_cnt != KBASE_HWCNT_V5_VALUES_PER_BLOCK);
 			switch ((enum kbase_hwcnt_gpu_v5_block_type)blk_type) {
 			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_JM:
@@ -739,8 +529,7 @@ void kbase_hwcnt_gpu_enable_map_from_physical(
 			default:
 				WARN_ON(true);
 			}
-			break;
-		default:
+		} else {
 			WARN_ON(true);
 		}
 	}
@@ -771,14 +560,10 @@ void kbase_hwcnt_gpu_patch_dump_headers(
 			kbasep_hwcnt_backend_gpu_block_map_to_physical(
 				blk_map[0], 0);
 
-		switch ((enum kbase_hwcnt_gpu_group_type)grp_type) {
-		case KBASE_HWCNT_GPU_GROUP_TYPE_V4:
-			buf_blk[KBASE_HWCNT_V4_PRFCNT_EN_HEADER] = prfcnt_en;
-			break;
-		case KBASE_HWCNT_GPU_GROUP_TYPE_V5:
+		if ((enum kbase_hwcnt_gpu_group_type)grp_type ==
+		    KBASE_HWCNT_GPU_GROUP_TYPE_V5) {
 			buf_blk[KBASE_HWCNT_V5_PRFCNT_EN_HEADER] = prfcnt_en;
-			break;
-		default:
+		} else {
 			WARN_ON(true);
 		}
 	}
