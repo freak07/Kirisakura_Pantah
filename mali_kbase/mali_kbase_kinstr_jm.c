@@ -38,7 +38,6 @@
 #include <linux/circ_buf.h>
 #include <linux/fs.h>
 #include <linux/kref.h>
-#include <linux/ktime.h>
 #include <linux/log2.h>
 #include <linux/mutex.h>
 #include <linux/rculist_bl.h>
