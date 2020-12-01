@@ -27,6 +27,9 @@
 #include "pixel_gpu_debug.h"
 #include "pixel_gpu_control.h"
 
+#define CREATE_TRACE_POINTS
+#include "pixel_gpu_trace.h"
+
 #ifdef CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING
 /**
  * GPU_SMC_TZPC_OK -  SMC CALL return value on success
