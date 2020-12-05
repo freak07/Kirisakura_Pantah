@@ -50,6 +50,11 @@
 extern struct kbase_pm_callback_conf pm_callbacks;
 extern struct kbase_platform_funcs_conf platform_funcs;
 
+#ifdef CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING
+#define PLATFORM_PROTECTED_CALLBACKS (&pixel_protected_ops);
+extern struct protected_mode_ops pixel_protected_ops;
+#endif /* CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING */
+
 /**
  * Autosuspend delay
  *

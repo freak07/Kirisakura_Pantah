@@ -112,12 +112,11 @@ static int pixel_gpu_secure_mode_disable(struct protected_mode_device *pdev)
 	return kbase_pm_protected_mode_disable(kbdev);
 }
 
-struct protected_mode_ops platform_protected_ops = {
+struct protected_mode_ops pixel_protected_ops = {
 	.protected_mode_enable = pixel_gpu_secure_mode_enable,
 	.protected_mode_disable = pixel_gpu_secure_mode_disable
 };
 
-#define PLATFORM_PROTECTED_CALLBACKS (&platform_protected_ops);
 #endif /* CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING */
 
 /**
