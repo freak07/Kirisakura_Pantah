@@ -614,6 +614,7 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 		ret = -EINVAL;
 		goto done;
 	}
+	atomic_set(&pc->dvfs.util, 0);
 
 	/* Initialize DVFS governors */
 	ret = gpu_dvfs_governor_init(kbdev);

@@ -38,6 +38,17 @@ static int get_level_from_clock(struct kbase_device *kbdev, int clock)
 
 /* Custom attributes */
 
+static ssize_t utilization_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+
+	if (!pc)
+		return -ENODEV;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", atomic_read(&pc->dvfs.util));
+}
+
 static ssize_t gpu_log_level_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -257,6 +268,7 @@ static ssize_t tmu_max_freq_show(struct device *dev, struct device_attribute *at
 }
 
 DEVICE_ATTR_RW(gpu_log_level);
+DEVICE_ATTR_RO(utilization);
 DEVICE_ATTR_RO(clock_info);
 DEVICE_ATTR_RO(dvfs_table);
 DEVICE_ATTR_RO(power_stats);
@@ -481,6 +493,7 @@ static struct {
 	const char *name;
 	const struct device_attribute *attr;
 } attribs[] = {
+	{ "utilization", &dev_attr_utilization },
 	{ "gpu_log_level", &dev_attr_gpu_log_level },
 	{ "clock_info", &dev_attr_clock_info },
 	{ "dvfs_table", &dev_attr_dvfs_table },
