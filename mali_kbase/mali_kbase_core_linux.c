@@ -144,25 +144,6 @@
 #define KBASE_API_MAJ(api_version) ((api_version >> 20) & 0xFFF)
 
 /**
- * mali_kbase_api_version_to_maj_min - convert an api_version to a min/maj pair
- *
- * @api_version: API version to convert
- * @major:  Major version number (must not exceed 12 bits)
- * @minor:  Major version number (must not exceed 12 bits)
- */
-void mali_kbase_api_version_to_maj_min(unsigned long api_version, u16 *maj, u16 *min)
-{
-	if (WARN_ON(!maj))
-		return;
-
-	if (WARN_ON(!min))
-		return;
-
-	*maj = KBASE_API_MAJ(api_version);
-	*min = KBASE_API_MIN(api_version);
-}
-
-/**
  * kbase capabilities table
  */
 typedef struct mali_kbase_capability_def {
