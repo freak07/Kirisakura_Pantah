@@ -27,6 +27,7 @@
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_debug.h"
 #include "pixel_gpu_control.h"
+#include "pixel_gpu_trace.h"
 
 /**
  * gpu_power_on() - Powers on a GPU.
@@ -43,6 +44,7 @@ static int gpu_power_on(struct kbase_device *kbdev)
 {
 	int ret = -1;
 	struct pixel_context *pc = kbdev->platform_context;
+	u64 start_ns = ktime_get_ns();
 
 	mutex_lock(&pc->pm.domain->access_lock);
 
@@ -68,10 +70,13 @@ done:
 	pc->pm.state_lost = false;
 	mutex_unlock(&pc->pm.domain->access_lock);
 
+	if (ret == 1) {
+		trace_gpu_power_state(ktime_get_ns() - start_ns,
+			GPU_POWER_LEVEL_GLOBAL, GPU_POWER_LEVEL_STACKS);
 #ifdef CONFIG_MALI_MIDGARD_DVFS
-	if (ret == 1)
 		gpu_dvfs_event_power_on(kbdev);
 #endif
+	}
 
 	return ret;
 }
@@ -92,6 +97,7 @@ static int gpu_power_off(struct kbase_device *kbdev, bool state_lost)
 {
 	int ret = -1;
 	struct pixel_context *pc = kbdev->platform_context;
+	u64 start_ns = ktime_get_ns();
 
 	mutex_lock(&pc->pm.domain->access_lock);
 
@@ -119,10 +125,13 @@ done:
 
 	mutex_unlock(&pc->pm.domain->access_lock);
 
+	if (ret == 1) {
+		trace_gpu_power_state(ktime_get_ns() - start_ns,
+			GPU_POWER_LEVEL_STACKS, GPU_POWER_LEVEL_GLOBAL);
 #ifdef CONFIG_MALI_MIDGARD_DVFS
-	if (ret == 1)
 		gpu_dvfs_event_power_off(kbdev);
 #endif
+	}
 
 	return ret;
 }
