@@ -3784,6 +3784,7 @@ static void kbasep_protected_mode_hwcnt_disable_worker(struct work_struct *data)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
 
+#ifndef PLATFORM_PROTECTED_CALLBACKS
 static int kbasep_protected_mode_enable(struct protected_mode_device *pdev)
 {
 	struct kbase_device *kbdev = pdev->data;
@@ -3803,7 +3804,6 @@ static const struct protected_mode_ops kbasep_native_protected_ops = {
 	.protected_mode_disable = kbasep_protected_mode_disable
 };
 
-#ifndef PLATFORM_PROTECTED_CALLBACKS
 #define PLATFORM_PROTECTED_CALLBACKS (&kbasep_native_protected_ops)
 #endif /* PLATFORM_PROTECTED_CALLBACKS */
 
