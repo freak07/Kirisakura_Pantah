@@ -27,7 +27,7 @@
 #include "pixel_gpu_debug.h"
 #include "pixel_gpu_dvfs.h"
 
-#define DVFS_TABLE_ROW_MAX (8)
+#define DVFS_TABLE_ROW_MAX (16)
 static struct gpu_dvfs_opp gpu_dvfs_table[DVFS_TABLE_ROW_MAX];
 
 /* DVFS metrics code */
@@ -391,6 +391,7 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation,
 /**
  * find_voltage_for_freq() - Retrieves voltage for a frequency from ECT.
  *
+ * @kbdev:      The &struct kbase_device for the GPU.
  * @clock:      The frequency to search for.
  * @vol:        A pointer into which the voltage, if found, will be written.
  * @arr:        The &struct dvfs_rate_volt array to search through.
@@ -398,8 +399,8 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation,
  *
  * Return: Returns 0 on success, -ENOENT if @clock doesn't exist in ECT.
  */
-static int find_voltage_for_freq(unsigned int clock, unsigned int *vol,
-	struct dvfs_rate_volt *arr, unsigned int arr_length)
+static int find_voltage_for_freq(struct kbase_device *kbdev, unsigned int clock,
+	unsigned int *vol, struct dvfs_rate_volt *arr, unsigned int arr_length)
 {
 	int i;
 
@@ -411,6 +412,7 @@ static int find_voltage_for_freq(unsigned int clock, unsigned int *vol,
 		}
 	}
 
+	GPU_LOG(LOG_ERROR, kbdev, "Failed to find voltage for clock %u\n", clock);
 	return -ENOENT;
 }
 
@@ -476,10 +478,10 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 	}
 
 	/* We detect which ASV table the GPU is running by checking which
-	 * operating points are available from ECT. We check for 200MHz on the
+	 * operating points are available from ECT. We check for 202MHz on the
 	 * GPU shader cores as this is only available in the ASV v0.3.
 	 */
-	if (find_voltage_for_freq(200000, NULL, gpu1_vf_map, gpu1_level_count))
+	if (find_voltage_for_freq(kbdev, 202000, NULL, gpu1_vf_map, gpu1_level_count))
 		of_property_read_u32_array(np, "gpu_dvfs_table_v1", of_data_int_array, dvfs_table_size);
 	else
 		of_property_read_u32_array(np, "gpu_dvfs_table_v2", of_data_int_array, dvfs_table_size);
@@ -505,12 +507,12 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 			gpu_dvfs_table[i].qos.cpu2_max = CPU_FREQ_MAX;
 
 		/* Get and validate voltages from cal-if */
-		if (find_voltage_for_freq(gpu_dvfs_table[i].clk0,
+		if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk0,
 				&(gpu_dvfs_table[i].vol0),
 				gpu0_vf_map, gpu0_level_count))
 			goto err;
 
-		if (find_voltage_for_freq(gpu_dvfs_table[i].clk1,
+		if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk1,
 				&(gpu_dvfs_table[i].vol1),
 				gpu1_vf_map, gpu1_level_count))
 			goto err;
@@ -614,6 +616,7 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 		ret = -EINVAL;
 		goto done;
 	}
+	atomic_set(&pc->dvfs.util, 0);
 
 	/* Initialize DVFS governors */
 	ret = gpu_dvfs_governor_init(kbdev);

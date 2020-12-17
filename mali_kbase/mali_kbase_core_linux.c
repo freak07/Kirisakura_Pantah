@@ -144,25 +144,6 @@
 #define KBASE_API_MAJ(api_version) ((api_version >> 20) & 0xFFF)
 
 /**
- * mali_kbase_api_version_to_maj_min - convert an api_version to a min/maj pair
- *
- * @api_version: API version to convert
- * @major:  Major version number (must not exceed 12 bits)
- * @minor:  Major version number (must not exceed 12 bits)
- */
-void mali_kbase_api_version_to_maj_min(unsigned long api_version, u16 *maj, u16 *min)
-{
-	if (WARN_ON(!maj))
-		return;
-
-	if (WARN_ON(!min))
-		return;
-
-	*maj = KBASE_API_MAJ(api_version);
-	*min = KBASE_API_MIN(api_version);
-}
-
-/**
  * kbase capabilities table
  */
 typedef struct mali_kbase_capability_def {
@@ -3803,6 +3784,7 @@ static void kbasep_protected_mode_hwcnt_disable_worker(struct work_struct *data)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
 
+#ifndef PLATFORM_PROTECTED_CALLBACKS
 static int kbasep_protected_mode_enable(struct protected_mode_device *pdev)
 {
 	struct kbase_device *kbdev = pdev->data;
@@ -3822,7 +3804,6 @@ static const struct protected_mode_ops kbasep_native_protected_ops = {
 	.protected_mode_disable = kbasep_protected_mode_disable
 };
 
-#ifndef PLATFORM_PROTECTED_CALLBACKS
 #define PLATFORM_PROTECTED_CALLBACKS (&kbasep_native_protected_ops)
 #endif /* PLATFORM_PROTECTED_CALLBACKS */
 

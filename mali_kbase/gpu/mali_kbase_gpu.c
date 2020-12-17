@@ -22,6 +22,7 @@
 
 #include <mali_kbase.h>
 #include <mali_kbase_defs.h>
+#include <gpu/mali_kbase_gpu_fault.h>
 
 const char *kbase_gpu_access_type_name(u32 fault_status)
 {

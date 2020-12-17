@@ -34,7 +34,7 @@
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
- * Context: Process context. Takes and releases the power domain access lock.
+ * Context: Process context.
  *
  * Return: If the GPU was powered on in this call returns 1. If the GPU was already
  *         powered on, returns 0. Otherwise returns a negative value to indicate
@@ -46,29 +46,15 @@ static int gpu_power_on(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
-	mutex_lock(&pc->pm.domain->access_lock);
+	ret = exynos_pd_power_on(pc->pm.domain);
 
-	if (cal_pd_status(pc->pm.domain->cal_pdid)) {
-		/* GPU is already powered on */
-		ret = 0;
-		goto done;
-	}
-
-	if (WARN_ON(cal_pd_control(pc->pm.domain->cal_pdid, 1))) {
+	if (WARN_ON(ret < 0)) {
 		GPU_LOG(LOG_WARN, kbdev, "Failed to turn the GPU on\n");
 		goto done;
 	}
 
-	if (WARN_ON(!cal_pd_status(pc->pm.domain->cal_pdid))) {
-		GPU_LOG(LOG_WARN, kbdev, "GPU didn't power on\n");
-		goto done;
-	}
-
-	ret = 1;
-
 done:
 	pc->pm.state_lost = false;
-	mutex_unlock(&pc->pm.domain->access_lock);
 
 	if (ret == 1) {
 		trace_gpu_power_state(ktime_get_ns() - start_ns,
@@ -87,7 +73,7 @@ done:
  * @kbdev:      The &struct kbase_device for the GPU.
  * @state_lost: Indicates whether the GPU state will be lost soon after this power off operation.
  *
- * Context: Process context. Takes and releases the power domain access lock.
+ * Context: Process context.
  *
  * Return: If the GPU was powered off in this call, returns 1. If the GPU was already
  *         powered off, returns 0. Otherwise returns a negative value to indicate
@@ -99,31 +85,16 @@ static int gpu_power_off(struct kbase_device *kbdev, bool state_lost)
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
-	mutex_lock(&pc->pm.domain->access_lock);
+	ret = exynos_pd_power_off(pc->pm.domain);
 
-	if (!cal_pd_status(pc->pm.domain->cal_pdid)) {
-		/* GPU is already powered off */
-		ret = 0;
-		goto done;
-	}
-
-	if (WARN_ON(cal_pd_control(pc->pm.domain->cal_pdid, 0))) {
+	if (WARN_ON(ret < 0)) {
 		GPU_LOG(LOG_WARN, kbdev, "Failed to turn the GPU off\n");
 		goto done;
 	}
 
-	if (WARN_ON(cal_pd_status(pc->pm.domain->cal_pdid))) {
-		GPU_LOG(LOG_WARN, kbdev, "GPU didn't power off\n");
-		goto done;
-	}
-
-	ret = 1;
-
 done:
 	if (state_lost)
 		pc->pm.state_lost = true;
-
-	mutex_unlock(&pc->pm.domain->access_lock);
 
 	if (ret == 1) {
 		trace_gpu_power_state(ktime_get_ns() - start_ns,

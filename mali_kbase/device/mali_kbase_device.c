@@ -45,6 +45,7 @@
 #include "mali_kbase_hwcnt_virtualizer.h"
 
 #include "mali_kbase_device.h"
+#include "mali_kbase_device_internal.h"
 #include "backend/gpu/mali_kbase_pm_internal.h"
 #include "backend/gpu/mali_kbase_irq_internal.h"
 #include "mali_kbase_regs_history_debugfs.h"
