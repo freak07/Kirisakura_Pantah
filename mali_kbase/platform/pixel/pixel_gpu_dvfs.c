@@ -29,7 +29,6 @@
 #define DVFS_TABLE_ROW_MAX (16)
 static struct gpu_dvfs_opp gpu_dvfs_table[DVFS_TABLE_ROW_MAX];
 
-
 /* DVFS event handling code */
 
 /**

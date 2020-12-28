@@ -128,7 +128,7 @@ static ssize_t clock_info_show(struct device *dev, struct device_attribute *attr
 
 #ifdef CONFIG_MALI_PIXEL_GPU_BTS
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-		"GPU Bus Traffic Shaping  :%s\n",
+		"GPU Bus Traffic Shaping  : %s\n",
 		(pc->dvfs.qos.bts.enabled ? "on" : "off"));
 #endif /* CONFIG_MALI_PIXEL_GPU_BTS */
 
@@ -267,12 +267,92 @@ static ssize_t tmu_max_freq_show(struct device *dev, struct device_attribute *at
 	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.tmu.level_limit].clk0);
 }
 
+static ssize_t uid_time_in_state_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int i;
+	ssize_t ret = 0;
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+	struct gpu_dvfs_metrics_uid_stats *entry = NULL;
+
+	if (!pc)
+		return -ENODEV;
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "uid: ");
+	for (i=0; i < pc->dvfs.table_size; i++)
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%u ", pc->dvfs.table[i].clk0);
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "\n");
+
+	list_for_each_entry(entry, &pc->dvfs.metrics.uid_stats_list, uid_list_link) {
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%u: ", __kuid_val(entry->uid));
+		for (i=0; i < pc->dvfs.table_size; i++) {
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%llu ",
+				entry->tis_stats[i].time_total / NSEC_PER_MSEC);
+		}
+
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "\n");
+	}
+
+	return ret;
+}
+
+
+static ssize_t uid_time_in_state_h_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int i;
+	ssize_t ret = 0;
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+	struct gpu_dvfs_metrics_uid_stats *entry = NULL;
+	u64 *totals;
+
+	if (!pc)
+		return -ENODEV;
+
+	totals = kzalloc(sizeof(u64) * pc->dvfs.table_size, GFP_KERNEL);
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "            | ");
+	for (i=0; i < pc->dvfs.table_size; i++)
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%9u  ", pc->dvfs.table[i].clk0);
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+		"\n------------+-----------------------------------------------------------------\n");
+
+	list_for_each_entry(entry, &pc->dvfs.metrics.uid_stats_list, uid_list_link) {
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%6d (%2d) | ",
+			__kuid_val(entry->uid), entry->active_kctx_count);
+		for (i=0; i < pc->dvfs.table_size; i++) {
+			totals[i] += entry->tis_stats[i].time_total;
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%9llu  ",
+				entry->tis_stats[i].time_total / NSEC_PER_MSEC);
+		}
+
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "\n");
+	}
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+		"------------+-----------------------------------------------------------------\n");
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "     Totals | ");
+	for (i=0; i < pc->dvfs.table_size; i++) {
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%9llu  ",
+			totals[i] / NSEC_PER_MSEC);
+	}
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "\n");
+
+	kfree(totals);
+
+	return ret;
+}
+
 DEVICE_ATTR_RW(gpu_log_level);
 DEVICE_ATTR_RO(utilization);
 DEVICE_ATTR_RO(clock_info);
 DEVICE_ATTR_RO(dvfs_table);
 DEVICE_ATTR_RO(power_stats);
 DEVICE_ATTR_RO(tmu_max_freq);
+DEVICE_ATTR_RO(uid_time_in_state);
+DEVICE_ATTR_RO(uid_time_in_state_h);
 
 
 /* devfreq-like attributes */
@@ -499,6 +579,8 @@ static struct {
 	{ "dvfs_table", &dev_attr_dvfs_table },
 	{ "power_stats", &dev_attr_power_stats },
 	{ "tmu_max_freq", &dev_attr_tmu_max_freq },
+	{ "uid_time_in_state", &dev_attr_uid_time_in_state },
+	{ "uid_time_in_state_h", &dev_attr_uid_time_in_state_h },
 	{ "available_frequencies", &dev_attr_available_frequencies },
 	{ "cur_freq", &dev_attr_cur_freq },
 	{ "max_freq", &dev_attr_max_freq },
