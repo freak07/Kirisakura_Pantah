@@ -295,6 +295,7 @@ int gpu_dvfs_kctx_init(struct kbase_context *kctx)
 	kuid_t uid;
 
 	struct gpu_dvfs_metrics_uid_stats *entry, *stats;
+	unsigned long flags;
 	int ret = 0;
 
 	lockdep_assert_held(&kctx->kbdev->kctx_list_lock);
@@ -303,7 +304,7 @@ int gpu_dvfs_kctx_init(struct kbase_context *kctx)
 	task = get_pid_task(find_get_pid(kctx->kprcs->tgid), PIDTYPE_TGID);
 	uid = task->cred->uid;
 
-	spin_lock(&pc->dvfs.metrics.uid_lock);
+	spin_lock_irqsave(&pc->dvfs.metrics.uid_lock, flags);
 
 	/*
 	 * Search through the UIDs we have encountered previously, and either return an already
@@ -347,7 +348,7 @@ int gpu_dvfs_kctx_init(struct kbase_context *kctx)
 	kctx->platform_data = stats;
 
 done:
-	spin_unlock(&pc->dvfs.metrics.uid_lock);
+	spin_unlock_irqrestore(&pc->dvfs.metrics.uid_lock, flags);
 	return ret;
 }
 
@@ -364,11 +365,12 @@ void gpu_dvfs_kctx_term(struct kbase_context *kctx)
 	struct kbase_device *kbdev = kctx->kbdev;
 	struct pixel_context *pc = kbdev->platform_context;
 	struct gpu_dvfs_metrics_uid_stats *stats = kctx->platform_data;
+	unsigned long flags;
 
-	spin_lock(&pc->dvfs.metrics.uid_lock);
+	spin_lock_irqsave(&pc->dvfs.metrics.uid_lock, flags);
 	stats->active_kctx_count--;
 	WARN_ON(stats->active_kctx_count < 0);
-	spin_unlock(&pc->dvfs.metrics.uid_lock);
+	spin_unlock_irqrestore(&pc->dvfs.metrics.uid_lock, flags);
 }
 
 /**
