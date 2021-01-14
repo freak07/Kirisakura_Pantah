@@ -61,6 +61,20 @@ TRACE_EVENT(gpu_power_state,
 	)
 );
 
+TRACE_EVENT(gpu_util,
+	TP_PROTO(int gpu_util),
+	TP_ARGS(gpu_util),
+	TP_STRUCT__entry(
+		__field(int, gpu_util)
+	),
+	TP_fast_assign(
+		__entry->gpu_util = gpu_util;
+	),
+	TP_printk("gpu_util=%d",
+		__entry->gpu_util
+	)
+);
+
 #endif /* _TRACE_PIXEL_GPU_H */
 
 /* This part must be outside protection */
