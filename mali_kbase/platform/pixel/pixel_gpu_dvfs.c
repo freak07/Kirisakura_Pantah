@@ -421,35 +421,47 @@ err:
 }
 
 /**
- * gpu_dvfs_get_initial_level() - Determine the boot DVFS level from cal-if
+ * gpu_dvfs_set_initial_level() - Set the initial GPU clocks
  *
  * @kbdev: The &struct kbase_device for the GPU
  *
- * This function searches through the DVFS table until it finds the lowest throughput level that
- * matches the boot clocks for the two GPU clock domains.
+ * This function sets the G3DL2 and G3D clocks to the values corresponding to the lowest throughput
+ * level in the DVFS table.
  *
- * Return: The level corresponding to the boot state, -EINVAL if it doesn't exist.
+ * Return: 0 on success, or an error value on failure.
  */
-static int gpu_dvfs_get_initial_level(struct kbase_device *kbdev)
+static int gpu_dvfs_set_initial_level(struct kbase_device *kbdev)
 {
-	int level;
-
+	int level, ret;
 	struct pixel_context *pc = kbdev->platform_context;
-	int clk0 = cal_dfs_get_boot_freq(pc->dvfs.gpu0_cal_id);
-	int clk1 = cal_dfs_get_boot_freq(pc->dvfs.gpu1_cal_id);
 
-	for (level = pc->dvfs.table_size - 1; level >= 0; level--)
-		if (pc->dvfs.table[level].clk0 == clk0 && pc->dvfs.table[level].clk1 == clk1)
-			break;
+	level = pc->dvfs.level_min;
 
-	if (level < 0) {
+	GPU_LOG(LOG_DEBUG, kbdev,
+		"Attempting to set GPU boot clocks to (gpu0: %d, gpu1: %d)\n",
+		pc->dvfs.table[level].clk0, pc->dvfs.table[level].clk1);
+
+	mutex_lock(&pc->pm.domain->access_lock);
+
+	ret = cal_dfs_set_rate(pc->dvfs.gpu0_cal_id, pc->dvfs.table[level].clk0);
+	if (ret) {
 		GPU_LOG(LOG_ERROR, kbdev,
-			"boot OPP pair (gpu0: %d, gpu1: %d) not present in DVFS table\n",
-			clk0, clk1);
-		return -EINVAL;
+			"Failed to set boot G3DL2 clock to %d (err: %d)\n",
+			pc->dvfs.table[level].clk0, ret);
+		goto done;
 	}
 
-	return level;
+	ret = cal_dfs_set_rate(pc->dvfs.gpu1_cal_id, pc->dvfs.table[level].clk1);
+	if (ret) {
+		GPU_LOG(LOG_ERROR, kbdev,
+			"Failed to set boot G3D clock to %d\n (err: %d)",
+			pc->dvfs.table[level].clk1, ret);
+		goto done;
+	}
+
+done:
+	mutex_unlock(&pc->pm.domain->access_lock);
+	return ret;
 }
 
 /**
@@ -494,15 +506,14 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	pc->dvfs.tmu.level_limit = pc->dvfs.level_max;
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 
-	/* Determine initial state */
-	pc->dvfs.level_start = gpu_dvfs_get_initial_level(kbdev);
-	if (pc->dvfs.level_start < 0) {
+	/* Set the current level to the lowest throughput level */
+	if (gpu_dvfs_set_initial_level(kbdev)) {
 		ret = -EINVAL;
 		goto done;
 	}
 
-	pc->dvfs.level = pc->dvfs.level_start;
-	pc->dvfs.level_target = pc->dvfs.level_start;
+	pc->dvfs.level = pc->dvfs.level_min;
+	pc->dvfs.level_target = pc->dvfs.level_min;
 
 	/* Initialize power down hysteresis */
 	if (of_property_read_u32(np, "gpu_dvfs_clockdown_hysteresis",
