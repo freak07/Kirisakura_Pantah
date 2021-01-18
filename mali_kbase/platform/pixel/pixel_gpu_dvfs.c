@@ -27,7 +27,7 @@
 #include "pixel_gpu_dvfs.h"
 #include "pixel_gpu_trace.h"
 
-#define DVFS_TABLE_ROW_MAX (16)
+#define DVFS_TABLE_ROW_MAX (12)
 static struct gpu_dvfs_opp gpu_dvfs_table[DVFS_TABLE_ROW_MAX];
 
 /* DVFS event handling code */
@@ -286,7 +286,6 @@ static int find_voltage_for_freq(struct kbase_device *kbdev, unsigned int clock,
 		}
 	}
 
-	GPU_LOG(LOG_ERROR, kbdev, "Failed to find voltage for clock %u\n", clock);
 	return -ENOENT;
 }
 
@@ -317,6 +316,8 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 	struct dvfs_rate_volt gpu1_vf_map[16];
 	int gpu0_level_count, gpu1_level_count;
 
+	bool use_asv_v1;
+
 	/* Get frequency -> voltage mapping */
 	gpu0_level_count = cal_dfs_get_lv_num(pc->dvfs.gpu0_cal_id);
 	gpu1_level_count = cal_dfs_get_lv_num(pc->dvfs.gpu1_cal_id);
@@ -331,9 +332,23 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		goto err;
 	}
 
+	/* We detect which ASV table the GPU is running by checking which
+	 * operating points are available from ECT. We check for 202MHz on the
+	 * GPU shader cores as this is only available in ASV v0.3 and later.
+	 */
+	if (find_voltage_for_freq(kbdev, 202000, NULL, gpu1_vf_map, gpu1_level_count))
+		use_asv_v1 = true;
+	else
+		use_asv_v1 = false;
+
 	/* Get size of DVFS table data from device tree */
-	if (of_property_read_u32_array(np, "gpu_dvfs_table_size", of_data_int_array, 2))
-		goto err;
+	if (use_asv_v1) {
+		if (of_property_read_u32_array(np, "gpu_dvfs_table_size_v1", of_data_int_array, 2))
+			goto err;
+	} else {
+		if (of_property_read_u32_array(np, "gpu_dvfs_table_size_v2", of_data_int_array, 2))
+			goto err;
+	}
 
 	dvfs_table_row_num = of_data_int_array[0];
 	dvfs_table_col_num = of_data_int_array[1];
@@ -351,14 +366,12 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		goto err;
 	}
 
-	/* We detect which ASV table the GPU is running by checking which
-	 * operating points are available from ECT. We check for 202MHz on the
-	 * GPU shader cores as this is only available in the ASV v0.3.
-	 */
-	if (find_voltage_for_freq(kbdev, 202000, NULL, gpu1_vf_map, gpu1_level_count))
-		of_property_read_u32_array(np, "gpu_dvfs_table_v1", of_data_int_array, dvfs_table_size);
+	if (use_asv_v1)
+		of_property_read_u32_array(np, "gpu_dvfs_table_v1",
+			of_data_int_array, dvfs_table_size);
 	else
-		of_property_read_u32_array(np, "gpu_dvfs_table_v2", of_data_int_array, dvfs_table_size);
+		of_property_read_u32_array(np, "gpu_dvfs_table_v2",
+			of_data_int_array, dvfs_table_size);
 
 	/* Process DVFS table data from device tree and store it in OPP table */
 	for (i = 0; i < dvfs_table_row_num; i++) {
@@ -383,13 +396,21 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		/* Get and validate voltages from cal-if */
 		if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk0,
 				&(gpu_dvfs_table[i].vol0),
-				gpu0_vf_map, gpu0_level_count))
+				gpu0_vf_map, gpu0_level_count)) {
+			GPU_LOG(LOG_ERROR, kbdev,
+				"Failed to find G3DL2 voltage for clock %u\n",
+				gpu_dvfs_table[i].clk0);
 			goto err;
+		}
 
 		if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk1,
 				&(gpu_dvfs_table[i].vol1),
-				gpu1_vf_map, gpu1_level_count))
+				gpu1_vf_map, gpu1_level_count)) {
+			GPU_LOG(LOG_ERROR, kbdev,
+				"Failed to find G3DL2 voltage for clock %u\n",
+				gpu_dvfs_table[i].clk1);
 			goto err;
+		}
 	}
 
 	return dvfs_table_row_num;
