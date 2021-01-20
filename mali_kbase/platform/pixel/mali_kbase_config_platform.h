@@ -198,7 +198,6 @@ struct gpu_dvfs_metrics_uid_stats;
  * @dvfs.table:                 Pointer to the DVFS table which is an array of &struct gpu_dvfs_opp
  * @dvfs.table_size:            Number of levels in in @dvfs.table.
  * @dvfs.level:                 The current last active level run on the GPU.
- * @dvfs.level_start:           The level at which the GPU powers on at boot. Determined via cal-if.
  * @dvfs.level_target:          The level at which the GPU should run at next power on.
  * @dvfs.level_max:             The maximum throughput level available on the GPU. Set via DT.
  * @dvfs.level_min:             The minimum throughput level available of the GPU. Set via DT.
@@ -264,7 +263,6 @@ struct pixel_context {
 		struct gpu_dvfs_opp *table;
 		int table_size;
 		int level;
-		int level_start;
 		int level_target;
 		int level_max;
 		int level_min;

@@ -27,7 +27,7 @@
 #include "pixel_gpu_dvfs.h"
 #include "pixel_gpu_trace.h"
 
-#define DVFS_TABLE_ROW_MAX (16)
+#define DVFS_TABLE_ROW_MAX (12)
 static struct gpu_dvfs_opp gpu_dvfs_table[DVFS_TABLE_ROW_MAX];
 
 /* DVFS event handling code */
@@ -286,7 +286,6 @@ static int find_voltage_for_freq(struct kbase_device *kbdev, unsigned int clock,
 		}
 	}
 
-	GPU_LOG(LOG_ERROR, kbdev, "Failed to find voltage for clock %u\n", clock);
 	return -ENOENT;
 }
 
@@ -317,6 +316,8 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 	struct dvfs_rate_volt gpu1_vf_map[16];
 	int gpu0_level_count, gpu1_level_count;
 
+	bool use_asv_v1;
+
 	/* Get frequency -> voltage mapping */
 	gpu0_level_count = cal_dfs_get_lv_num(pc->dvfs.gpu0_cal_id);
 	gpu1_level_count = cal_dfs_get_lv_num(pc->dvfs.gpu1_cal_id);
@@ -331,9 +332,23 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		goto err;
 	}
 
+	/* We detect which ASV table the GPU is running by checking which
+	 * operating points are available from ECT. We check for 202MHz on the
+	 * GPU shader cores as this is only available in ASV v0.3 and later.
+	 */
+	if (find_voltage_for_freq(kbdev, 202000, NULL, gpu1_vf_map, gpu1_level_count))
+		use_asv_v1 = true;
+	else
+		use_asv_v1 = false;
+
 	/* Get size of DVFS table data from device tree */
-	if (of_property_read_u32_array(np, "gpu_dvfs_table_size", of_data_int_array, 2))
-		goto err;
+	if (use_asv_v1) {
+		if (of_property_read_u32_array(np, "gpu_dvfs_table_size_v1", of_data_int_array, 2))
+			goto err;
+	} else {
+		if (of_property_read_u32_array(np, "gpu_dvfs_table_size_v2", of_data_int_array, 2))
+			goto err;
+	}
 
 	dvfs_table_row_num = of_data_int_array[0];
 	dvfs_table_col_num = of_data_int_array[1];
@@ -351,14 +366,12 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		goto err;
 	}
 
-	/* We detect which ASV table the GPU is running by checking which
-	 * operating points are available from ECT. We check for 202MHz on the
-	 * GPU shader cores as this is only available in the ASV v0.3.
-	 */
-	if (find_voltage_for_freq(kbdev, 202000, NULL, gpu1_vf_map, gpu1_level_count))
-		of_property_read_u32_array(np, "gpu_dvfs_table_v1", of_data_int_array, dvfs_table_size);
+	if (use_asv_v1)
+		of_property_read_u32_array(np, "gpu_dvfs_table_v1",
+			of_data_int_array, dvfs_table_size);
 	else
-		of_property_read_u32_array(np, "gpu_dvfs_table_v2", of_data_int_array, dvfs_table_size);
+		of_property_read_u32_array(np, "gpu_dvfs_table_v2",
+			of_data_int_array, dvfs_table_size);
 
 	/* Process DVFS table data from device tree and store it in OPP table */
 	for (i = 0; i < dvfs_table_row_num; i++) {
@@ -383,13 +396,21 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		/* Get and validate voltages from cal-if */
 		if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk0,
 				&(gpu_dvfs_table[i].vol0),
-				gpu0_vf_map, gpu0_level_count))
+				gpu0_vf_map, gpu0_level_count)) {
+			GPU_LOG(LOG_ERROR, kbdev,
+				"Failed to find G3DL2 voltage for clock %u\n",
+				gpu_dvfs_table[i].clk0);
 			goto err;
+		}
 
 		if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk1,
 				&(gpu_dvfs_table[i].vol1),
-				gpu1_vf_map, gpu1_level_count))
+				gpu1_vf_map, gpu1_level_count)) {
+			GPU_LOG(LOG_ERROR, kbdev,
+				"Failed to find G3DL2 voltage for clock %u\n",
+				gpu_dvfs_table[i].clk1);
 			goto err;
+		}
 	}
 
 	return dvfs_table_row_num;
@@ -400,35 +421,47 @@ err:
 }
 
 /**
- * gpu_dvfs_get_initial_level() - Determine the boot DVFS level from cal-if
+ * gpu_dvfs_set_initial_level() - Set the initial GPU clocks
  *
  * @kbdev: The &struct kbase_device for the GPU
  *
- * This function searches through the DVFS table until it finds the lowest throughput level that
- * matches the boot clocks for the two GPU clock domains.
+ * This function sets the G3DL2 and G3D clocks to the values corresponding to the lowest throughput
+ * level in the DVFS table.
  *
- * Return: The level corresponding to the boot state, -EINVAL if it doesn't exist.
+ * Return: 0 on success, or an error value on failure.
  */
-static int gpu_dvfs_get_initial_level(struct kbase_device *kbdev)
+static int gpu_dvfs_set_initial_level(struct kbase_device *kbdev)
 {
-	int level;
-
+	int level, ret;
 	struct pixel_context *pc = kbdev->platform_context;
-	int clk0 = cal_dfs_get_boot_freq(pc->dvfs.gpu0_cal_id);
-	int clk1 = cal_dfs_get_boot_freq(pc->dvfs.gpu1_cal_id);
 
-	for (level = pc->dvfs.table_size - 1; level >= 0; level--)
-		if (pc->dvfs.table[level].clk0 == clk0 && pc->dvfs.table[level].clk1 == clk1)
-			break;
+	level = pc->dvfs.level_min;
 
-	if (level < 0) {
+	GPU_LOG(LOG_DEBUG, kbdev,
+		"Attempting to set GPU boot clocks to (gpu0: %d, gpu1: %d)\n",
+		pc->dvfs.table[level].clk0, pc->dvfs.table[level].clk1);
+
+	mutex_lock(&pc->pm.domain->access_lock);
+
+	ret = cal_dfs_set_rate(pc->dvfs.gpu0_cal_id, pc->dvfs.table[level].clk0);
+	if (ret) {
 		GPU_LOG(LOG_ERROR, kbdev,
-			"boot OPP pair (gpu0: %d, gpu1: %d) not present in DVFS table\n",
-			clk0, clk1);
-		return -EINVAL;
+			"Failed to set boot G3DL2 clock to %d (err: %d)\n",
+			pc->dvfs.table[level].clk0, ret);
+		goto done;
 	}
 
-	return level;
+	ret = cal_dfs_set_rate(pc->dvfs.gpu1_cal_id, pc->dvfs.table[level].clk1);
+	if (ret) {
+		GPU_LOG(LOG_ERROR, kbdev,
+			"Failed to set boot G3D clock to %d\n (err: %d)",
+			pc->dvfs.table[level].clk1, ret);
+		goto done;
+	}
+
+done:
+	mutex_unlock(&pc->pm.domain->access_lock);
+	return ret;
 }
 
 /**
@@ -473,15 +506,14 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	pc->dvfs.tmu.level_limit = pc->dvfs.level_max;
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 
-	/* Determine initial state */
-	pc->dvfs.level_start = gpu_dvfs_get_initial_level(kbdev);
-	if (pc->dvfs.level_start < 0) {
+	/* Set the current level to the lowest throughput level */
+	if (gpu_dvfs_set_initial_level(kbdev)) {
 		ret = -EINVAL;
 		goto done;
 	}
 
-	pc->dvfs.level = pc->dvfs.level_start;
-	pc->dvfs.level_target = pc->dvfs.level_start;
+	pc->dvfs.level = pc->dvfs.level_min;
+	pc->dvfs.level_target = pc->dvfs.level_min;
 
 	/* Initialize power down hysteresis */
 	if (of_property_read_u32(np, "gpu_dvfs_clockdown_hysteresis",

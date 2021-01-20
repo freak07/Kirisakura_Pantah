@@ -17,7 +17,7 @@
 /* Helper functions */
 
 /**
- * get_level_from_clock() - Helper function to get the level index corresponding to a clock.
+ * get_level_from_clock() - Helper function to get the level index corresponding to a G3D clock.
  *
  * @kbdev: The &struct kbase_device for the GPU.
  * @clock: The frequency (in kHz) of the GPU Top Level clock to get the level from.
@@ -30,7 +30,7 @@ static int get_level_from_clock(struct kbase_device *kbdev, int clock)
 	int i;
 
 	for (i = 0; i < pc->dvfs.table_size; i++)
-		if (pc->dvfs.table[i].clk0 == clock)
+		if (pc->dvfs.table[i].clk1 == clock)
 			return i;
 
 	return -1;
@@ -230,7 +230,7 @@ static ssize_t power_stats_show(struct device *dev, struct device_attribute *att
 	for (i = 0; i < pc->dvfs.table_size; i++) {
 		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
 			"%d:\n\ttotal_time = %llu\n\tcount = %d\n\tlast_entry_time = %llu\n",
-			pc->dvfs.table[i].clk0,
+			pc->dvfs.table[i].clk1,
 			pc->dvfs.table[i].metrics.time_total / NSEC_PER_MSEC,
 			pc->dvfs.table[i].metrics.entry_count,
 			pc->dvfs.table[i].metrics.time_last_entry / NSEC_PER_MSEC);
@@ -264,7 +264,7 @@ static ssize_t tmu_max_freq_show(struct device *dev, struct device_attribute *at
 	if (!pc)
 		return -ENODEV;
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.tmu.level_limit].clk0);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.tmu.level_limit].clk1);
 }
 
 static ssize_t uid_time_in_state_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -280,7 +280,7 @@ static ssize_t uid_time_in_state_show(struct device *dev, struct device_attribut
 
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "uid: ");
 	for (i=0; i < pc->dvfs.table_size; i++)
-		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%u ", pc->dvfs.table[i].clk0);
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%u ", pc->dvfs.table[i].clk1);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "\n");
 
 	list_for_each_entry(entry, &pc->dvfs.metrics.uid_stats_list, uid_list_link) {
@@ -313,7 +313,7 @@ static ssize_t uid_time_in_state_h_show(struct device *dev, struct device_attrib
 
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "            | ");
 	for (i=0; i < pc->dvfs.table_size; i++)
-		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%9u  ", pc->dvfs.table[i].clk0);
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%9u  ", pc->dvfs.table[i].clk1);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
 		"\n------------+-----------------------------------------------------------------\n");
 
@@ -366,7 +366,7 @@ static ssize_t cur_freq_show(struct device *dev, struct device_attribute *attr, 
 		return -ENODEV;
 
 	/* We use level_target in case the clock has been set while the GPU was powered down */
-	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_target].clk0);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_target].clk1);
 }
 
 static ssize_t available_frequencies_show(struct device *dev, struct device_attribute *attr,
@@ -381,7 +381,7 @@ static ssize_t available_frequencies_show(struct device *dev, struct device_attr
 		return -ENODEV;
 
 	for (i = 0; i < pc->dvfs.table_size; i++)
-		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d ", pc->dvfs.table[i].clk0);
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d ", pc->dvfs.table[i].clk1);
 
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "\n");
 
@@ -396,7 +396,7 @@ static ssize_t max_freq_show(struct device *dev, struct device_attribute *attr, 
 	if (!pc)
 		return -ENODEV;
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_max].clk0);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_max].clk1);
 }
 
 static ssize_t min_freq_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -407,7 +407,7 @@ static ssize_t min_freq_show(struct device *dev, struct device_attribute *attr, 
 	if (!pc)
 		return -ENODEV;
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_min].clk0);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_min].clk1);
 }
 
 static ssize_t scaling_max_freq_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -418,7 +418,7 @@ static ssize_t scaling_max_freq_show(struct device *dev, struct device_attribute
 	if (!pc)
 		return -ENODEV;
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_scaling_max].clk0);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_scaling_max].clk1);
 }
 
 static ssize_t scaling_max_freq_store(struct device *dev, struct device_attribute *attr,
@@ -457,7 +457,7 @@ static ssize_t scaling_min_freq_show(struct device *dev, struct device_attribute
 	if (!pc)
 		return -ENODEV;
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_scaling_min].clk0);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_scaling_min].clk1);
 }
 
 static ssize_t scaling_min_freq_store(struct device *dev, struct device_attribute *attr,
@@ -504,7 +504,7 @@ static ssize_t time_in_state_show(struct device *dev, struct device_attribute *a
 	mutex_unlock(&pc->dvfs.lock);
 
 	for (i = pc->dvfs.level_max; i <= pc->dvfs.level_min; i++)
-		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%8d %9d\n", pc->dvfs.table[i].clk0,
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%8d %9d\n", pc->dvfs.table[i].clk1,
 			(u32)(pc->dvfs.table[i].metrics.time_total / NSEC_PER_MSEC));
 
 	return ret;
