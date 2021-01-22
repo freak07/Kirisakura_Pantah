@@ -61,11 +61,88 @@ static int gpu_dvfs_governor_basic(struct kbase_device *kbdev, int util)
 	return clamp(level, level_max, level_min);
 }
 
+/**
+ * gpu_dvfs_governor_quickstep() - The evaluation function for &GPU_DVFS_GOVERNOR_QUICKSTEP.
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ * @util:  The current GPU utilization percentage.
+ *
+ * Algorithm:
+ *   * If we are within the utilization bounds of the current level then
+ *     no change is made.
+ *
+ *   * If &util is above the maximum for the current level we calculate how much
+ *     above the maximum we are. &util is higher closer to 100% than it is to
+ *     the maximum utilization for the current level then we move up two levels.
+ *     Otherwise we move up just a single level. If we skip a level, we also
+ *     halve the hysteresis for the new level, so that we can swiftly correct
+ *     overshoots.
+ *
+ *   * If &util is lower than the minimm utilization for the current level, then
+ *     we decrement the hysteresis value. If this decrement results in
+ *     hysteresis being zero, then we drop a level.
+ *
+ * Return: The level that the GPU should run at next.
+ *
+ * Context: Process context. Expects the caller to hold the DVFS lock.
+ */
+static int gpu_dvfs_governor_quickstep(struct kbase_device *kbdev, int util)
+{
+	struct pixel_context *pc = kbdev->platform_context;
+	struct gpu_dvfs_opp *tbl = pc->dvfs.table;
+	int level = pc->dvfs.level;
+	int level_max = pc->dvfs.level_max;
+	int level_min = pc->dvfs.level_min;
+
+	lockdep_assert_held(&pc->dvfs.lock);
+
+	if ((level > level_max) && (util > tbl[level].util_max)) {
+		/* We need to clock up. */
+		if (level >= 2 && (util > (100 + tbl[level].util_max) / 2)) {
+			GPU_LOG(LOG_DEBUG, kbdev, "DVFS +2: %d -> %d (u: %d / %d)\n",
+				level, level - 2, util, tbl[level].util_max);
+			level -= 2;
+			pc->dvfs.governor.delay = tbl[level].hysteresis / 2;
+		} else {
+			GPU_LOG(LOG_DEBUG, kbdev, "DVFS +1: %d -> %d (u: %d / %d)\n",
+				level, level - 1, util, tbl[level].util_max);
+			level -= 1;
+			pc->dvfs.governor.delay = tbl[level].hysteresis;
+		}
+
+	} else if ((level < level_min) && (util < tbl[level].util_min)) {
+		/* We are clocked too high */
+		pc->dvfs.governor.delay--;
+
+		/* Check if we've resisted downclocking long enough */
+		if (pc->dvfs.governor.delay <= 0) {
+			GPU_LOG(LOG_DEBUG, kbdev, "DVFS -1: %d -> %d (u: %d / %d)\n",
+				level, level + 1, util, tbl[level].util_min);
+
+			/* Time to clock down */
+			level++;
+
+			/* Reset hysteresis */
+			pc->dvfs.governor.delay = tbl[level].hysteresis;
+		}
+	} else {
+		/* We are at the correct level, reset hysteresis */
+		pc->dvfs.governor.delay = tbl[level].hysteresis;
+	}
+
+	return clamp(level, level_max, level_min);
+}
+
 static struct gpu_dvfs_governor_info governors[GPU_DVFS_GOVERNOR_COUNT] = {
 	{
 		GPU_DVFS_GOVERNOR_BASIC,
 		"basic",
 		gpu_dvfs_governor_basic,
+	},
+	{
+		GPU_DVFS_GOVERNOR_QUICKSTEP,
+		"quickstep",
+		gpu_dvfs_governor_quickstep,
 	}
 };
 
