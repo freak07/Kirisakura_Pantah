@@ -65,6 +65,18 @@ struct gpu_dvfs_governor_info {
 	gpu_dvfs_governor_logic_fn evaluate;
 };
 
+/**
+ * struct gpu_dvfs_qos_vote - Data for a QOS vote
+ *
+ * @enabled: A boolean tracking whether this vote has been enabled or not.
+ * @req:     The underlying &struct exynos_pm_qos_request that implements this
+ *           vote.
+ */
+struct gpu_dvfs_qos_vote {
+	bool enabled;
+	struct exynos_pm_qos_request req;
+};
+
 int gpu_dvfs_governor_get_next_level(struct kbase_device *kbdev, int util);
 int gpu_dvfs_governor_set_governor(struct kbase_device *kbdev, enum gpu_dvfs_governor_type gov);
 enum gpu_dvfs_governor_type gpu_dvfs_governor_get_id(const char *name);

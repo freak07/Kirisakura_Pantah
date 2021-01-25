@@ -158,6 +158,9 @@ struct gpu_dvfs_opp {
 	} qos;
 };
 
+/* Forward declaration of QOS request */
+struct gpu_dvfs_qos_vote;
+
 /* Forward declaration of per-UID metrics */
 struct gpu_dvfs_metrics_uid_stats;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
@@ -215,11 +218,11 @@ struct gpu_dvfs_metrics_uid_stats;
  *
  * @dvfs.qos.enabled:       Stores whether QOS requests have been set.
  * @dvfs.qos.level_last:    The level for which QOS requests were made. Negative if no QOS is set.
- * @dvfs.qos.int_min:       QOS request structure for setting minimum INT clock
- * @dvfs.qos.mif_min:       QOS request structure for setting minimum MIF clock
- * @dvfs.qos.cpu0_min:      QOS request structure for setting minimum CPU cluster 0 (little) clock
- * @dvfs.qos.cpu1_min:      QOS request structure for setting minimum CPU cluster 1 (medium) clock
- * @dvfs.qos.cpu2_max:      QOS request structure for setting maximum CPU cluster 2 (big) clock
+ * @dvfs.qos.int_min:       QOS vote structure for setting minimum INT clock
+ * @dvfs.qos.mif_min:       QOS vote structure for setting minimum MIF clock
+ * @dvfs.qos.cpu0_min:      QOS vote structure for setting minimum CPU cluster 0 (little) clock
+ * @dvfs.qos.cpu1_min:      QOS vote structure for setting minimum CPU cluster 1 (medium) clock
+ * @dvfs.qos.cpu2_max:      QOS vote structure for setting maximum CPU cluster 2 (big) clock
  *
  * @dvfs.qos.bts.enabled:   Stores whether Bus Traffic Shaping is currently enabled
  * @dvfs.qos.bts.threshold: The DVFS level at which Bus Traffic Shaping will be enabled. Set via DT.
@@ -287,11 +290,11 @@ struct pixel_context {
 		struct {
 			bool enabled;
 			int level_last;
-			struct exynos_pm_qos_request int_min;
-			struct exynos_pm_qos_request mif_min;
-			struct exynos_pm_qos_request cpu0_min;
-			struct exynos_pm_qos_request cpu1_min;
-			struct exynos_pm_qos_request cpu2_max;
+			struct gpu_dvfs_qos_vote int_min;
+			struct gpu_dvfs_qos_vote mif_min;
+			struct gpu_dvfs_qos_vote cpu0_min;
+			struct gpu_dvfs_qos_vote cpu1_min;
+			struct gpu_dvfs_qos_vote cpu2_max;
 
 #ifdef CONFIG_MALI_PIXEL_GPU_BTS
 			struct {

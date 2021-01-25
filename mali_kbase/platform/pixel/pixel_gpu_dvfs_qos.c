@@ -24,6 +24,34 @@
 
 
 /**
+ * qos_set() - Set a QOS vote on an IP block
+ *
+ * @vote:  The &struct gpu_dvfs_qos_vote to set the vote on.
+ * @value: The value to vote for.
+ */
+static inline void qos_set(struct gpu_dvfs_qos_vote *vote, int value) {
+	if (unlikely(value)) {
+		exynos_pm_qos_update_request(&vote->req, value);
+		vote->enabled = true;
+	}
+}
+
+/**
+ * qos_reset() - Resets a QOS vote on an IP block
+ *
+ * @vote:  The &struct gpu_dvfs_qos_vote to reset the vote on.
+ *
+ * This function resets the GPU's vote for the given IP block to
+ * &EXYNOS_PM_QOS_DEFAULT_VALUE
+ */
+static inline void qos_reset(struct gpu_dvfs_qos_vote *vote) {
+	if (unlikely(vote->enabled)) {
+		exynos_pm_qos_update_request(&vote->req, EXYNOS_PM_QOS_DEFAULT_VALUE);
+		vote->enabled = false;
+	}
+}
+
+/**
  * gpu_dvfs_qos_set() - Issue QOS requests for a GPU DVFS level.
  *
  * @kbdev: The &struct kbase_device for the GPU.
@@ -49,11 +77,11 @@ void gpu_dvfs_qos_set(struct kbase_device *kbdev, int level)
 			opp.qos.int_min, opp.qos.mif_min, opp.qos.cpu0_min,
 			opp.qos.cpu1_min, opp.qos.cpu2_max);
 
-		exynos_pm_qos_update_request(&pc->dvfs.qos.int_min,  opp.qos.int_min);
-		exynos_pm_qos_update_request(&pc->dvfs.qos.mif_min,  opp.qos.mif_min);
-		exynos_pm_qos_update_request(&pc->dvfs.qos.cpu0_min, opp.qos.cpu0_min);
-		exynos_pm_qos_update_request(&pc->dvfs.qos.cpu1_min, opp.qos.cpu1_min);
-		exynos_pm_qos_update_request(&pc->dvfs.qos.cpu2_max, opp.qos.cpu2_max);
+		qos_set(&pc->dvfs.qos.int_min,  opp.qos.int_min);
+		qos_set(&pc->dvfs.qos.mif_min,  opp.qos.mif_min);
+		qos_set(&pc->dvfs.qos.cpu0_min, opp.qos.cpu0_min);
+		qos_set(&pc->dvfs.qos.cpu1_min, opp.qos.cpu1_min);
+		qos_set(&pc->dvfs.qos.cpu2_max, opp.qos.cpu2_max);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_BTS
 		if (level <= pc->dvfs.qos.bts.threshold && !pc->dvfs.qos.bts.enabled) {
@@ -83,11 +111,11 @@ void gpu_dvfs_qos_reset(struct kbase_device *kbdev)
 
 	lockdep_assert_held(&pc->dvfs.lock);
 
-	exynos_pm_qos_update_request(&pc->dvfs.qos.int_min,  0);
-	exynos_pm_qos_update_request(&pc->dvfs.qos.mif_min,  0);
-	exynos_pm_qos_update_request(&pc->dvfs.qos.cpu0_min, 0);
-	exynos_pm_qos_update_request(&pc->dvfs.qos.cpu1_min, 0);
-	exynos_pm_qos_update_request(&pc->dvfs.qos.cpu2_max, PM_QOS_CLUSTER2_FREQ_MAX_DEFAULT_VALUE);
+	qos_reset(&pc->dvfs.qos.int_min);
+	qos_reset(&pc->dvfs.qos.mif_min);
+	qos_reset(&pc->dvfs.qos.cpu0_min);
+	qos_reset(&pc->dvfs.qos.cpu1_min);
+	qos_reset(&pc->dvfs.qos.cpu2_max);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_BTS
 	if (pc->dvfs.qos.bts.enabled) {
@@ -138,11 +166,11 @@ int gpu_dvfs_qos_init(struct kbase_device *kbdev)
 	}
 #endif /* CONFIG_MALI_PIXEL_GPU_BTS */
 
-	exynos_pm_qos_add_request(&pc->dvfs.qos.int_min,  PM_QOS_DEVICE_THROUGHPUT, 0);
-	exynos_pm_qos_add_request(&pc->dvfs.qos.mif_min,  PM_QOS_BUS_THROUGHPUT,    0);
-	exynos_pm_qos_add_request(&pc->dvfs.qos.cpu0_min, PM_QOS_CLUSTER0_FREQ_MIN, 0);
-	exynos_pm_qos_add_request(&pc->dvfs.qos.cpu1_min, PM_QOS_CLUSTER1_FREQ_MIN, 0);
-	exynos_pm_qos_add_request(&pc->dvfs.qos.cpu2_max, PM_QOS_CLUSTER2_FREQ_MAX,
+	exynos_pm_qos_add_request(&pc->dvfs.qos.int_min.req,  PM_QOS_DEVICE_THROUGHPUT, 0);
+	exynos_pm_qos_add_request(&pc->dvfs.qos.mif_min.req,  PM_QOS_BUS_THROUGHPUT,    0);
+	exynos_pm_qos_add_request(&pc->dvfs.qos.cpu0_min.req, PM_QOS_CLUSTER0_FREQ_MIN, 0);
+	exynos_pm_qos_add_request(&pc->dvfs.qos.cpu1_min.req, PM_QOS_CLUSTER1_FREQ_MIN, 0);
+	exynos_pm_qos_add_request(&pc->dvfs.qos.cpu2_max.req, PM_QOS_CLUSTER2_FREQ_MAX,
 		PM_QOS_CLUSTER2_FREQ_MAX_DEFAULT_VALUE);
 
 	pc->dvfs.qos.level_last = -1;
@@ -164,11 +192,11 @@ void gpu_dvfs_qos_term(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
-	exynos_pm_qos_remove_request(&pc->dvfs.qos.int_min);
-	exynos_pm_qos_remove_request(&pc->dvfs.qos.mif_min);
-	exynos_pm_qos_remove_request(&pc->dvfs.qos.cpu0_min);
-	exynos_pm_qos_remove_request(&pc->dvfs.qos.cpu1_min);
-	exynos_pm_qos_remove_request(&pc->dvfs.qos.cpu2_max);
+	exynos_pm_qos_remove_request(&pc->dvfs.qos.int_min.req);
+	exynos_pm_qos_remove_request(&pc->dvfs.qos.mif_min.req);
+	exynos_pm_qos_remove_request(&pc->dvfs.qos.cpu0_min.req);
+	exynos_pm_qos_remove_request(&pc->dvfs.qos.cpu1_min.req);
+	exynos_pm_qos_remove_request(&pc->dvfs.qos.cpu2_max.req);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_BTS
 	if (pc->dvfs.qos.bts.enabled) {
