@@ -84,10 +84,10 @@ void gpu_dvfs_qos_set(struct kbase_device *kbdev, int level)
 		qos_set(&pc->dvfs.qos.cpu2_max, opp.qos.cpu2_max);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_BTS
-		if (level <= pc->dvfs.qos.bts.threshold && !pc->dvfs.qos.bts.enabled) {
+		if (opp.clk1 >= pc->dvfs.qos.bts.threshold && !pc->dvfs.qos.bts.enabled) {
 			bts_add_scenario(pc->dvfs.qos.bts.scenario);
 			pc->dvfs.qos.bts.enabled = true;
-		} else if (level > pc->dvfs.qos.bts.threshold && pc->dvfs.qos.bts.enabled) {
+		} else if (pc->dvfs.qos.bts.enabled) {
 			bts_del_scenario(pc->dvfs.qos.bts.scenario);
 			pc->dvfs.qos.bts.enabled = false;
 		}
@@ -159,7 +159,7 @@ int gpu_dvfs_qos_init(struct kbase_device *kbdev)
 		goto done;
 	}
 
-	if (of_property_read_u32(np, "gpu_dvfs_qos_bts_level", &pc->dvfs.qos.bts.threshold)) {
+	if (of_property_read_u32(np, "gpu_dvfs_qos_bts_threshold", &pc->dvfs.qos.bts.threshold)) {
 		GPU_LOG(LOG_ERROR, kbdev, "GPU QOS BTS threshold not specified in DT\n");
 		ret = -EINVAL;
 		goto done;

@@ -224,9 +224,9 @@ struct gpu_dvfs_metrics_uid_stats;
  * @dvfs.qos.cpu1_min:      QOS vote structure for setting minimum CPU cluster 1 (medium) clock
  * @dvfs.qos.cpu2_max:      QOS vote structure for setting maximum CPU cluster 2 (big) clock
  *
- * @dvfs.qos.bts.enabled:   Stores whether Bus Traffic Shaping is currently enabled
- * @dvfs.qos.bts.threshold: The DVFS level at which Bus Traffic Shaping will be enabled. Set via DT.
- * @dvfs.qos.bts.scenario:  The index of the Bus Traffic Shaping scenario to be used. Set via DT.
+ * @dvfs.qos.bts.enabled:   Stores whether Bus Traffic Shaping (BTS) is currently enabled
+ * @dvfs.qos.bts.threshold: The G3D shader stack clock at which BTS will be enabled. Set via DT.
+ * @dvfs.qos.bts.scenario:  The index of the BTS scenario to be used. Set via DT.
  */
 struct pixel_context {
 	struct kbase_device *kbdev;
