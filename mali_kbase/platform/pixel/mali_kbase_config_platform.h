@@ -211,6 +211,12 @@ struct gpu_dvfs_metrics_uid_stats;
  *                                 logic was run.
  * @dvfs.metrics.last_power_state: The GPU's power state when the DVFS metric logic was last run.
  * @dvfs.metrics.last_level:       The GPU's level when the DVFS metric logic was last run.
+ * @dvfs.metrics.js_uid_stats:     An array of pointers to the per-UID stats blocks currently
+ *                                 resident in each of the GPU's job slots. Access is controlled by
+ *                                 the hwaccess lock.
+ * @dvfs.metrics.uid_stats_list:   List head pointer to the linked list of per-UID stats blocks.
+ *                                 Modification to the linked list itself (not its elements) is
+ *                                 protected by the kctx_list lock.
  *
  * @dvfs.governor.curr:  The currently enabled DVFS governor.
  * @dvfs.governor.delay: Governor specific variable. The basic governor uses this to store the
@@ -281,7 +287,6 @@ struct pixel_context {
 			u64 last_time;
 			bool last_power_state;
 			int last_level;
-			spinlock_t uid_lock;
 			struct gpu_dvfs_metrics_uid_stats *js_uid_stats[BASE_JM_MAX_NR_SLOTS];
 			struct list_head uid_stats_list;
 		} metrics;

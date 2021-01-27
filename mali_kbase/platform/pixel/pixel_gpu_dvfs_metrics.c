@@ -76,7 +76,7 @@ static void gpu_dvfs_metrics_uid_level_change(struct kbase_device *kbdev, u64 ev
 
 	lockdep_assert_held(&pc->dvfs.lock);
 
-	spin_lock_irqsave(&pc->dvfs.metrics.uid_lock, flags);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	for (i = 0; i < BASE_JM_MAX_NR_SLOTS; i++) {
 		stats = pc->dvfs.metrics.js_uid_stats[i];
@@ -88,7 +88,7 @@ static void gpu_dvfs_metrics_uid_level_change(struct kbase_device *kbdev, u64 ev
 		}
 	}
 
-	spin_unlock_irqrestore(&pc->dvfs.metrics.uid_lock, flags);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
 
 /**
@@ -174,8 +174,6 @@ void gpu_dvfs_metrics_job_start(struct kbase_jd_atom *atom)
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-	spin_lock(&pc->dvfs.metrics.uid_lock);
-
 	if (stats->atoms_in_flight == 0) {
 		/* This is the start of a new period */
 		WARN_ON(stats->period_start != 0);
@@ -184,12 +182,10 @@ void gpu_dvfs_metrics_job_start(struct kbase_jd_atom *atom)
 
 	stats->atoms_in_flight++;
 	pc->dvfs.metrics.js_uid_stats[js] = stats;
-
-	spin_unlock(&pc->dvfs.metrics.uid_lock);
 }
 
 /**
- * gpu_dvfs_metrics_job_start() - Notification of when an atom stops running on the GPU
+ * gpu_dvfs_metrics_job_end() - Notification of when an atom stops running on the GPU
  *
  * @atom: The &struct kbase_jd_atom that has just stopped running on the GPU
  *
@@ -208,7 +204,6 @@ void gpu_dvfs_metrics_job_end(struct kbase_jd_atom *atom)
 	u64 curr = ktime_get_ns();
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
-	spin_lock(&pc->dvfs.metrics.uid_lock);
 
 	WARN_ON(stats->period_start == 0);
 	WARN_ON(stats->atoms_in_flight == 0);
@@ -223,8 +218,6 @@ void gpu_dvfs_metrics_job_end(struct kbase_jd_atom *atom)
 		stats->period_start = curr;
 
 	pc->dvfs.metrics.js_uid_stats[js] = NULL;
-
-	spin_unlock(&pc->dvfs.metrics.uid_lock);
 }
 
 /**
@@ -239,6 +232,8 @@ static struct gpu_dvfs_metrics_uid_stats *gpu_dvfs_create_uid_stats(struct pixel
 	kuid_t uid)
 {
 	struct gpu_dvfs_metrics_uid_stats *ret;
+
+	lockdep_assert_held(&pc->kbdev->kctx_list_lock);
 
 	ret = kzalloc(sizeof(struct gpu_dvfs_metrics_uid_stats), GFP_KERNEL);
 	if (ret == NULL)
@@ -295,16 +290,13 @@ int gpu_dvfs_kctx_init(struct kbase_context *kctx)
 	kuid_t uid;
 
 	struct gpu_dvfs_metrics_uid_stats *entry, *stats;
-	unsigned long flags;
 	int ret = 0;
-
-	lockdep_assert_held(&kctx->kbdev->kctx_list_lock);
 
 	/* Get UID from task_struct */
 	task = get_pid_task(find_get_pid(kctx->kprcs->tgid), PIDTYPE_TGID);
 	uid = task->cred->uid;
 
-	spin_lock_irqsave(&pc->dvfs.metrics.uid_lock, flags);
+	mutex_lock(&kbdev->kctx_list_lock);
 
 	/*
 	 * Search through the UIDs we have encountered previously, and either return an already
@@ -348,7 +340,7 @@ int gpu_dvfs_kctx_init(struct kbase_context *kctx)
 	kctx->platform_data = stats;
 
 done:
-	spin_unlock_irqrestore(&pc->dvfs.metrics.uid_lock, flags);
+	mutex_unlock(&kbdev->kctx_list_lock);
 	return ret;
 }
 
@@ -363,14 +355,13 @@ done:
 void gpu_dvfs_kctx_term(struct kbase_context *kctx)
 {
 	struct kbase_device *kbdev = kctx->kbdev;
-	struct pixel_context *pc = kbdev->platform_context;
 	struct gpu_dvfs_metrics_uid_stats *stats = kctx->platform_data;
 	unsigned long flags;
 
-	spin_lock_irqsave(&pc->dvfs.metrics.uid_lock, flags);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	stats->active_kctx_count--;
 	WARN_ON(stats->active_kctx_count < 0);
-	spin_unlock_irqrestore(&pc->dvfs.metrics.uid_lock, flags);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
 
 /**
@@ -387,8 +378,6 @@ int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 
 	mutex_lock(&pc->dvfs.lock);
-
-	spin_lock_init(&pc->dvfs.metrics.uid_lock);
 
 	pc->dvfs.metrics.last_time = ktime_get_ns();
 	pc->dvfs.metrics.last_power_state = gpu_power_status(kbdev);
