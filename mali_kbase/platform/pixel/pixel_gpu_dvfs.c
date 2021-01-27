@@ -53,15 +53,11 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 		gpu_dvfs_qos_set(kbdev, next_level);
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
-	mutex_lock(&pc->pm.domain->access_lock);
-
 	gpu_dvfs_metrics_update(kbdev, next_level, true);
 
+	mutex_lock(&pc->pm.domain->access_lock);
 	cal_dfs_set_rate(pc->dvfs.gpu0_cal_id, pc->dvfs.table[next_level].clk0);
 	cal_dfs_set_rate(pc->dvfs.gpu1_cal_id, pc->dvfs.table[next_level].clk1);
-
-	pc->dvfs.level = next_level;
-
 	mutex_unlock(&pc->pm.domain->access_lock);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS
@@ -69,6 +65,8 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 	if (next_level > pc->dvfs.level)
 		gpu_dvfs_qos_set(kbdev, next_level);
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
+
+	pc->dvfs.level = next_level;
 
 	gpu_dvfs_metrics_trace_clock(kbdev, true);
 
