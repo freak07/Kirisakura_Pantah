@@ -250,7 +250,7 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation,
 	u32 util_gl_share, u32 util_cl_share[2])
 {
 	struct pixel_context *pc = kbdev->platform_context;
-	trace_gpu_util(utilisation);
+	GPU_ATRACE_INT("GPU Utilization", utilisation);
 
 	atomic_set(&pc->dvfs.util, utilisation);
 	queue_work(pc->dvfs.control_wq, &pc->dvfs.control_work);
