@@ -43,7 +43,7 @@ struct kbase_hwc_dma_mapping {
  * @kctx:         The kernel context
  * @va_pages:     The number of pages of virtual address space to reserve
  * @commit_pages: The number of physical pages to allocate upfront
- * @extent:       The number of extra pages to allocate on each GPU fault which
+ * @extension:       The number of extra pages to allocate on each GPU fault which
  *                grows the region.
  * @flags:        bitmask of BASE_MEM_* flags to convey special requirements &
  *                properties for the new allocation.
@@ -53,8 +53,8 @@ struct kbase_hwc_dma_mapping {
  * Return: 0 on success or error code
  */
 struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
-		u64 va_pages, u64 commit_pages, u64 extent, u64 *flags,
-		u64 *gpu_va);
+					u64 va_pages, u64 commit_pages,
+					u64 extension, u64 *flags, u64 *gpu_va);
 
 /**
  * kbase_mem_query - Query properties of a GPU memory region

@@ -108,8 +108,22 @@ void kbase_gpu_interrupt(struct kbase_device *kbdev, u32 val)
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 		kbase_csf_scheduler_spin_lock(kbdev, &flags);
-		if (!WARN_ON(!kbase_csf_scheduler_protected_mode_in_use(kbdev)))
+		if (!WARN_ON(!kbase_csf_scheduler_protected_mode_in_use(
+			    kbdev))) {
+			struct base_gpu_queue_group_error const
+				err_payload = { .error_type =
+							BASE_GPU_QUEUE_GROUP_ERROR_FATAL,
+						.payload = {
+							.fatal_group = {
+								.status =
+									GPU_EXCEPTION_TYPE_SW_FAULT_0,
+							} } };
+
 			scheduler->active_protm_grp->faulted = true;
+			kbase_csf_add_fatal_error_to_kctx(
+				scheduler->active_protm_grp, &err_payload);
+			kbase_event_wakeup(scheduler->active_protm_grp->kctx);
+		}
 		kbase_csf_scheduler_spin_unlock(kbdev, flags);
 
 		if (kbase_prepare_to_reset_gpu(kbdev))

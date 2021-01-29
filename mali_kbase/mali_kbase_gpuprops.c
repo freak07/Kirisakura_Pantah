@@ -195,7 +195,6 @@ static void kbase_gpuprops_calculate_props(
 {
 	int i;
 	u32 gpu_id;
-	u32 product_id;
 
 	/* Populate the base_gpu_props structure */
 	kbase_gpuprops_update_core_props_gpu_id(gpu_props);
@@ -251,8 +250,6 @@ static void kbase_gpuprops_calculate_props(
 	 * Workaround for the incorrectly applied THREAD_FEATURES to tDUx.
 	 */
 	gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
-	product_id = gpu_id & GPU_ID_VERSION_PRODUCT_ID;
-	product_id >>= GPU_ID_VERSION_PRODUCT_ID_SHIFT;
 
 #if MALI_USE_CSF
 	gpu_props->thread_props.max_registers =

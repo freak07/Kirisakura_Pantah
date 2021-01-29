@@ -20,8 +20,8 @@
  *
  */
 
-#include "mali_kbase_ipa_vinstr_common.h"
-#include "mali_kbase_ipa_debugfs.h"
+#include "mali_kbase_ipa_counter_common_jm.h"
+#include "ipa/mali_kbase_ipa_debugfs.h"
 
 #define DEFAULT_SCALING_FACTOR 5
 

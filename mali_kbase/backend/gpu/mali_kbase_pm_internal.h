@@ -551,9 +551,14 @@ void kbase_pm_get_dvfs_metrics(struct kbase_device *kbdev,
  * Return:         Returns 0 on failure and non zero on success.
  */
 
+#if MALI_USE_CSF
+int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation);
+#else
 int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation,
-	u32 util_gl_share, u32 util_cl_share[2]);
+			      u32 util_gl_share, u32 util_cl_share[2]);
 #endif
+
+#endif /* CONFIG_MALI_MIDGARD_DVFS */
 
 void kbase_pm_power_changed(struct kbase_device *kbdev);
 
@@ -707,6 +712,19 @@ extern bool corestack_driver_control;
  * Return: true if l2 need to power on
  */
 bool kbase_pm_is_l2_desired(struct kbase_device *kbdev);
+
+#if MALI_USE_CSF
+/**
+ * kbase_pm_is_mcu_desired - Check whether MCU is desired
+ *
+ * @kbdev: Device pointer
+ *
+ * This shall be called to check whether MCU needs to be enabled.
+ *
+ * Return: true if MCU needs to be enabled.
+ */
+bool kbase_pm_is_mcu_desired(struct kbase_device *kbdev);
+#endif
 
 /**
  * kbase_pm_lock - Lock all necessary mutexes to perform PM actions

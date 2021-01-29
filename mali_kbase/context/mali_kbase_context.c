@@ -28,7 +28,6 @@
 #include <mali_kbase.h>
 #include <gpu/mali_kbase_gpu_regmap.h>
 #include <mali_kbase_mem_linux.h>
-#include <mali_kbase_dma_fence.h>
 #include <mali_kbase_ctx_sched.h>
 #include <mali_kbase_mem_pool_group.h>
 #include <tl/mali_kbase_tracepoints.h>

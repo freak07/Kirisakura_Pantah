@@ -28,18 +28,16 @@
 #include <context/mali_kbase_context_internal.h>
 #include <gpu/mali_kbase_gpu_regmap.h>
 #include <mali_kbase.h>
-#include <mali_kbase_ctx_sched.h>
 #include <mali_kbase_dma_fence.h>
 #include <mali_kbase_mem_linux.h>
 #include <mali_kbase_mem_pool_group.h>
 #include <mmu/mali_kbase_mmu.h>
-#include <tl/mali_kbase_timeline.h>
-#include <tl/mali_kbase_tracepoints.h>
 
 #ifdef CONFIG_DEBUG_FS
 #include <csf/mali_kbase_csf_csg_debugfs.h>
 #include <csf/mali_kbase_csf_kcpu_debugfs.h>
 #include <csf/mali_kbase_csf_tiler_heap_debugfs.h>
+#include <csf/mali_kbase_csf_cpu_queue_debugfs.h>
 #include <mali_kbase_debug_mem_view.h>
 #include <mali_kbase_mem_pool_debugfs.h>
 
@@ -51,6 +49,7 @@ void kbase_context_debugfs_init(struct kbase_context *const kctx)
 	kbase_csf_queue_group_debugfs_init(kctx);
 	kbase_csf_kcpu_debugfs_init(kctx);
 	kbase_csf_tiler_heap_debugfs_init(kctx);
+	kbase_csf_cpu_queue_debugfs_init(kctx);
 }
 KBASE_EXPORT_SYMBOL(kbase_context_debugfs_init);
 
@@ -162,11 +161,19 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	if (WARN_ON(!kbdev))
 		return;
 
-	/* Ensure the core is powered up for the destroy process
-	 * A suspend won't happen here, because we're in a syscall
-	 * from a userspace thread.
+	/* Context termination could happen whilst the system suspend of
+	 * the GPU device is ongoing or has completed. It has been seen on
+	 * Customer side for JM GPUs that a hang could occur if context
+	 * termination is not blocked until the resume of GPU device.
+	 * Similar issue can potentially occur on CSF GPUs also.
 	 */
-	kbase_pm_context_active(kbdev);
+	while (kbase_pm_context_active_handle_suspend(
+		kbdev, KBASE_PM_SUSPEND_HANDLER_DONT_INCREASE)) {
+		dev_info(kbdev->dev,
+			 "Suspend in progress when destroying context");
+		wait_event(kbdev->pm.resume_wait,
+			   !kbase_pm_is_suspending(kbdev));
+	}
 
 	kbase_mem_pool_group_mark_dying(&kctx->mem_pools);
 

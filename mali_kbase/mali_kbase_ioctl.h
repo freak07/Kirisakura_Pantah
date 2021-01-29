@@ -90,7 +90,7 @@ struct kbase_ioctl_get_gpuprops {
  *
  * @va_pages: The number of pages of virtual address space to reserve
  * @commit_pages: The number of physical pages to allocate
- * @extent: The number of extra pages to allocate on each GPU fault which grows
+ * @extension: The number of extra pages to allocate on each GPU fault which grows
  *          the region
  * @flags: Flags
  * @gpu_va: The GPU virtual address which is allocated
@@ -102,7 +102,7 @@ union kbase_ioctl_mem_alloc {
 	struct {
 		__u64 va_pages;
 		__u64 commit_pages;
-		__u64 extent;
+		__u64 extension;
 		__u64 flags;
 	} in;
 	struct {

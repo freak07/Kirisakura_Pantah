@@ -106,9 +106,9 @@
  *   'scheduling'.
  * 11.25:
  * - Enabled JIT pressure limit in base/kbase by default
- * 11.26:
+ * 11.26
  * - Added kinstr_jm API
- * 11.27:
+ * 11.27
  * - Backwards compatible extension to HWC ioctl.
  * 11.28:
  * - Added kernel side cache ops needed hint

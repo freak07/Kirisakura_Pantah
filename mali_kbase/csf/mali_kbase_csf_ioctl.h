@@ -46,8 +46,6 @@ struct kbase_ioctl_version_check {
 	__u16 minor;
 };
 
-#define KBASE_IOCTL_VERSION_CHECK \
-	_IOWR(KBASE_IOCTL_TYPE, 52, struct kbase_ioctl_version_check)
 
 #define KBASE_IOCTL_VERSION_CHECK_RESERVED \
 	_IOWR(KBASE_IOCTL_TYPE, 0, struct kbase_ioctl_version_check)
@@ -92,7 +90,7 @@ struct kbase_ioctl_cs_queue_kick {
  * @group_handle: Handle of the group to which the queue should be bound
  * @csi_index: Index of the CSF interface the queue should be bound to
  * @padding: Currently unused, must be zero
- * @mmap_handle: Handle to be used for creating the mapping of command stream
+ * @mmap_handle: Handle to be used for creating the mapping of CS
  *               input/output pages
  *
  * @in: Input parameters
@@ -134,7 +132,7 @@ struct kbase_ioctl_cs_queue_terminate {
  * @tiler_mask:		Mask of tiler endpoints the group is allowed to use.
  * @fragment_mask:	Mask of fragment endpoints the group is allowed to use.
  * @compute_mask:	Mask of compute endpoints the group is allowed to use.
- * @cs_min:		Minimum number of command streams required.
+ * @cs_min:		Minimum number of CSs required.
  * @priority:		Queue group's priority within a process.
  * @tiler_max:		Maximum number of tiler endpoints the group is allowed
  *			to use.
@@ -293,22 +291,19 @@ struct kbase_ioctl_cs_tiler_heap_term {
  *
  * @max_group_num:        The maximum number of groups to be read. Can be 0, in
  *                        which case groups_ptr is unused.
- * @max_total_stream_num: The maximum number of streams to be read. Can be 0, in
+ * @max_total_stream_num: The maximum number of CSs to be read. Can be 0, in
  *                        which case streams_ptr is unused.
  * @groups_ptr:       Pointer where to store all the group data (sequentially).
- * @streams_ptr:      Pointer where to store all the stream data (sequentially).
- * @glb_version:      Global interface version. Bits 31:16 hold the major
- *                    version number and 15:0 hold the minor version number.
- *                    A higher minor version is backwards-compatible with a
- *                    lower minor version for the same major version.
+ * @streams_ptr:      Pointer where to store all the CS data (sequentially).
+ * @glb_version:      Global interface version.
  * @features:         Bit mask of features (e.g. whether certain types of job
  *                    can be suspended).
- * @group_num:        Number of command stream groups supported.
+ * @group_num:        Number of CSGs supported.
  * @prfcnt_size:      Size of CSF performance counters, in bytes. Bits 31:16
  *                    hold the size of firmware performance counter data
  *                    and 15:0 hold the size of hardware performance counter
  *                    data.
- * @total_stream_num: Total number of command streams, summed across all groups.
+ * @total_stream_num: Total number of CSs, summed across all groups.
  * @padding:          Will be zeroed.
  *
  * @in: Input parameters
@@ -334,6 +329,18 @@ union kbase_ioctl_cs_get_glb_iface {
 
 #define KBASE_IOCTL_CS_GET_GLB_IFACE \
 	_IOWR(KBASE_IOCTL_TYPE, 51, union kbase_ioctl_cs_get_glb_iface)
+
+struct kbase_ioctl_cs_cpu_queue_info {
+	__u64 buffer;
+	__u64 size;
+};
+
+#define KBASE_IOCTL_VERSION_CHECK \
+	_IOWR(KBASE_IOCTL_TYPE, 52, struct kbase_ioctl_version_check)
+
+#define KBASE_IOCTL_CS_CPU_QUEUE_DUMP \
+	_IOW(KBASE_IOCTL_TYPE, 53, struct kbase_ioctl_cs_cpu_queue_info)
+
 
 /***************
  * test ioctls *

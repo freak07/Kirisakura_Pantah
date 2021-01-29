@@ -121,9 +121,9 @@
 #define BASE_MEM_RESERVED_BIT_19 ((base_mem_alloc_flags)1 << 19)
 
 /**
- * Memory starting from the end of the initial commit is aligned to 'extent'
- * pages, where 'extent' must be a power of 2 and no more than
- * BASE_MEM_TILER_ALIGN_TOP_EXTENT_MAX_PAGES
+ * Memory starting from the end of the initial commit is aligned to 'extension'
+ * pages, where 'extension' must be a power of 2 and no more than
+ * BASE_MEM_TILER_ALIGN_TOP_EXTENSION_MAX_PAGES
  */
 #define BASE_MEM_TILER_ALIGN_TOP ((base_mem_alloc_flags)1 << 20)
 
@@ -201,8 +201,8 @@
 						BASE_MEM_COOKIE_BASE)
 
 /* Similar to BASE_MEM_TILER_ALIGN_TOP, memory starting from the end of the
- * initial commit is aligned to 'extent' pages, where 'extent' must be a power
- * of 2 and no more than BASE_MEM_TILER_ALIGN_TOP_EXTENT_MAX_PAGES
+ * initial commit is aligned to 'extension' pages, where 'extension' must be a power
+ * of 2 and no more than BASE_MEM_TILER_ALIGN_TOP_EXTENSION_MAX_PAGES
  */
 #define BASE_JIT_ALLOC_MEM_TILER_ALIGN_TOP  (1 << 0)
 

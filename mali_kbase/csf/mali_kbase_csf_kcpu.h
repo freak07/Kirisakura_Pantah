@@ -159,7 +159,7 @@ struct kbase_suspend_copy_buffer {
  *
  * @sus_buf:		Pointer to the structure which contains details of the
  *			user buffer and its kernel pinned pages.
- * @group_handle:	Handle to the mapping of command stream group.
+ * @group_handle:	Handle to the mapping of CSG.
  */
 struct kbase_kcpu_command_group_suspend_info {
 	struct kbase_suspend_copy_buffer *sus_buf;

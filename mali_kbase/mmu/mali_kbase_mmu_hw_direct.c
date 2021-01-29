@@ -26,7 +26,6 @@
 #include <mmu/mali_kbase_mmu_hw.h>
 #include <tl/mali_kbase_tracepoints.h>
 #include <device/mali_kbase_device.h>
-#include <mali_kbase_as_fault_debugfs.h>
 
 /**
  * lock_region() - Generate lockaddr to lock memory region in MMU

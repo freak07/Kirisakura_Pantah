@@ -30,6 +30,12 @@
 #include <linux/list.h>
 #include <linux/mman.h>
 
+#ifdef CONFIG_DEBUG_FS
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0))
+#define DEFINE_DEBUGFS_ATTRIBUTE DEFINE_SIMPLE_ATTRIBUTE
+#endif
+#endif
+
 /**
  * struct firmware_trace_buffer - Trace Buffer within the MCU firmware
  *

@@ -620,8 +620,8 @@ int kbase_add_va_region_rbtree(struct kbase_device *kbdev,
 			WARN(align > 1, "%s with align %lx might not be honored for KBASE_REG_TILER_ALIGN_TOP memory",
 					__func__,
 					(unsigned long)align);
-			align_mask  = reg->extent - 1;
-			align_offset = reg->extent - reg->initial_commit;
+			align_mask = reg->extension - 1;
+			align_offset = reg->extension - reg->initial_commit;
 		}
 #endif /* !MALI_USE_CSF */
 
@@ -2755,7 +2755,7 @@ bool kbase_check_alloc_flags(unsigned long flags)
 
 #if !MALI_USE_CSF
 	/* GPU executable memory also cannot have the top of its initial
-	 * commit aligned to 'extent'
+	 * commit aligned to 'extension'
 	 */
 	if ((flags & BASE_MEM_PROT_GPU_EX) && (flags &
 			BASE_MEM_TILER_ALIGN_TOP))
@@ -2837,15 +2837,15 @@ bool kbase_check_import_flags(unsigned long flags)
 }
 
 int kbase_check_alloc_sizes(struct kbase_context *kctx, unsigned long flags,
-		u64 va_pages, u64 commit_pages, u64 large_extent)
+			    u64 va_pages, u64 commit_pages, u64 large_extension)
 {
 	struct device *dev = kctx->kbdev->dev;
 	int gpu_pc_bits = kctx->kbdev->gpu_props.props.core_props.log2_program_counter_size;
 	u64 gpu_pc_pages_max = 1ULL << gpu_pc_bits >> PAGE_SHIFT;
 	struct kbase_va_region test_reg;
 
-	/* kbase_va_region's extent member can be of variable size, so check against that type */
-	test_reg.extent = large_extent;
+	/* kbase_va_region's extension member can be of variable size, so check against that type */
+	test_reg.extension = large_extension;
 
 #define KBASE_MSG_PRE "GPU allocation attempted with "
 
@@ -2872,25 +2872,30 @@ int kbase_check_alloc_sizes(struct kbase_context *kctx, unsigned long flags,
 		return -EINVAL;
 	}
 
-	if ((flags & BASE_MEM_GROW_ON_GPF) && (test_reg.extent == 0)) {
-		dev_warn(dev, KBASE_MSG_PRE "BASE_MEM_GROW_ON_GPF but extent == 0\n");
+	if ((flags & BASE_MEM_GROW_ON_GPF) && (test_reg.extension == 0)) {
+		dev_warn(dev, KBASE_MSG_PRE
+			 "BASE_MEM_GROW_ON_GPF but extension == 0\n");
 		return -EINVAL;
 	}
 
 #if !MALI_USE_CSF
-	if ((flags & BASE_MEM_TILER_ALIGN_TOP) && (test_reg.extent == 0)) {
-		dev_warn(dev, KBASE_MSG_PRE "BASE_MEM_TILER_ALIGN_TOP but extent == 0\n");
+	if ((flags & BASE_MEM_TILER_ALIGN_TOP) && (test_reg.extension == 0)) {
+		dev_warn(dev, KBASE_MSG_PRE
+			 "BASE_MEM_TILER_ALIGN_TOP but extension == 0\n");
 		return -EINVAL;
 	}
 
 	if (!(flags & (BASE_MEM_GROW_ON_GPF | BASE_MEM_TILER_ALIGN_TOP)) &&
-			test_reg.extent != 0) {
-		dev_warn(dev, KBASE_MSG_PRE "neither BASE_MEM_GROW_ON_GPF nor BASE_MEM_TILER_ALIGN_TOP set but extent != 0\n");
+	    test_reg.extension != 0) {
+		dev_warn(
+			dev, KBASE_MSG_PRE
+			"neither BASE_MEM_GROW_ON_GPF nor BASE_MEM_TILER_ALIGN_TOP set but extension != 0\n");
 		return -EINVAL;
 	}
 #else
-	if (!(flags & BASE_MEM_GROW_ON_GPF) && test_reg.extent != 0) {
-		dev_warn(dev, KBASE_MSG_PRE "BASE_MEM_GROW_ON_GPF not set but extent != 0\n");
+	if (!(flags & BASE_MEM_GROW_ON_GPF) && test_reg.extension != 0) {
+		dev_warn(dev, KBASE_MSG_PRE
+			 "BASE_MEM_GROW_ON_GPF not set but extension != 0\n");
 		return -EINVAL;
 	}
 #endif /* !MALI_USE_CSF */
@@ -2899,28 +2904,35 @@ int kbase_check_alloc_sizes(struct kbase_context *kctx, unsigned long flags,
 	/* BASE_MEM_TILER_ALIGN_TOP memory has a number of restrictions */
 	if (flags & BASE_MEM_TILER_ALIGN_TOP) {
 #define KBASE_MSG_PRE_FLAG KBASE_MSG_PRE "BASE_MEM_TILER_ALIGN_TOP and "
-		unsigned long small_extent;
+		unsigned long small_extension;
 
-		if (large_extent > BASE_MEM_TILER_ALIGN_TOP_EXTENT_MAX_PAGES) {
-			dev_warn(dev, KBASE_MSG_PRE_FLAG "extent==%lld pages exceeds limit %lld",
-					(unsigned long long)large_extent,
-					BASE_MEM_TILER_ALIGN_TOP_EXTENT_MAX_PAGES);
+		if (large_extension >
+		    BASE_MEM_TILER_ALIGN_TOP_EXTENSION_MAX_PAGES) {
+			dev_warn(dev,
+				 KBASE_MSG_PRE_FLAG
+				 "extension==%lld pages exceeds limit %lld",
+				 (unsigned long long)large_extension,
+				 BASE_MEM_TILER_ALIGN_TOP_EXTENSION_MAX_PAGES);
 			return -EINVAL;
 		}
 		/* For use with is_power_of_2, which takes unsigned long, so
 		 * must ensure e.g. on 32-bit kernel it'll fit in that type */
-		small_extent = (unsigned long)large_extent;
+		small_extension = (unsigned long)large_extension;
 
-		if (!is_power_of_2(small_extent)) {
-			dev_warn(dev, KBASE_MSG_PRE_FLAG "extent==%ld not a non-zero power of 2",
-					small_extent);
+		if (!is_power_of_2(small_extension)) {
+			dev_warn(dev,
+				 KBASE_MSG_PRE_FLAG
+				 "extension==%ld not a non-zero power of 2",
+				 small_extension);
 			return -EINVAL;
 		}
 
-		if (commit_pages > large_extent) {
-			dev_warn(dev, KBASE_MSG_PRE_FLAG "commit_pages==%ld exceeds extent==%ld",
-					(unsigned long)commit_pages,
-					(unsigned long)large_extent);
+		if (commit_pages > large_extension) {
+			dev_warn(dev,
+				 KBASE_MSG_PRE_FLAG
+				 "commit_pages==%ld exceeds extension==%ld",
+				 (unsigned long)commit_pages,
+				 (unsigned long)large_extension);
 			return -EINVAL;
 		}
 #undef KBASE_MSG_PRE_FLAG
@@ -3013,7 +3025,7 @@ static ssize_t kbase_jit_debugfs_common_read(struct file *file,
 		}
 
 		size = scnprintf(data->buffer, sizeof(data->buffer),
-				"%llu,%llu,%llu", data->active_value,
+				"%llu,%llu,%llu\n", data->active_value,
 				data->pool_value, data->destroy_value);
 	}
 
@@ -3311,7 +3323,7 @@ static bool meet_size_and_tiler_align_top_requirements(
 
 #if !MALI_USE_CSF
 	if (meet_reqs && (info->flags & BASE_JIT_ALLOC_MEM_TILER_ALIGN_TOP)) {
-		size_t align = info->extent;
+		size_t align = info->extension;
 		size_t align_mask = align - 1;
 
 		if ((walker->start_pfn + info->commit_pages) & align_mask)
@@ -3366,20 +3378,20 @@ static int kbase_mem_jit_trim_pages_from_region(struct kbase_context *kctx,
 			KBASE_GPU_ALLOCATED_OBJECT_ALIGN_BYTES);
 	} else if (reg->flags & KBASE_REG_TILER_ALIGN_TOP) {
 		/* The GPU could report being ready to write to the next
-		 * 'extent' sized chunk, but didn't actually write to it, so we
-		 * can report up to 'extent' size pages more than the backed
+		 * 'extension' sized chunk, but didn't actually write to it, so we
+		 * can report up to 'extension' size pages more than the backed
 		 * size.
 		 *
 		 * Note, this is allowed to exceed reg->nr_pages.
 		 */
-		max_allowed_pages += reg->extent;
+		max_allowed_pages += reg->extension;
 
 		/* Also note that in these GPUs, the GPU may make a large (>1
 		 * page) initial allocation but not actually write out to all
 		 * of it. Hence it might report that a much higher amount of
 		 * memory was used than actually was written to. This does not
 		 * result in a real warning because on growing this memory we
-		 * round up the size of the allocation up to an 'extent' sized
+		 * round up the size of the allocation up to an 'extension' sized
 		 * chunk, hence automatically bringing the backed size up to
 		 * the reported size.
 		 */
@@ -3605,7 +3617,7 @@ done:
 
 	/* Update attributes of JIT allocation taken from the pool */
 	reg->initial_commit = info->commit_pages;
-	reg->extent = info->extent;
+	reg->extension = info->extension;
 
 update_failed:
 	return ret;
@@ -3963,7 +3975,7 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 		kbase_gpu_vm_unlock(kctx);
 
 		reg = kbase_mem_alloc(kctx, info->va_pages, info->commit_pages,
-				info->extent, &flags, &gpu_addr);
+				      info->extension, &flags, &gpu_addr);
 		if (!reg) {
 			/* Most likely not enough GPU virtual space left for
 			 * the new JIT allocation.
@@ -4321,8 +4333,14 @@ KERNEL_VERSION(4, 5, 0) > LINUX_VERSION_CODE
 			alloc->imported.user_buf.nr_pages,
 			reg->flags & KBASE_REG_GPU_WR ? FOLL_WRITE : 0,
 			pages, NULL);
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)
 	pinned_pages = get_user_pages_remote(NULL, mm,
+			address,
+			alloc->imported.user_buf.nr_pages,
+			reg->flags & KBASE_REG_GPU_WR ? FOLL_WRITE : 0,
+			pages, NULL, NULL);
+#else
+	pinned_pages = get_user_pages_remote(mm,
 			address,
 			alloc->imported.user_buf.nr_pages,
 			reg->flags & KBASE_REG_GPU_WR ? FOLL_WRITE : 0,

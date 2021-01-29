@@ -93,11 +93,11 @@
 #endif
 
 #if MALI_USE_CSF
-/* Physical memory group ID for command stream frontend user I/O.
+/* Physical memory group ID for CSF user I/O.
  */
 #define KBASE_MEM_GROUP_CSF_IO BASE_MEM_GROUP_DEFAULT
 
-/* Physical memory group ID for command stream frontend firmware.
+/* Physical memory group ID for CSF firmware.
  */
 #define KBASE_MEM_GROUP_CSF_FW BASE_MEM_GROUP_DEFAULT
 #endif
@@ -155,9 +155,9 @@ void kbase_release_device(struct kbase_device *kbdev);
  * the flag @ref KBASE_REG_TILER_ALIGN_TOP (check the flags of the kbase
  * region):
  * - alignment offset is set to the difference between the kbase region
- * extent (converted from the original value in pages to bytes) and the kbase
+ * extension (converted from the original value in pages to bytes) and the kbase
  * region initial_commit (also converted from the original value in pages to
- * bytes); alignment mask is set to the kbase region extent in bytes and
+ * bytes); alignment mask is set to the kbase region extension in bytes and
  * decremented by 1.
  *
  * Return: if successful, address of the unmapped area aligned as required;

@@ -61,13 +61,13 @@
  *                during dumping of the message.
  * @group_handle: Handle identifying the associated queue group. Only valid
  *                when @flags contains KBASE_KTRACE_FLAG_CSF_GROUP.
- * @csg_nr:       Number/index of the associated queue group's command stream
+ * @csg_nr:       Number/index of the associated queue group's CS
  *                group to which it is mapped, or negative if none associated.
  *                Only valid when @flags contains KBASE_KTRACE_FLAG_CSF_GROUP.
  * @slot_prio:    The priority of the slot for the associated group, if it was
  *                scheduled. Hence, only valid when @csg_nr >=0 and @flags
  *                contains KBASE_KTRACE_FLAG_CSF_GROUP.
- * @csi_index:    ID of the associated queue's Command Stream HW interface.
+ * @csi_index:    ID of the associated queue's CS HW interface.
  *                Only valid when @flags contains KBASE_KTRACE_FLAG_CSF_QUEUE.
  */
 struct kbase_ktrace_backend {

@@ -28,11 +28,11 @@
 #include "mali_kbase_csf_firmware.h"
 #include "mali_kbase_csf_protected_memory.h"
 
-/* Indicate invalid command stream h/w interface
+/* Indicate invalid CS h/w interface
  */
 #define KBASEP_IF_NR_INVALID ((s8)-1)
 
-/* Indicate invalid command stream group number for a GPU command queue group
+/* Indicate invalid CSG number for a GPU command queue group
  */
 #define KBASEP_CSG_NR_INVALID ((s8)-1)
 
@@ -43,9 +43,9 @@
 /* Waiting timeout for global request completion acknowledgment */
 #define GLB_REQ_WAIT_TIMEOUT_MS (300) /* 300 milliseconds */
 
-#define CSG_REQ_EP_CFG (0x1 << CSG_REQ_EP_CFG_SHIFT)
-#define CSG_REQ_SYNC_UPDATE (0x1 << CSG_REQ_SYNC_UPDATE_SHIFT)
 #define FIRMWARE_PING_INTERVAL_MS (2000) /* 2 seconds */
+
+#define FIRMWARE_IDLE_HYSTERESIS_TIME_MS (10) /* Default 10 milliseconds */
 
 /**
  * enum kbase_csf_event_callback_action - return type for CSF event callbacks.
@@ -124,9 +124,9 @@ void kbase_csf_event_wait_remove(struct kbase_context *kctx,
 void kbase_csf_event_wait_remove_all(struct kbase_context *kctx);
 
 /**
- * kbase_csf_read_error - Read command stream fatal error
+ * kbase_csf_read_error - Read CS fatal error
  *
- * This function takes the command stream fatal error from context's ordered
+ * This function takes the CS fatal error from context's ordered
  * error_list, copies its contents to @event_data.
  *
  * @kctx:       The kbase context to read fatal error from
@@ -150,8 +150,8 @@ bool kbase_csf_error_pending(struct kbase_context *kctx);
  * kbase_csf_event_signal - Signal a CSF event
  *
  * This function triggers all the CSF event callbacks that are registered to
- * a given Kbase context, and also signals the thread of userspace driver
- * (front-end), waiting for the CSF event.
+ * a given Kbase context, and also signals the event handling thread of
+ * userspace driver waiting for the CSF event.
  *
  * @kctx:  The kbase context whose CSF event callbacks shall be triggered.
  * @notify_gpu: Flag to indicate if CSF firmware should be notified of the
@@ -171,8 +171,7 @@ static inline void kbase_csf_event_signal_cpu_only(struct kbase_context *kctx)
 }
 
 /**
- * kbase_csf_ctx_init - Initialize the command-stream front-end for a GPU
- *                      address space.
+ * kbase_csf_ctx_init - Initialize the CSF interface for a GPU address space.
  *
  * @kctx:	Pointer to the kbase context which is being initialized.
  *
@@ -194,8 +193,7 @@ void kbase_csf_ctx_handle_fault(struct kbase_context *kctx,
 		struct kbase_fault *fault);
 
 /**
- * kbase_csf_ctx_term - Terminate the command-stream front-end for a GPU
- *                      address space.
+ * kbase_csf_ctx_term - Terminate the CSF interface for a GPU address space.
  *
  * This function terminates any remaining CSGs and CSs which weren't destroyed
  * before context termination.
@@ -280,7 +278,9 @@ void kbase_csf_queue_unbind(struct kbase_queue *queue);
 int kbase_csf_queue_kick(struct kbase_context *kctx,
 			 struct kbase_ioctl_cs_queue_kick *kick);
 
-/** Find if given the queue group handle is valid.
+/**
+ * kbase_csf_queue_group_handle_is_valid - Find if the given queue group handle
+ *                                         is valid.
  *
  * This function is used to determine if the queue group handle is valid.
  *
@@ -340,7 +340,6 @@ void kbase_csf_term_descheduled_queue_group(struct kbase_queue_group *group);
  *			suspended.
  * @sus_buf:		Pointer to the structure which contains details of the
  *			user buffer and its kernel pinned pages.
- * @size:		The size in bytes for the user provided buffer.
  * @group_handle:	Handle for the group which uniquely identifies it within
  *			the context within which it was created.
  *
@@ -351,6 +350,16 @@ int kbase_csf_queue_group_suspend(struct kbase_context *kctx,
 	struct kbase_suspend_copy_buffer *sus_buf, u8 group_handle);
 
 /**
+ * kbase_csf_add_fatal_error_to_kctx - Add a fatal error to per-ctx error list.
+ *
+ * @group:       GPU command queue group.
+ * @err_payload: Error payload to report.
+ */
+void kbase_csf_add_fatal_error_to_kctx(
+	struct kbase_queue_group *const group,
+	struct base_gpu_queue_group_error const *const err_payload);
+
+/**
  * kbase_csf_interrupt - Handle interrupts issued by CSF firmware.
  *
  * @kbdev: The kbase device to handle an IRQ for
@@ -359,55 +368,89 @@ int kbase_csf_queue_group_suspend(struct kbase_context *kctx,
 void kbase_csf_interrupt(struct kbase_device *kbdev, u32 val);
 
 /**
- * kbase_csf_doorbell_mapping_init - Initialize the bitmap of Hw doorbell pages
- *                           used to track their availability.
+ * kbase_csf_doorbell_mapping_init - Initialize the fields that facilitates
+ *                                   the update of userspace mapping of HW
+ *                                   doorbell page.
  *
- * @kbdev: Instance of a GPU platform device that implements a command
- *         stream front-end interface.
+ * The function creates a file and allocates a dummy page to facilitate the
+ * update of userspace mapping to point to the dummy page instead of the real
+ * HW doorbell page after the suspend of queue group.
+ *
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
+ *
+ * Return: 0 on success, or negative on failure.
  */
 int kbase_csf_doorbell_mapping_init(struct kbase_device *kbdev);
 
+/**
+ * kbase_csf_doorbell_mapping_term - Free the dummy page & close the file used
+ *                         to update the userspace mapping of HW doorbell page
+ *
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
+ */
 void kbase_csf_doorbell_mapping_term(struct kbase_device *kbdev);
 
 /**
- * kbase_csf_ring_csg_doorbell - ring the doorbell for a command stream group
- *                               interface.
+ * kbase_csf_setup_dummy_user_reg_page - Setup the dummy page that is accessed
+ *                                       instead of the User register page after
+ *                                       the GPU power down.
  *
- * The function kicks a notification on the command stream group interface to
- * firmware.
+ * The function allocates a dummy page which is used to replace the User
+ * register page in the userspace mapping after the power down of GPU.
+ * On the power up of GPU, the mapping is updated to point to the real
+ * User register page. The mapping is used to allow access to LATEST_FLUSH
+ * register from userspace.
  *
- * @kbdev: Instance of a GPU platform device that implements a command
- *         stream front-end interface.
- * @slot: Index of command stream group interface for ringing the door-bell.
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
+ *
+ * Return: 0 on success, or negative on failure.
+ */
+int kbase_csf_setup_dummy_user_reg_page(struct kbase_device *kbdev);
+
+/**
+ * kbase_csf_free_dummy_user_reg_page - Free the dummy page that was used
+ *                                 used to replace the User register page
+ *
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
+ */
+void kbase_csf_free_dummy_user_reg_page(struct kbase_device *kbdev);
+
+/**
+ * kbase_csf_ring_csg_doorbell - ring the doorbell for a CSG interface.
+ *
+ * The function kicks a notification on the CSG interface to firmware.
+ *
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
+ * @slot: Index of CSG interface for ringing the door-bell.
  */
 void kbase_csf_ring_csg_doorbell(struct kbase_device *kbdev, int slot);
 
 /**
- * kbase_csf_ring_csg_slots_doorbell - ring the doorbell for a set of command
- *                                     stream group interfaces.
+ * kbase_csf_ring_csg_slots_doorbell - ring the doorbell for a set of CSG
+ *                                     interfaces.
  *
- * The function kicks a notification on a set of command stream group
- * interfaces to firmware.
+ * The function kicks a notification on a set of CSG interfaces to firmware.
  *
- * @kbdev: Instance of a GPU platform device that implements a command
- *         stream front-end interface.
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
  * @slot_bitmap: bitmap for the given slots, slot-0 on bit-0, etc.
  */
 void kbase_csf_ring_csg_slots_doorbell(struct kbase_device *kbdev,
 				       u32 slot_bitmap);
 
 /**
- * kbase_csf_ring_cs_kernel_doorbell - ring the kernel doorbell for a queue
+ * kbase_csf_ring_cs_kernel_doorbell - ring the kernel doorbell for a CSI
+ *                                     assigned to a GPU queue
  *
- * The function kicks a notification to the firmware for the command stream
- * interface to which the queue is bound.
+ * The function sends a doorbell interrupt notification to the firmware for
+ * a CSI assigned to a GPU queue.
  *
- * @kbdev: Instance of a GPU platform device that implements a command
- *         stream front-end interface.
- * @queue: Pointer to the queue for ringing the door-bell.
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
+ * @csi_index: ID of the CSI assigned to the GPU queue.
+ * @csg_nr:    Index of the CSG slot assigned to the queue
+ *             group to which the GPU queue is bound.
  */
 void kbase_csf_ring_cs_kernel_doorbell(struct kbase_device *kbdev,
-			struct kbase_queue *queue);
+				       int csi_index, int csg_nr);
 
 /**
  * kbase_csf_ring_cs_user_doorbell - ring the user doorbell allocated for a
@@ -416,8 +459,7 @@ void kbase_csf_ring_cs_kernel_doorbell(struct kbase_device *kbdev,
  * The function kicks a notification to the firmware on the doorbell assigned
  * to the queue.
  *
- * @kbdev: Instance of a GPU platform device that implements a command
- *         stream front-end interface.
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
  * @queue: Pointer to the queue for ringing the door-bell.
  */
 void kbase_csf_ring_cs_user_doorbell(struct kbase_device *kbdev,
@@ -427,9 +469,8 @@ void kbase_csf_ring_cs_user_doorbell(struct kbase_device *kbdev,
  * kbase_csf_active_queue_groups_reset - Reset the state of all active GPU
  *                            command queue groups associated with the context.
  *
- * @kbdev:     Instance of a GPU platform device that implements a command
- *             stream front-end interface.
- * @kctx:      The kbase context.
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
+ * @kctx:  The kbase context.
  *
  * This function will iterate through all the active/scheduled GPU command
  * queue groups associated with the context, deschedule and mark them as

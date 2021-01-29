@@ -36,26 +36,51 @@ struct kbase_hwcnt_dump_buffer;
  * @KBASE_HWCNT_GPU_GROUP_TYPE_V5: GPU V5 group type.
  */
 enum kbase_hwcnt_gpu_group_type {
-	KBASE_HWCNT_GPU_GROUP_TYPE_V5 = 0x10,
+	KBASE_HWCNT_GPU_GROUP_TYPE_V5,
 };
 
 /**
  * enum kbase_hwcnt_gpu_v5_block_type - GPU V5 hardware counter block types,
  *                                      used to identify metadata blocks.
- * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_JM:      Job Manager block.
- * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_TILER:   Tiler block.
- * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC:      Shader Core block.
- * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC2:     Secondary Shader Core block.
- * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_MEMSYS:  Memsys block.
- * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_MEMSYS2: Secondary Memsys block.
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_UNDEFINED: Undefined block (e.g. if a
+ *                                                counter set that a block
+ *                                                doesn't support is used).
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_FE:        Front End block (Job manager
+ *                                                or CSF HW).
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_FE2:       Secondary Front End block (Job
+ *                                                manager or CSF HW).
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_FE3:       Tertiary Front End block (Job
+ *                                                manager or CSF HW).
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_TILER:     Tiler block.
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC:        Shader Core block.
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC2:       Secondary Shader Core block.
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC3:       Tertiary Shader Core block.
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_MEMSYS:    Memsys block.
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_MEMSYS2:   Secondary Memsys block.
  */
 enum kbase_hwcnt_gpu_v5_block_type {
-	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_JM = 0x40,
+	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_UNDEFINED,
+	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_FE,
+	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_FE2,
+	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_FE3,
 	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_TILER,
 	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC,
 	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC2,
+	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC3,
 	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_MEMSYS,
 	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_MEMSYS2,
+};
+
+/**
+ * enum kbase_hwcnt_set - GPU hardware counter sets
+ * @KBASE_HWCNT_SET_PRIMARY:   The Primary set of counters
+ * @KBASE_HWCNT_SET_SECONDARY: The Secondary set of counters
+ * @KBASE_HWCNT_SET_TERTIARY:  The Tertiary set of counters
+ */
+enum kbase_hwcnt_set {
+	KBASE_HWCNT_SET_PRIMARY,
+	KBASE_HWCNT_SET_SECONDARY,
+	KBASE_HWCNT_SET_TERTIARY,
 };
 
 /**
@@ -74,15 +99,27 @@ struct kbase_hwcnt_physical_enable_map {
 };
 
 /**
+ * Values for Hardware Counter SET_SELECT value.
+ * Directly passed to HW.
+ */
+enum kbase_hwcnt_physical_set {
+	KBASE_HWCNT_PHYSICAL_SET_PRIMARY = 0,
+	KBASE_HWCNT_PHYSICAL_SET_SECONDARY = 1,
+	KBASE_HWCNT_PHYSICAL_SET_TERTIARY = 2,
+};
+
+/**
  * struct kbase_hwcnt_gpu_v5_info - Information about hwcnt blocks on v5 GPUs.
  * @l2_count:   L2 cache count.
  * @core_mask:  Shader core mask. May be sparse.
  * @clk_cnt:    Number of clock domains available.
+ * @is_csf: 	Whether CSF is used.
  */
 struct kbase_hwcnt_gpu_v5_info {
 	size_t l2_count;
 	u64 core_mask;
 	u8 clk_cnt;
+	bool is_csf;
 };
 
 /**
@@ -113,8 +150,7 @@ int kbase_hwcnt_gpu_info_init(
  *                                     current GPU.
  * @info:           Non-NULL pointer to info struct initialised by
  *                  kbase_hwcnt_gpu_info_init.
- * @use_secondary:  True if secondary performance counters should be used, else
- *                  false. Ignored if secondary counters are not supported.
+ * @counter_set:    The performance counter set used.
  * @out_metadata:   Non-NULL pointer to where created metadata is stored on
  *                  success.
  * @out_dump_bytes: Non-NULL pointer to where the size of the GPU counter dump
@@ -124,7 +160,7 @@ int kbase_hwcnt_gpu_info_init(
  */
 int kbase_hwcnt_gpu_metadata_create(
 	const struct kbase_hwcnt_gpu_info *info,
-	bool use_secondary,
+	enum kbase_hwcnt_set counter_set,
 	const struct kbase_hwcnt_metadata **out_metadata,
 	size_t *out_dump_bytes);
 
@@ -177,6 +213,16 @@ int kbase_hwcnt_gpu_dump_get(
 void kbase_hwcnt_gpu_enable_map_to_physical(
 	struct kbase_hwcnt_physical_enable_map *dst,
 	const struct kbase_hwcnt_enable_map *src);
+
+/**
+ * kbase_hwcnt_gpu_set_to_physical() - Map counter set selection to physical
+ *                                     SET_SELECT value.
+ *
+ * @dst: Non-NULL pointer to dst physical SET_SELECT value.
+ * @src: Non-NULL pointer to src counter set selection.
+ */
+void kbase_hwcnt_gpu_set_to_physical(enum kbase_hwcnt_physical_set *dst,
+				     enum kbase_hwcnt_set src);
 
 /**
  * kbase_hwcnt_gpu_enable_map_from_physical() - Convert a physical enable map to

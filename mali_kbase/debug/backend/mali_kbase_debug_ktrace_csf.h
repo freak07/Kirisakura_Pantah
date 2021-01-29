@@ -28,8 +28,7 @@
  */
 #if KBASE_KTRACE_TARGET_RBUF
 /**
- * kbasep_ktrace_add_csf - internal function to add trace about Command Stream
- *                        Frontend
+ * kbasep_ktrace_add_csf - internal function to add trace about CSF
  * @kbdev:    kbase device
  * @code:     trace code
  * @group:    queue group, or NULL if no queue group

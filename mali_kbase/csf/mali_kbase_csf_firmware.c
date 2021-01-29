@@ -25,22 +25,26 @@
 #include "mali_kbase_csf_trace_buffer.h"
 #include "mali_kbase_csf_timeout.h"
 #include "mali_kbase_mem.h"
-#include <mali_kbase_reset_gpu.h>
+#include "mali_kbase_reset_gpu.h"
+#include "mali_kbase_ctx_sched.h"
 #include "mali_kbase_csf_scheduler.h"
 #include "device/mali_kbase_device.h"
 #include "backend/gpu/mali_kbase_pm_internal.h"
 #include "tl/mali_kbase_timeline_priv.h"
 #include "mali_kbase_csf_tl_reader.h"
+#include "backend/gpu/mali_kbase_clk_rate_trace_mgr.h"
 
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/firmware.h>
 #include <linux/mman.h>
 #include <linux/string.h>
+#include <linux/mutex.h>
 #if (KERNEL_VERSION(4, 13, 0) <= LINUX_VERSION_CODE)
 #include <linux/set_memory.h>
 #endif
 #include <mmu/mali_kbase_mmu.h>
+#include <asm/arch_timer.h>
 
 #define MALI_MAX_FIRMWARE_NAME_LEN ((size_t)20)
 
@@ -100,8 +104,9 @@ MODULE_PARM_DESC(fw_debug,
 #define CSF_FIRMWARE_BOOT_TIMEOUT_MS     (500)
 #define CSF_MAX_FW_STOP_LOOPS            (100000)
 
-#define CSF_GLB_REQ_CFG_MASK \
-	(GLB_REQ_CFG_ALLOC_EN_MASK | GLB_REQ_CFG_PROGRESS_TIMER_MASK)
+#define CSF_GLB_REQ_CFG_MASK                                                   \
+	(GLB_REQ_CFG_ALLOC_EN_MASK | GLB_REQ_CFG_PROGRESS_TIMER_MASK |         \
+	 GLB_REQ_CFG_PWROFF_TIMER_MASK)
 
 static inline u32 input_page_read(const u32 *const input, const u32 offset)
 {
@@ -671,8 +676,7 @@ static int parse_memory_setup_entry(struct kbase_device *kbdev,
 out:
 	if (allocated_pages) {
 		if (protected_mode) {
-			kbase_csf_protected_memory_free(kbdev,
-					interface->pma, num_pages);
+			kbase_csf_protected_memory_free(kbdev, pma, num_pages);
 		} else {
 			kbase_mem_pool_free_pages(
 				&kbdev->mem_pools.small[KBASE_MEM_GROUP_CSF_FW],
@@ -917,7 +921,7 @@ static int parse_cmd_stream_group_info(struct kbase_device *kbdev,
 
 	if (ginfo->stream_num < MIN_SUPPORTED_STREAMS_PER_GROUP ||
 			ginfo->stream_num > MAX_SUPPORTED_STREAMS_PER_GROUP) {
-		dev_err(kbdev->dev, "CSG with %u streams out of range %u-%u",
+		dev_err(kbdev->dev, "CSG with %u CSs out of range %u-%u",
 				ginfo->stream_num,
 				MIN_SUPPORTED_STREAMS_PER_GROUP,
 				MAX_SUPPORTED_STREAMS_PER_GROUP);
@@ -928,7 +932,7 @@ static int parse_cmd_stream_group_info(struct kbase_device *kbdev,
 
 	if (ginfo->stream_num * ginfo->stream_stride > group_stride) {
 		dev_err(kbdev->dev,
-				"group stride of 0x%x exceeded by %u streams with stride 0x%x",
+				"group stride of 0x%x exceeded by %u CSs with stride 0x%x",
 				group_stride, ginfo->stream_num,
 				ginfo->stream_stride);
 		return -EINVAL;
@@ -948,7 +952,7 @@ static int parse_cmd_stream_group_info(struct kbase_device *kbdev,
 		err = parse_cmd_stream_info(kbdev, &ginfo->streams[sid],
 				stream_base);
 		if (err < 0) {
-			/* caller will free the memory for streams array */
+			/* caller will free the memory for CSs array */
 			return err;
 		}
 	}
@@ -1215,6 +1219,54 @@ u32 kbase_csf_firmware_global_output(
 	return val;
 }
 
+/**
+ * handle_internal_firmware_fatal - Handler for CS internal firmware fault.
+ *
+ * @kbdev:  Pointer to kbase device
+ *
+ * Report group fatal error to user space for all GPU command queue groups
+ * in the device, terminate them and reset GPU.
+ */
+static void handle_internal_firmware_fatal(struct kbase_device *const kbdev)
+{
+	int as;
+
+	for (as = 0; as < kbdev->nr_hw_address_spaces; as++) {
+		struct kbase_context *kctx;
+		struct kbase_fault fault = {
+			.status = GPU_EXCEPTION_TYPE_SW_FAULT_1,
+		};
+
+		if (as == MCU_AS_NR)
+			continue;
+
+		kctx = kbase_ctx_sched_as_to_ctx_refcount(kbdev, as);
+		if (!kctx)
+			continue;
+
+		kbase_csf_ctx_handle_fault(kctx, &fault);
+		kbase_ctx_sched_release_ctx_lock(kctx);
+	}
+
+	if (kbase_prepare_to_reset_gpu(kbdev))
+		kbase_reset_gpu(kbdev);
+}
+
+/**
+ * firmware_error_worker - Worker function for handling firmware internal error
+ *
+ * @data: Pointer to a work_struct embedded in kbase device.
+ *
+ * Handle the CS internal firmware error
+ */
+static void firmware_error_worker(struct work_struct *const data)
+{
+	struct kbase_device *const kbdev =
+		container_of(data, struct kbase_device, csf.fw_error_work);
+
+	handle_internal_firmware_fatal(kbdev);
+}
+
 static bool global_request_complete(struct kbase_device *const kbdev,
 				    u32 const req_mask)
 {
@@ -1283,6 +1335,26 @@ static void enable_endpoints_global(
 	set_global_request(global_iface, GLB_REQ_CFG_ALLOC_EN_MASK);
 }
 
+static void enable_shader_poweroff_timer(
+	struct kbase_device *const kbdev,
+	const struct kbase_csf_global_iface *const global_iface)
+{
+	u32 pwroff_reg = 0;
+
+	pwroff_reg = GLB_PWROFF_TIMER_TIMEOUT_SET(
+		pwroff_reg, DEFAULT_GLB_PWROFF_TIMER_TIMEOUT /
+				    GLB_PWROFF_TIMER_TIMEOUT_SCALE);
+
+	pwroff_reg = GLB_PWROFF_TIMER_TIMER_SOURCE_SET(
+		pwroff_reg, GLB_PWROFF_TIMER_TIMER_SOURCE_GPU_COUNTER);
+
+	kbase_csf_firmware_global_input(global_iface, GLB_PWROFF_TIMER,
+					pwroff_reg);
+	set_global_request(global_iface, GLB_REQ_CFG_PWROFF_TIMER_MASK);
+
+	dev_dbg(kbdev->dev, "GLB_PWROFF_TIMER set to 0x%.8x\n", pwroff_reg);
+}
+
 static void set_timeout_global(
 	const struct kbase_csf_global_iface *const global_iface,
 	u64 const timeout)
@@ -1309,13 +1381,15 @@ static void set_coherency_mode(struct kbase_device *const kbdev)
 					protected_mode_coherency);
 }
 
-static void global_init(struct kbase_device *const kbdev, u32 req_mask)
+static void global_init(struct kbase_device *const kbdev, u64 core_mask)
 {
-	u32 const ack_irq_mask = GLB_ACK_IRQ_MASK_CFG_ALLOC_EN_MASK  |
-			GLB_ACK_IRQ_MASK_PING_MASK |
-			GLB_ACK_IRQ_MASK_CFG_PROGRESS_TIMER_MASK |
-			GLB_ACK_IRQ_MASK_PROTM_ENTER_MASK |
-			GLB_ACK_IRQ_MASK_PROTM_EXIT_MASK;
+	u32 const ack_irq_mask = GLB_ACK_IRQ_MASK_CFG_ALLOC_EN_MASK |
+				 GLB_ACK_IRQ_MASK_PING_MASK |
+				 GLB_ACK_IRQ_MASK_CFG_PROGRESS_TIMER_MASK |
+				 GLB_ACK_IRQ_MASK_PROTM_ENTER_MASK |
+				 GLB_ACK_IRQ_MASK_PROTM_EXIT_MASK |
+				 GLB_ACK_IRQ_MASK_CFG_PWROFF_TIMER_MASK |
+				 GLB_ACK_IRQ_MASK_IDLE_EVENT_MASK;
 
 	const struct kbase_csf_global_iface *const global_iface =
 		&kbdev->csf.global_iface;
@@ -1326,9 +1400,9 @@ static void global_init(struct kbase_device *const kbdev, u32 req_mask)
 	/* Set the cohereny mode for protected mode execution */
 	set_coherency_mode(kbdev);
 
-	/* Enable endpoints on all present shader cores */
-	enable_endpoints_global(global_iface,
-		kbase_pm_get_present_cores(kbdev, KBASE_PM_CORE_SHADER));
+	/* Update shader core allocation enable mask */
+	enable_endpoints_global(global_iface, core_mask);
+	enable_shader_poweroff_timer(kbdev, global_iface);
 
 	set_timeout_global(global_iface, kbase_csf_timeout_get(kbdev));
 
@@ -1344,8 +1418,7 @@ static void global_init(struct kbase_device *const kbdev, u32 req_mask)
 /**
  * global_init_on_boot - Sends a global request to control various features.
  *
- * @kbdev: Instance of a GPU platform device that implements a command
- *         stream front-end interface.
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface
  *
  * Currently only the request to enable endpoints and timeout for GPU progress
  * timer is sent.
@@ -1354,19 +1427,25 @@ static void global_init(struct kbase_device *const kbdev, u32 req_mask)
  */
 static int global_init_on_boot(struct kbase_device *const kbdev)
 {
-	u32 const req_mask = CSF_GLB_REQ_CFG_MASK;
+	unsigned long flags;
+	u64 core_mask;
 
-	global_init(kbdev, req_mask);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	core_mask = kbase_pm_ca_get_core_mask(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
-	return wait_for_global_request(kbdev, req_mask);
+	global_init(kbdev, core_mask);
+
+	return wait_for_global_request(kbdev, CSF_GLB_REQ_CFG_MASK);
 }
 
-void kbase_csf_firmware_global_reinit(struct kbase_device *kbdev)
+void kbase_csf_firmware_global_reinit(struct kbase_device *kbdev,
+				      u64 core_mask)
 {
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	kbdev->csf.glb_init_request_pending = true;
-	global_init(kbdev, CSF_GLB_REQ_CFG_MASK);
+	global_init(kbdev, core_mask);
 }
 
 bool kbase_csf_firmware_global_reinit_complete(struct kbase_device *kbdev)
@@ -1378,6 +1457,26 @@ bool kbase_csf_firmware_global_reinit_complete(struct kbase_device *kbdev)
 		kbdev->csf.glb_init_request_pending = false;
 
 	return !kbdev->csf.glb_init_request_pending;
+}
+
+void kbase_csf_firmware_update_core_mask(struct kbase_device *kbdev,
+					 u64 new_core_mask)
+{
+	unsigned long flags;
+
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	kbase_csf_scheduler_spin_lock(kbdev, &flags);
+	enable_endpoints_global(&kbdev->csf.global_iface, new_core_mask);
+	kbase_csf_ring_doorbell(kbdev, CSF_KERNEL_DOORBELL_NR);
+	kbase_csf_scheduler_spin_unlock(kbdev, flags);
+}
+
+bool kbase_csf_firmware_core_mask_updated(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	return global_request_complete(kbdev, GLB_REQ_CFG_ALLOC_EN_MASK);
 }
 
 /**
@@ -1447,6 +1546,68 @@ void kbase_csf_firmware_reload_completed(struct kbase_device *kbdev)
 	kbase_pm_update_state(kbdev);
 }
 
+static u32 convert_dur_to_idle_count(struct kbase_device *kbdev, const u32 dur_ms)
+{
+#define HYSTERESIS_VAL_UNIT_SHIFT (10)
+	/* Get the cntfreq_el0 value, which drives the SYSTEM_TIMESTAMP */
+	u64 freq = arch_timer_get_cntfrq();
+	u64 dur_val = dur_ms;
+	u32 cnt_val_u32, reg_val_u32;
+	bool src_system_timestamp = freq > 0;
+
+	if (!src_system_timestamp) {
+		/* Get the cycle_counter source alternative */
+		spin_lock(&kbdev->pm.clk_rtm.lock);
+		if (kbdev->pm.clk_rtm.clks[0])
+			freq = kbdev->pm.clk_rtm.clks[0]->clock_val;
+		else
+			dev_warn(kbdev->dev, "No GPU clock, unexpected intregration issue!");
+		spin_unlock(&kbdev->pm.clk_rtm.lock);
+
+		dev_info(kbdev->dev, "Can't get the timestamp frequency, "
+			 "use cycle counter format with firmware idle hysteresis!");
+	}
+
+	/* Formula for dur_val = ((dur_ms/1000) * freq_HZ) >> 10) */
+	dur_val = (dur_val * freq) >> HYSTERESIS_VAL_UNIT_SHIFT;
+	dur_val = div_u64(dur_val, 1000);
+
+	/* Interface limits the value field to S32_MAX */
+	cnt_val_u32 = (dur_val > S32_MAX) ? S32_MAX : (u32)dur_val;
+
+	reg_val_u32 = GLB_IDLE_TIMER_TIMEOUT_SET(0, cnt_val_u32);
+	/* add the source flag */
+	if (src_system_timestamp)
+		reg_val_u32 = GLB_IDLE_TIMER_TIMER_SOURCE_SET(reg_val_u32,
+				GLB_IDLE_TIMER_TIMER_SOURCE_SYSTEM_TIMESTAMP);
+	else
+		reg_val_u32 = GLB_IDLE_TIMER_TIMER_SOURCE_SET(reg_val_u32,
+				GLB_IDLE_TIMER_TIMER_SOURCE_GPU_COUNTER);
+
+	return reg_val_u32;
+}
+
+u32 kbase_csf_firmware_get_gpu_idle_hysteresis_time(struct kbase_device *kbdev)
+{
+	return kbdev->csf.gpu_idle_hysteresis_ms;
+}
+
+u32 kbase_csf_firmware_set_gpu_idle_hysteresis_time(struct kbase_device *kbdev, u32 dur)
+{
+	unsigned long flags;
+	const u32 hysteresis_val = convert_dur_to_idle_count(kbdev, dur);
+
+	kbase_csf_scheduler_spin_lock(kbdev, &flags);
+	kbdev->csf.gpu_idle_hysteresis_ms = dur;
+	kbdev->csf.gpu_idle_dur_count = hysteresis_val;
+	kbase_csf_scheduler_spin_unlock(kbdev, flags);
+
+	dev_dbg(kbdev->dev, "CSF set firmware idle hysteresis count-value: 0x%.8x",
+		hysteresis_val);
+
+	return hysteresis_val;
+}
+
 int kbase_csf_firmware_init(struct kbase_device *kbdev)
 {
 	const struct firmware *firmware;
@@ -1479,8 +1640,13 @@ int kbase_csf_firmware_init(struct kbase_device *kbdev)
 	INIT_LIST_HEAD(&kbdev->csf.firmware_trace_buffers.list);
 	INIT_WORK(&kbdev->csf.firmware_reload_work,
 		  kbase_csf_firmware_reload_worker);
+	INIT_WORK(&kbdev->csf.fw_error_work, firmware_error_worker);
 
 	mutex_init(&kbdev->csf.reg_lock);
+
+	kbdev->csf.gpu_idle_hysteresis_ms = FIRMWARE_IDLE_HYSTERESIS_TIME_MS;
+	kbdev->csf.gpu_idle_dur_count = convert_dur_to_idle_count(kbdev,
+						FIRMWARE_IDLE_HYSTERESIS_TIME_MS);
 
 	ret = kbase_mcu_shared_interface_region_tracker_init(kbdev);
 	if (ret != 0) {
@@ -1588,6 +1754,10 @@ int kbase_csf_firmware_init(struct kbase_device *kbdev)
 	if (ret != 0)
 		goto error;
 
+	ret = kbase_csf_setup_dummy_user_reg_page(kbdev);
+	if (ret != 0)
+		goto error;
+
 	ret = kbase_csf_timeout_init(kbdev);
 	if (ret != 0)
 		goto error;
@@ -1618,6 +1788,8 @@ void kbase_csf_firmware_term(struct kbase_device *kbdev)
 	unsigned long flags;
 	int ret = 0;
 
+	cancel_work_sync(&kbdev->csf.fw_error_work);
+
 	while (kbase_reset_gpu_is_active(kbdev) && !ret)
 		ret = kbase_reset_gpu_wait(kbdev);
 
@@ -1643,6 +1815,8 @@ void kbase_csf_firmware_term(struct kbase_device *kbdev)
 	kbase_mmu_term(kbdev, &kbdev->csf.mcu_mmu);
 
 	kbase_csf_scheduler_term(kbdev);
+
+	kbase_csf_free_dummy_user_reg_page(kbdev);
 
 	kbase_csf_doorbell_mapping_term(kbdev);
 
@@ -1699,6 +1873,49 @@ void kbase_csf_firmware_term(struct kbase_device *kbdev)
 	kbase_mcu_shared_interface_region_tracker_term(kbdev);
 }
 
+void kbase_csf_firmware_enable_gpu_idle_timer(struct kbase_device *kbdev)
+{
+	struct kbase_csf_global_iface *global_iface = &kbdev->csf.global_iface;
+	const u32 glb_req =
+		kbase_csf_firmware_global_input_read(global_iface, GLB_REQ);
+
+	kbase_csf_scheduler_spin_lock_assert_held(kbdev);
+
+	/* The scheduler is assumed to only call the enable when its internal
+	 * state indicates that the idle timer has previously been disabled. So
+	 * on entry the expected field values are:
+	 *   1. GLOBAL_INPUT_BLOCK.GLB_REQ.IDLE_ENABLE: 0
+	 *   2. GLOBAL_OUTPUT_BLOCK.GLB_ACK.IDLE_ENABLE: 0, or, on 1 -> 0
+	 */
+
+	if (glb_req & GLB_REQ_IDLE_ENABLE_MASK)
+		dev_err(kbdev->dev, "Incoherent scheduler state on REQ_IDLE_ENABLE!");
+
+	kbase_csf_firmware_global_input(global_iface, GLB_IDLE_TIMER,
+					kbdev->csf.gpu_idle_dur_count);
+
+	kbase_csf_firmware_global_input_mask(global_iface, GLB_REQ,
+				GLB_REQ_REQ_IDLE_ENABLE, GLB_REQ_IDLE_ENABLE_MASK);
+
+	dev_dbg(kbdev->dev, "Enabling GPU idle timer with count-value: 0x%.8x",
+		kbdev->csf.gpu_idle_dur_count);
+	kbase_csf_ring_doorbell(kbdev, CSF_KERNEL_DOORBELL_NR);
+}
+
+void kbase_csf_firmware_disable_gpu_idle_timer(struct kbase_device *kbdev)
+{
+	struct kbase_csf_global_iface *global_iface = &kbdev->csf.global_iface;
+
+	kbase_csf_scheduler_spin_lock_assert_held(kbdev);
+
+	kbase_csf_firmware_global_input_mask(global_iface, GLB_REQ,
+					GLB_REQ_REQ_IDLE_DISABLE,
+					GLB_REQ_IDLE_DISABLE_MASK);
+	dev_dbg(kbdev->dev, "Sending request to disable gpu idle timer");
+
+	kbase_csf_ring_doorbell(kbdev, CSF_KERNEL_DOORBELL_NR);
+}
+
 int kbase_csf_firmware_ping(struct kbase_device *const kbdev)
 {
 	const struct kbase_csf_global_iface *const global_iface =
@@ -1742,6 +1959,7 @@ void kbase_csf_enter_protected_mode(struct kbase_device *kbdev)
 	struct kbase_csf_global_iface *global_iface = &kbdev->csf.global_iface;
 	unsigned long flags;
 	unsigned int value;
+	int err;
 
 	kbase_csf_scheduler_spin_lock(kbdev, &flags);
 	value = kbase_csf_firmware_global_output(global_iface, GLB_ACK);
@@ -1752,7 +1970,14 @@ void kbase_csf_enter_protected_mode(struct kbase_device *kbdev)
 	kbase_csf_ring_doorbell(kbdev, CSF_KERNEL_DOORBELL_NR);
 	kbase_csf_scheduler_spin_unlock(kbdev, flags);
 
-	wait_for_global_request(kbdev, GLB_REQ_PROTM_ENTER_MASK);
+	err = wait_for_global_request(kbdev, GLB_REQ_PROTM_ENTER_MASK);
+
+	if (!err) {
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbdev->protected_mode = true;
+		kbase_ipa_protection_mode_switch_event(kbdev);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	}
 }
 
 void kbase_csf_firmware_trigger_mcu_halt(struct kbase_device *kbdev)
@@ -1772,20 +1997,19 @@ void kbase_csf_firmware_trigger_mcu_halt(struct kbase_device *kbdev)
 }
 
 /**
- * copy_grp_and_stm - Copy command stream and/or group data
+ * copy_grp_and_stm - Copy CS and/or group data
  *
- * @iface:                Global command stream front-end interface provided by
- *                        the firmware.
+ * @iface:                Global CSF interface provided by the firmware.
  * @group_data:           Pointer where to store all the group data
  *                        (sequentially).
  * @max_group_num:        The maximum number of groups to be read. Can be 0, in
  *                        which case group_data is unused.
- * @stream_data:          Pointer where to store all the stream data
+ * @stream_data:          Pointer where to store all the CS data
  *                        (sequentially).
- * @max_total_stream_num: The maximum number of streams to be read.
+ * @max_total_stream_num: The maximum number of CSs to be read.
  *                        Can be 0, in which case stream_data is unused.
  *
- * Return: Total number of command streams, summed across all groups.
+ * Return: Total number of CSs, summed across all groups.
  */
 static u32 copy_grp_and_stm(
 	const struct kbase_csf_global_iface * const iface,

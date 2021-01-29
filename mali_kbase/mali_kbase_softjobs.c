@@ -1006,10 +1006,10 @@ static int kbase_jit_allocate_prepare(struct kbase_jd_atom *katom)
 		ret = kbasep_jit_alloc_validate(kctx, info);
 		if (ret)
 			goto free_info;
-		KBASE_TLSTREAM_TL_ATTRIB_ATOM_JITALLOCINFO(kbdev, katom,
-			info->va_pages, info->commit_pages, info->extent,
-			info->id, info->bin_id, info->max_allocations,
-			info->flags, info->usage_id);
+		KBASE_TLSTREAM_TL_ATTRIB_ATOM_JITALLOCINFO(
+			kbdev, katom, info->va_pages, info->commit_pages,
+			info->extension, info->id, info->bin_id,
+			info->max_allocations, info->flags, info->usage_id);
 	}
 
 	katom->jit_blocked = false;
@@ -1024,7 +1024,7 @@ static int kbase_jit_allocate_prepare(struct kbase_jd_atom *katom)
 	 * though the region is valid it doesn't represent the
 	 * same thing it used to.
 	 *
-	 * Complete validation of va_pages, commit_pages and extent
+	 * Complete validation of va_pages, commit_pages and extension
 	 * isn't done here as it will be done during the call to
 	 * kbase_mem_alloc.
 	 */
@@ -1228,10 +1228,10 @@ static int kbase_jit_allocate_process(struct kbase_jd_atom *katom)
 			 MIDGARD_MMU_BOTTOMLEVEL, kctx->jit_group_id);
 #endif
 
-		KBASE_TLSTREAM_TL_ATTRIB_ATOM_JIT(kbdev, katom,
-			info->gpu_alloc_addr, new_addr, info->flags,
-			entry_mmu_flags, info->id, info->commit_pages,
-			info->extent, info->va_pages);
+		KBASE_TLSTREAM_TL_ATTRIB_ATOM_JIT(
+			kbdev, katom, info->gpu_alloc_addr, new_addr,
+			info->flags, entry_mmu_flags, info->id,
+			info->commit_pages, info->extension, info->va_pages);
 		kbase_vunmap(kctx, &mapping);
 
 		kbase_trace_jit_report_gpu_mem(kctx, reg,

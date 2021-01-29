@@ -21,7 +21,7 @@
 
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= "r27p0-01eac0"
+MALI_RELEASE_NAME ?= "r28p0-01eac0"
 
 # Paths required for build
 
@@ -116,6 +116,7 @@ SRC := \
 	mali_kbase_strings.c \
 	mali_kbase_as_fault_debugfs.c \
 	mali_kbase_regs_history_debugfs.c \
+	mali_kbase_dvfs_debugfs.c \
 	mali_power_gpu_frequency_trace.c \
 	mali_kbase_trace_gpu_mem.c \
 	thirdparty/mali_kbase_mmap.c \

@@ -296,8 +296,8 @@ void kbase_phy_alloc_mapping_put(struct kbase_context *kctx,
 }
 
 struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
-		u64 va_pages, u64 commit_pages, u64 extent, u64 *flags,
-		u64 *gpu_va)
+					u64 va_pages, u64 commit_pages,
+					u64 extension, u64 *flags, u64 *gpu_va)
 {
 	int zone;
 	struct kbase_va_region *reg;
@@ -309,8 +309,9 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 	KBASE_DEBUG_ASSERT(gpu_va);
 
 	dev = kctx->kbdev->dev;
-	dev_dbg(dev, "Allocating %lld va_pages, %lld commit_pages, %lld extent, 0x%llX flags\n",
-		va_pages, commit_pages, extent, *flags);
+	dev_dbg(dev,
+		"Allocating %lld va_pages, %lld commit_pages, %lld extension, 0x%llX flags\n",
+		va_pages, commit_pages, extension, *flags);
 
 #if MALI_USE_CSF
 	*gpu_va = 0; /* return 0 on failure */
@@ -356,7 +357,8 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 		*flags &= ~BASE_MEM_COHERENT_SYSTEM;
 	}
 
-	if (kbase_check_alloc_sizes(kctx, *flags, va_pages, commit_pages, extent))
+	if (kbase_check_alloc_sizes(kctx, *flags, va_pages, commit_pages,
+				    extension))
 		goto bad_sizes;
 
 #ifdef CONFIG_MALI_MEMORY_FULLY_BACKED
@@ -413,15 +415,15 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 		reg->threshold_pages = 0;
 
 	if (*flags & BASE_MEM_GROW_ON_GPF) {
-		/* kbase_check_alloc_sizes() already checks extent is valid for
-		 * assigning to reg->extent */
-		reg->extent = extent;
+		/* kbase_check_alloc_sizes() already checks extension is valid for
+		 * assigning to reg->extension */
+		reg->extension = extension;
 #if !MALI_USE_CSF
 	} else if (*flags & BASE_MEM_TILER_ALIGN_TOP) {
-		reg->extent = extent;
+		reg->extension = extension;
 #endif /* !MALI_USE_CSF */
 	} else {
-		reg->extent = 0;
+		reg->extension = 0;
 	}
 
 	if (kbase_alloc_phy_pages(reg, va_pages, commit_pages) != 0) {
@@ -447,14 +449,6 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 			goto no_kern_mapping;
 		}
 	}
-
-#if MALI_USE_CSF
-	if (reg->flags & KBASE_REG_CSF_EVENT) {
-		WARN_ON(!(*flags & BASE_MEM_SAME_VA));
-
-		kbase_link_event_mem_page(kctx, reg);
-	}
-#endif
 
 	/* mmap needed to setup VA? */
 	if (*flags & BASE_MEM_SAME_VA) {
@@ -503,13 +497,6 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 
 no_mmap:
 no_cookie:
-#if MALI_USE_CSF
-	if (reg->flags & KBASE_REG_CSF_EVENT) {
-		kbase_gpu_vm_lock(kctx);
-		kbase_unlink_event_mem_page(kctx, reg);
-		kbase_gpu_vm_unlock(kctx);
-	}
-#endif
 no_kern_mapping:
 no_mem:
 #if MALI_JIT_PRESSURE_LIMIT_BASE
@@ -1480,7 +1467,7 @@ static struct kbase_va_region *kbase_mem_from_umm(struct kbase_context *kctx,
 	reg->gpu_alloc->imported.umm.current_mapping_usage_count = 0;
 	reg->gpu_alloc->imported.umm.need_sync = need_sync;
 	reg->gpu_alloc->imported.umm.kctx = kctx;
-	reg->extent = 0;
+	reg->extension = 0;
 
 	if (!IS_ENABLED(CONFIG_MALI_DMA_BUF_MAP_ON_DEMAND)) {
 		int err;
@@ -1670,7 +1657,7 @@ KERNEL_VERSION(4, 5, 0) > LINUX_VERSION_CODE
 		goto fault_mismatch;
 
 	reg->gpu_alloc->nents = 0;
-	reg->extent = 0;
+	reg->extension = 0;
 
 	if (pages) {
 		struct device *dev = kctx->kbdev->dev;
@@ -2674,6 +2661,11 @@ static int kbasep_reg_mmap(struct kbase_context *kctx,
 	kctx->pending_regions[cookie] = NULL;
 	bitmap_set(kctx->cookies, cookie, 1);
 
+#if MALI_USE_CSF
+	if (reg->flags & KBASE_REG_CSF_EVENT)
+		kbase_link_event_mem_page(kctx, reg);
+#endif
+
 	/*
 	 * Overwrite the offset with the region start_pfn, so we effectively
 	 * map from offset 0 in the region. However subtract the aligned
@@ -2842,6 +2834,18 @@ int kbase_context_mmap(struct kbase_context *const kctx,
 		/* MMU dump - userspace should now have a reference on
 		 * the pages, so we can now free the kernel mapping */
 		vfree(kaddr);
+		/* CPU mapping of GPU allocations have GPU VA as the vm_pgoff
+		 * and that is used to shrink the mapping when the commit size
+		 * is reduced. So vm_pgoff for CPU mapping created to get the
+		 * snapshot of GPU page tables shall not match with any GPU VA.
+		 * That can be ensured by setting vm_pgoff as vma->vm_start
+		 * because,
+		 * - GPU VA of any SAME_VA allocation cannot match with
+		 *   vma->vm_start, as CPU VAs are unique.
+		 * - GPU VA of CUSTOM_VA allocations are outside the CPU
+		 *   virtual address space.
+		 */
+		vma->vm_pgoff = PFN_DOWN(vma->vm_start);
 	}
 
 out_unlock:
@@ -3364,8 +3368,10 @@ static vm_fault_t kbase_csf_user_reg_vm_fault(struct vm_fault *vmf)
 #endif
 	struct kbase_context *kctx = vma->vm_private_data;
 	struct kbase_device *kbdev = kctx->kbdev;
+	struct memory_group_manager_device *mgm_dev = kbdev->mgm_dev;
 	unsigned long pfn = PFN_DOWN(kbdev->reg_start + USER_BASE);
 	size_t nr_pages = PFN_DOWN(vma->vm_end - vma->vm_start);
+	vm_fault_t ret = VM_FAULT_SIGBUS;
 
 	/* Few sanity checks up front */
 	if (WARN_ON(nr_pages != 1) ||
@@ -3374,11 +3380,22 @@ static vm_fault_t kbase_csf_user_reg_vm_fault(struct vm_fault *vmf)
 			PFN_DOWN(BASEP_MEM_CSF_USER_REG_PAGE_HANDLE)))
 		return VM_FAULT_SIGBUS;
 
-	/* TODO: check PM state here and don't map in the actual register page
-	 * if GPU is powered down or is about to be powered down.
-	 */
+	mutex_lock(&kbdev->pm.lock);
 
-	return vmf_insert_pfn_prot(vma, vma->vm_start, pfn, vma->vm_page_prot);
+	/* Don't map in the actual register page if GPU is powered down.
+	 * Always map in the dummy page in no mali builds.
+	 */
+	if (!kbdev->pm.backend.gpu_powered || IS_ENABLED(CONFIG_MALI_NO_MALI))
+		pfn = PFN_DOWN(as_phys_addr_t(kbdev->csf.dummy_user_reg_page));
+
+	ret = mgm_dev->ops.mgm_vmf_insert_pfn_prot(mgm_dev,
+						   KBASE_MEM_GROUP_CSF_FW, vma,
+						   vma->vm_start, pfn,
+						   vma->vm_page_prot);
+
+	mutex_unlock(&kbdev->pm.lock);
+
+	return ret;
 }
 
 static const struct vm_operations_struct kbase_csf_user_reg_vm_ops = {

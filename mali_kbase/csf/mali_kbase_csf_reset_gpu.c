@@ -28,6 +28,7 @@
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <mali_kbase_regs_history_debugfs.h>
 #include <csf/mali_kbase_csf_trace_buffer.h>
+#include <csf/ipa_control/mali_kbase_csf_ipa_control.h>
 
 /* Waiting timeout for GPU reset to complete */
 #define GPU_RESET_TIMEOUT_MS (5000) /* 5 seconds */
@@ -177,6 +178,11 @@ static int kbase_csf_reset_gpu_now(struct kbase_device *kbdev,
 			kbase_csf_dump_firmware_trace_buffer(kbdev);
 	}
 
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbdev->protected_mode = false;
+	kbase_ipa_control_handle_gpu_reset_pre(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
 	/* Reset the GPU */
 	err = kbase_pm_init_hw(kbdev, 0);
 
@@ -188,6 +194,7 @@ static int kbase_csf_reset_gpu_now(struct kbase_device *kbdev,
 	mutex_lock(&kbdev->mmu_hw_mutex);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	kbase_ctx_sched_restore_all_as(kbdev);
+	kbase_ipa_control_handle_gpu_reset_post(kbdev);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 	mutex_unlock(&kbdev->mmu_hw_mutex);
 

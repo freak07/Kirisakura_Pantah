@@ -640,8 +640,8 @@ static void jd_update_jit_usage(struct kbase_jd_atom *katom)
 			u64 addr_end;
 
 			if (reg->flags & KBASE_REG_TILER_ALIGN_TOP) {
-				const unsigned long extent_bytes = reg->extent
-					<< PAGE_SHIFT;
+				const unsigned long extension_bytes =
+					reg->extension << PAGE_SHIFT;
 				const u64 low_ptr = ptr[LOW];
 				const u64 high_ptr = ptr[HIGH];
 
@@ -662,8 +662,8 @@ static void jd_update_jit_usage(struct kbase_jd_atom *katom)
 				 * this, but here to avoid future maintenance
 				 * hazards
 				 */
-				WARN_ON(!is_power_of_2(extent_bytes));
-				addr_end = ALIGN(read_val, extent_bytes);
+				WARN_ON(!is_power_of_2(extension_bytes));
+				addr_end = ALIGN(read_val, extension_bytes);
 			} else {
 				addr_end = read_val = READ_ONCE(*ptr);
 			}
@@ -1054,20 +1054,7 @@ static bool jd_submit_atom(struct kbase_context *const kctx,
 			return jd_done_nolock(katom, NULL);
 		}
 
-		if (katom->core_req & BASE_JD_REQ_SOFT_JOB) {
-			/* This softjob has failed due to a previous
-			 * dependency, however we should still run the
-			 * prepare & finish functions
-			 */
-			if (kbase_prepare_soft_job(katom) != 0) {
-				katom->event_code =
-					BASE_JD_EVENT_JOB_INVALID;
-				return jd_done_nolock(katom, NULL);
-			}
-		}
-
 		katom->will_fail_event_code = katom->event_code;
-		return false;
 	}
 
 	/* These must occur after the above loop to ensure that an atom

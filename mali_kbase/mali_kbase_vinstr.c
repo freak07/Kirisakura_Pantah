@@ -33,6 +33,7 @@
 #include <linux/fcntl.h>
 #include <linux/fs.h>
 #include <linux/hrtimer.h>
+#include <linux/log2.h>
 #include <linux/mm.h>
 #include <linux/mutex.h>
 #include <linux/poll.h>
@@ -389,7 +390,7 @@ static void kbasep_vinstr_client_destroy(struct kbase_vinstr_client *vcli)
  *                                 the vinstr context.
  * @vctx:     Non-NULL pointer to vinstr context.
  * @setup:    Non-NULL pointer to hardware counter ioctl setup structure.
- *            setup->buffer_count must not be 0.
+ *            setup->buffer_count must not be 0 and must be a power of 2.
  * @out_vcli: Non-NULL pointer to where created client will be stored on
  *            success.
  *
@@ -407,6 +408,7 @@ static int kbasep_vinstr_client_create(
 	WARN_ON(!vctx);
 	WARN_ON(!setup);
 	WARN_ON(setup->buffer_count == 0);
+	WARN_ON(!is_power_of_2(setup->buffer_count));
 
 	vcli = kzalloc(sizeof(*vcli), GFP_KERNEL);
 	if (!vcli)
@@ -586,7 +588,8 @@ int kbase_vinstr_hwcnt_reader_setup(
 
 	if (!vctx || !setup ||
 	    (setup->buffer_count == 0) ||
-	    (setup->buffer_count > MAX_BUFFER_COUNT))
+	    (setup->buffer_count > MAX_BUFFER_COUNT) ||
+	    !is_power_of_2(setup->buffer_count))
 		return -EINVAL;
 
 	errcode = kbasep_vinstr_client_create(vctx, setup, &vcli);
@@ -719,7 +722,9 @@ static long kbasep_vinstr_hwcnt_reader_ioctl_get_buffer(
 	if (unlikely(copy_to_user(buffer, meta, min_size)))
 		return -EFAULT;
 
-	atomic_inc(&cli->meta_idx);
+	/* Compare exchange meta idx to protect against concurrent getters */
+	if (meta_idx != atomic_cmpxchg(&cli->meta_idx, meta_idx, meta_idx + 1))
+		return -EBUSY;
 
 	return 0;
 }
@@ -791,7 +796,13 @@ static long kbasep_vinstr_hwcnt_reader_ioctl_put_buffer(
 		goto out;
 	}
 
-	atomic_inc(&cli->read_idx);
+	/* Compare exchange read idx to protect against concurrent putters */
+	if (read_idx !=
+	    atomic_cmpxchg(&cli->read_idx, read_idx, read_idx + 1)) {
+		ret = -EPERM;
+		goto out;
+	}
+
 out:
 	if (unlikely(kbuf != stack_kbuf))
 		kfree(kbuf);

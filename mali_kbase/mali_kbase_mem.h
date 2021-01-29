@@ -263,7 +263,7 @@ static inline struct kbase_mem_phy_alloc *kbase_mem_phy_alloc_put(struct kbase_m
  * @threshold_pages: If non-zero and the amount of memory committed to a region
  *                   that can grow on page fault exceeds this number of pages
  *                   then the driver switches to incremental rendering.
- * @extent:    Number of pages allocated on page fault.
+ * @extension:    Number of pages allocated on page fault.
  * @cpu_alloc: The physical memory we mmap to the CPU when mapping this region.
  * @gpu_alloc: The physical memory we mmap to the GPU when mapping this region.
  * @jit_node:     Links to neighboring regions in the just-in-time memory pool.
@@ -341,7 +341,7 @@ struct kbase_va_region {
 #endif
 
 #if !MALI_USE_CSF
-/* The top of the initial commit is aligned to extent pages.
+/* The top of the initial commit is aligned to extension pages.
  * Extent must be a power of 2 */
 #define KBASE_REG_TILER_ALIGN_TOP   (1ul << 23)
 #else
@@ -416,7 +416,7 @@ struct kbase_va_region {
 #endif
 
 	unsigned long flags;
-	size_t extent;
+	size_t extension;
 	struct kbase_mem_phy_alloc *cpu_alloc;
 	struct kbase_mem_phy_alloc *gpu_alloc;
 	struct list_head jit_node;
@@ -1072,7 +1072,7 @@ bool kbase_check_import_flags(unsigned long flags);
  * @flags:        The flags passed from user space
  * @va_pages:     The size of the requested region, in pages.
  * @commit_pages: Number of pages to commit initially.
- * @extent:       Number of pages to grow by on GPU page fault and/or alignment
+ * @extension:       Number of pages to grow by on GPU page fault and/or alignment
  *                (depending on flags)
  *
  * Makes checks on the size parameters passed in from user space for a memory
@@ -1081,7 +1081,7 @@ bool kbase_check_import_flags(unsigned long flags);
  * Return: 0 if sizes are valid for these flags, negative error code otherwise
  */
 int kbase_check_alloc_sizes(struct kbase_context *kctx, unsigned long flags,
-		u64 va_pages, u64 commit_pages, u64 extent);
+			    u64 va_pages, u64 commit_pages, u64 extension);
 
 /**
  * kbase_update_region_flags - Convert user space flags to kernel region flags

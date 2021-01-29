@@ -332,7 +332,8 @@ void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_cqs_wait(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 cqs_obj_gpu_addr,
-	u32 cqs_obj_compare_value);
+	u32 cqs_obj_compare_value,
+	u32 cqs_obj_inherit_error);
 void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_cqs_set(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
@@ -349,6 +350,14 @@ void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_unmap_import_force(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
 	u64 map_import_buf_gpu_addr);
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_error_barrier(
+	struct kbase_tlstream *stream,
+	const void *kcpu_queue);
+void __kbase_tlstream_tl_kbase_kcpuqueue_enqueue_group_suspend(
+	struct kbase_tlstream *stream,
+	const void *kcpu_queue,
+	const void *group_suspend_buf,
+	u32 gpu_cmdq_grp_handle);
 void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_enqueue_jit_alloc(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
@@ -382,40 +391,47 @@ void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_signal_start(
 	const void *kcpu_queue);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_signal_end(
 	struct kbase_tlstream *stream,
-	const void *kcpu_queue);
+	const void *kcpu_queue,
+	u32 execute_error);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_wait_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_wait_end(
 	struct kbase_tlstream *stream,
-	const void *kcpu_queue);
+	const void *kcpu_queue,
+	u32 execute_error);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_wait_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_wait_end(
 	struct kbase_tlstream *stream,
-	const void *kcpu_queue);
+	const void *kcpu_queue,
+	u32 execute_error);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_set(
 	struct kbase_tlstream *stream,
-	const void *kcpu_queue);
+	const void *kcpu_queue,
+	u32 execute_error);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_map_import_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_map_import_end(
 	struct kbase_tlstream *stream,
-	const void *kcpu_queue);
+	const void *kcpu_queue,
+	u32 execute_error);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_end(
 	struct kbase_tlstream *stream,
-	const void *kcpu_queue);
+	const void *kcpu_queue,
+	u32 execute_error);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_force_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_force_end(
 	struct kbase_tlstream *stream,
-	const void *kcpu_queue);
+	const void *kcpu_queue,
+	u32 execute_error);
 void __kbase_tlstream_tl_kbase_kcpuqueue_execute_jit_alloc_start(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
@@ -425,6 +441,7 @@ void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_execute_jit_alloc_end(
 void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_execute_jit_alloc_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
+	u32 execute_error,
 	u64 jit_alloc_gpu_alloc_addr,
 	u64 jit_alloc_mmu_flags);
 void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_execute_jit_alloc_end(
@@ -439,13 +456,21 @@ void __kbase_tlstream_tl_kbase_array_begin_kcpuqueue_execute_jit_free_end(
 void __kbase_tlstream_tl_kbase_array_item_kcpuqueue_execute_jit_free_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue,
+	u32 execute_error,
 	u64 jit_free_pages_used);
 void __kbase_tlstream_tl_kbase_array_end_kcpuqueue_execute_jit_free_end(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
-void __kbase_tlstream_tl_kbase_kcpuqueue_execute_errorbarrier(
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_error_barrier(
 	struct kbase_tlstream *stream,
 	const void *kcpu_queue);
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_group_suspend_start(
+	struct kbase_tlstream *stream,
+	const void *kcpu_queue);
+void __kbase_tlstream_tl_kbase_kcpuqueue_execute_group_suspend_end(
+	struct kbase_tlstream *stream,
+	const void *kcpu_queue,
+	u32 execute_error);
 void __kbase_tlstream_tl_kbase_csffw_tlstream_overflow(
 	struct kbase_tlstream *stream,
 	u64 csffw_timestamp,
@@ -1842,27 +1867,30 @@ struct kbase_tlstream;
  * @cqs_obj_gpu_addr: CQS Object GPU ptr
  * @cqs_obj_compare_value: Semaphore value that should be exceeded
  * for the WAIT to pass
+ * @cqs_obj_inherit_error: Indicates the error state should be inherited into the queue or not
  */
 #if MALI_USE_CSF
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_CQS_WAIT(	\
 	kbdev,	\
 	kcpu_queue,	\
 	cqs_obj_gpu_addr,	\
-	cqs_obj_compare_value	\
+	cqs_obj_compare_value,	\
+	cqs_obj_inherit_error	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_flags);	\
 		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
 			__kbase_tlstream_tl_kbase_kcpuqueue_enqueue_cqs_wait(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
-				kcpu_queue, cqs_obj_gpu_addr, cqs_obj_compare_value);	\
+				kcpu_queue, cqs_obj_gpu_addr, cqs_obj_compare_value, cqs_obj_inherit_error);	\
 	} while (0)
 #else
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_CQS_WAIT(	\
 	kbdev,	\
 	kcpu_queue,	\
 	cqs_obj_gpu_addr,	\
-	cqs_obj_compare_value	\
+	cqs_obj_compare_value,	\
+	cqs_obj_inherit_error	\
 	)	\
 	do { } while (0)
 #endif /* MALI_USE_CSF */
@@ -1983,6 +2011,66 @@ struct kbase_tlstream;
 	kbdev,	\
 	kcpu_queue,	\
 	map_import_buf_gpu_addr	\
+	)	\
+	do { } while (0)
+#endif /* MALI_USE_CSF */
+
+/**
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_ERROR_BARRIER -
+ *   KCPU Queue enqueues Error Barrier
+ *
+ * @kbdev: Kbase device
+ * @kcpu_queue: KCPU queue
+ */
+#if MALI_USE_CSF
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_ERROR_BARRIER(	\
+	kbdev,	\
+	kcpu_queue	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_flags);	\
+		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_enqueue_error_barrier(	\
+				__TL_DISPATCH_STREAM(kbdev, obj),	\
+				kcpu_queue);	\
+	} while (0)
+#else
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_ERROR_BARRIER(	\
+	kbdev,	\
+	kcpu_queue	\
+	)	\
+	do { } while (0)
+#endif /* MALI_USE_CSF */
+
+/**
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_GROUP_SUSPEND -
+ *   KCPU Queue enqueues Group Suspend
+ *
+ * @kbdev: Kbase device
+ * @kcpu_queue: KCPU queue
+ * @group_suspend_buf: Pointer to the suspend buffer structure
+ * @gpu_cmdq_grp_handle: GPU Command Queue Group handle which will match userspace
+ */
+#if MALI_USE_CSF
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_GROUP_SUSPEND(	\
+	kbdev,	\
+	kcpu_queue,	\
+	group_suspend_buf,	\
+	gpu_cmdq_grp_handle	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_flags);	\
+		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_enqueue_group_suspend(	\
+				__TL_DISPATCH_STREAM(kbdev, obj),	\
+				kcpu_queue, group_suspend_buf, gpu_cmdq_grp_handle);	\
+	} while (0)
+#else
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_ENQUEUE_GROUP_SUSPEND(	\
+	kbdev,	\
+	kcpu_queue,	\
+	group_suspend_buf,	\
+	gpu_cmdq_grp_handle	\
 	)	\
 	do { } while (0)
 #endif /* MALI_USE_CSF */
@@ -2223,23 +2311,26 @@ struct kbase_tlstream;
  *
  * @kbdev: Kbase device
  * @kcpu_queue: KCPU queue
+ * @execute_error: Non-zero error code if KCPU Queue item completed with error, else zero
  */
 #if MALI_USE_CSF
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_flags);	\
 		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
 			__kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_signal_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
-				kcpu_queue);	\
+				kcpu_queue, execute_error);	\
 	} while (0)
 #else
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_SIGNAL_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do { } while (0)
 #endif /* MALI_USE_CSF */
@@ -2277,23 +2368,26 @@ struct kbase_tlstream;
  *
  * @kbdev: Kbase device
  * @kcpu_queue: KCPU queue
+ * @execute_error: Non-zero error code if KCPU Queue item completed with error, else zero
  */
 #if MALI_USE_CSF
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_flags);	\
 		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
 			__kbase_tlstream_tl_kbase_kcpuqueue_execute_fence_wait_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
-				kcpu_queue);	\
+				kcpu_queue, execute_error);	\
 	} while (0)
 #else
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_FENCE_WAIT_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do { } while (0)
 #endif /* MALI_USE_CSF */
@@ -2331,23 +2425,26 @@ struct kbase_tlstream;
  *
  * @kbdev: Kbase device
  * @kcpu_queue: KCPU queue
+ * @execute_error: Non-zero error code if KCPU Queue item completed with error, else zero
  */
 #if MALI_USE_CSF
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_flags);	\
 		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
 			__kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_wait_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
-				kcpu_queue);	\
+				kcpu_queue, execute_error);	\
 	} while (0)
 #else
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_WAIT_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do { } while (0)
 #endif /* MALI_USE_CSF */
@@ -2358,23 +2455,26 @@ struct kbase_tlstream;
  *
  * @kbdev: Kbase device
  * @kcpu_queue: KCPU queue
+ * @execute_error: Non-zero error code if KCPU Queue item completed with error, else zero
  */
 #if MALI_USE_CSF
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_SET(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_flags);	\
 		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
 			__kbase_tlstream_tl_kbase_kcpuqueue_execute_cqs_set(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
-				kcpu_queue);	\
+				kcpu_queue, execute_error);	\
 	} while (0)
 #else
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_CQS_SET(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do { } while (0)
 #endif /* MALI_USE_CSF */
@@ -2412,23 +2512,26 @@ struct kbase_tlstream;
  *
  * @kbdev: Kbase device
  * @kcpu_queue: KCPU queue
+ * @execute_error: Non-zero error code if KCPU Queue item completed with error, else zero
  */
 #if MALI_USE_CSF
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_flags);	\
 		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
 			__kbase_tlstream_tl_kbase_kcpuqueue_execute_map_import_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
-				kcpu_queue);	\
+				kcpu_queue, execute_error);	\
 	} while (0)
 #else
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_MAP_IMPORT_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do { } while (0)
 #endif /* MALI_USE_CSF */
@@ -2466,23 +2569,26 @@ struct kbase_tlstream;
  *
  * @kbdev: Kbase device
  * @kcpu_queue: KCPU queue
+ * @execute_error: Non-zero error code if KCPU Queue item completed with error, else zero
  */
 #if MALI_USE_CSF
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_flags);	\
 		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
 			__kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
-				kcpu_queue);	\
+				kcpu_queue, execute_error);	\
 	} while (0)
 #else
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do { } while (0)
 #endif /* MALI_USE_CSF */
@@ -2520,23 +2626,26 @@ struct kbase_tlstream;
  *
  * @kbdev: Kbase device
  * @kcpu_queue: KCPU queue
+ * @execute_error: Non-zero error code if KCPU Queue item completed with error, else zero
  */
 #if MALI_USE_CSF
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_flags);	\
 		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
 			__kbase_tlstream_tl_kbase_kcpuqueue_execute_unmap_import_force_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
-				kcpu_queue);	\
+				kcpu_queue, execute_error);	\
 	} while (0)
 #else
 #define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_UNMAP_IMPORT_FORCE_END(	\
 	kbdev,	\
-	kcpu_queue	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do { } while (0)
 #endif /* MALI_USE_CSF */
@@ -2601,6 +2710,7 @@ struct kbase_tlstream;
  *
  * @kbdev: Kbase device
  * @kcpu_queue: KCPU queue
+ * @execute_error: Non-zero error code if KCPU Queue item completed with error, else zero
  * @jit_alloc_gpu_alloc_addr: The JIT allocated GPU virtual address
  * @jit_alloc_mmu_flags: The MMU flags for the JIT allocation
  */
@@ -2608,6 +2718,7 @@ struct kbase_tlstream;
 #define KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END(	\
 	kbdev,	\
 	kcpu_queue,	\
+	execute_error,	\
 	jit_alloc_gpu_alloc_addr,	\
 	jit_alloc_mmu_flags	\
 	)	\
@@ -2616,12 +2727,13 @@ struct kbase_tlstream;
 		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
 			__kbase_tlstream_tl_kbase_array_item_kcpuqueue_execute_jit_alloc_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
-				kcpu_queue, jit_alloc_gpu_alloc_addr, jit_alloc_mmu_flags);	\
+				kcpu_queue, execute_error, jit_alloc_gpu_alloc_addr, jit_alloc_mmu_flags);	\
 	} while (0)
 #else
 #define KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_ALLOC_END(	\
 	kbdev,	\
 	kcpu_queue,	\
+	execute_error,	\
 	jit_alloc_gpu_alloc_addr,	\
 	jit_alloc_mmu_flags	\
 	)	\
@@ -2715,6 +2827,7 @@ struct kbase_tlstream;
  *
  * @kbdev: Kbase device
  * @kcpu_queue: KCPU queue
+ * @execute_error: Non-zero error code if KCPU Queue item completed with error, else zero
  * @jit_free_pages_used: The actual number of pages used by the JIT
  * allocation
  */
@@ -2722,6 +2835,7 @@ struct kbase_tlstream;
 #define KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
 	kbdev,	\
 	kcpu_queue,	\
+	execute_error,	\
 	jit_free_pages_used	\
 	)	\
 	do {	\
@@ -2729,12 +2843,13 @@ struct kbase_tlstream;
 		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
 			__kbase_tlstream_tl_kbase_array_item_kcpuqueue_execute_jit_free_end(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
-				kcpu_queue, jit_free_pages_used);	\
+				kcpu_queue, execute_error, jit_free_pages_used);	\
 	} while (0)
 #else
 #define KBASE_TLSTREAM_TL_KBASE_ARRAY_ITEM_KCPUQUEUE_EXECUTE_JIT_FREE_END(	\
 	kbdev,	\
 	kcpu_queue,	\
+	execute_error,	\
 	jit_free_pages_used	\
 	)	\
 	do { } while (0)
@@ -2768,28 +2883,85 @@ struct kbase_tlstream;
 #endif /* MALI_USE_CSF */
 
 /**
- * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_ERRORBARRIER -
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_ERROR_BARRIER -
  *   KCPU Queue executes an Error Barrier
  *
  * @kbdev: Kbase device
  * @kcpu_queue: KCPU queue
  */
 #if MALI_USE_CSF
-#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_ERRORBARRIER(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_ERROR_BARRIER(	\
 	kbdev,	\
 	kcpu_queue	\
 	)	\
 	do {	\
 		int enabled = atomic_read(&kbdev->timeline_flags);	\
 		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
-			__kbase_tlstream_tl_kbase_kcpuqueue_execute_errorbarrier(	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_error_barrier(	\
 				__TL_DISPATCH_STREAM(kbdev, obj),	\
 				kcpu_queue);	\
 	} while (0)
 #else
-#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_ERRORBARRIER(	\
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_ERROR_BARRIER(	\
 	kbdev,	\
 	kcpu_queue	\
+	)	\
+	do { } while (0)
+#endif /* MALI_USE_CSF */
+
+/**
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_GROUP_SUSPEND_START -
+ *   KCPU Queue starts a group suspend
+ *
+ * @kbdev: Kbase device
+ * @kcpu_queue: KCPU queue
+ */
+#if MALI_USE_CSF
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_GROUP_SUSPEND_START(	\
+	kbdev,	\
+	kcpu_queue	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_flags);	\
+		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_group_suspend_start(	\
+				__TL_DISPATCH_STREAM(kbdev, obj),	\
+				kcpu_queue);	\
+	} while (0)
+#else
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_GROUP_SUSPEND_START(	\
+	kbdev,	\
+	kcpu_queue	\
+	)	\
+	do { } while (0)
+#endif /* MALI_USE_CSF */
+
+/**
+ * KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_GROUP_SUSPEND_END -
+ *   KCPU Queue ends a group suspend
+ *
+ * @kbdev: Kbase device
+ * @kcpu_queue: KCPU queue
+ * @execute_error: Non-zero error code if KCPU Queue item completed with error, else zero
+ */
+#if MALI_USE_CSF
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_GROUP_SUSPEND_END(	\
+	kbdev,	\
+	kcpu_queue,	\
+	execute_error	\
+	)	\
+	do {	\
+		int enabled = atomic_read(&kbdev->timeline_flags);	\
+		if (enabled & BASE_TLSTREAM_ENABLE_CSF_TRACEPOINTS)	\
+			__kbase_tlstream_tl_kbase_kcpuqueue_execute_group_suspend_end(	\
+				__TL_DISPATCH_STREAM(kbdev, obj),	\
+				kcpu_queue, execute_error);	\
+	} while (0)
+#else
+#define KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_GROUP_SUSPEND_END(	\
+	kbdev,	\
+	kcpu_queue,	\
+	execute_error	\
 	)	\
 	do { } while (0)
 #endif /* MALI_USE_CSF */

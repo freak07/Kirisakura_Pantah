@@ -37,9 +37,9 @@
 #include <backend/gpu/mali_kbase_model_dummy.h>
 #endif /* CONFIG_MALI_NO_MALI */
 #include "mali_kbase_mem_profile_debugfs_buf_size.h"
-#include "mali_kbase_debug_mem_view.h"
 #include "mali_kbase_mem.h"
 #include "mali_kbase_mem_pool_debugfs.h"
+#include "mali_kbase_mem_pool_group.h"
 #include "mali_kbase_debugfs_helper.h"
 #if !MALI_CUSTOMER_RELEASE
 #include "mali_kbase_regs_dump_debugfs.h"
@@ -50,10 +50,9 @@
 #if !MALI_USE_CSF
 #include <mali_kbase_hwaccess_jm.h>
 #endif /* !MALI_USE_CSF */
-#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY_VIA_DEBUG_FS
+#ifdef CONFIG_MALI_PRFCNT_SET_SELECT_VIA_DEBUG_FS
 #include <mali_kbase_hwaccess_instr.h>
 #endif
-#include <mali_kbase_ctx_sched.h>
 #include <mali_kbase_reset_gpu.h>
 #include "mali_kbase_ioctl.h"
 #if !MALI_USE_CSF
@@ -66,8 +65,8 @@
 #if MALI_USE_CSF
 #include "csf/mali_kbase_csf_firmware.h"
 #include "csf/mali_kbase_csf_tiler_heap.h"
-#include "csf/mali_kbase_csf_kcpu_debugfs.h"
 #include "csf/mali_kbase_csf_csg_debugfs.h"
+#include "csf/mali_kbase_csf_cpu_queue_debugfs.h"
 #endif
 #ifdef CONFIG_MALI_ARBITER_SUPPORT
 #include "arbiter/mali_kbase_arbiter_pm.h"
@@ -79,6 +78,7 @@
 #include "mali_kbase_gwt.h"
 #endif
 #include "mali_kbase_pm_internal.h"
+#include "mali_kbase_dvfs_debugfs.h"
 
 #include <linux/module.h>
 #include <linux/init.h>
@@ -891,10 +891,8 @@ static int kbase_api_mem_alloc(struct kbase_context *kctx,
 	}
 #endif
 
-	reg = kbase_mem_alloc(kctx, alloc->in.va_pages,
-			alloc->in.commit_pages,
-			alloc->in.extent,
-			&flags, &gpu_va);
+	reg = kbase_mem_alloc(kctx, alloc->in.va_pages, alloc->in.commit_pages,
+			      alloc->in.extension, &flags, &gpu_va);
 
 	if (!reg)
 		return -ENOMEM;
@@ -1577,6 +1575,14 @@ static int kbase_ioctl_cs_get_glb_iface(struct kbase_context *kctx,
 	kfree(stream_data);
 	return err;
 }
+
+static int kbasep_ioctl_cs_cpu_queue_dump(struct kbase_context *kctx,
+			struct kbase_ioctl_cs_cpu_queue_info *cpu_queue_info)
+{
+	return kbase_csf_cpu_queue_dump(kctx, cpu_queue_info->buffer,
+					cpu_queue_info->size);
+}
+
 #endif /* MALI_USE_CSF */
 
 #define KBASE_HANDLE_IOCTL(cmd, function, arg)    \
@@ -1980,6 +1986,12 @@ static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				union kbase_ioctl_cs_get_glb_iface,
 				kctx);
 		break;
+	case KBASE_IOCTL_CS_CPU_QUEUE_DUMP:
+		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_CS_CPU_QUEUE_DUMP,
+				kbasep_ioctl_cs_cpu_queue_dump,
+				struct kbase_ioctl_cs_cpu_queue_info,
+				kctx);
+		break;
 #endif /* MALI_USE_CSF */
 #if MALI_UNIT_TEST
 	case KBASE_IOCTL_TLSTREAM_TEST:
@@ -2022,13 +2034,17 @@ static ssize_t kbase_read(struct file *filp, char __user *buf, size_t count, lof
 		read_error = kbase_csf_read_error(kctx, &event_data);
 
 	if (!read_event && !read_error) {
+		bool dump = kbase_csf_cpu_queue_read_dump_req(kctx,
+							&event_data);
 		/* This condition is not treated as an error.
 		 * It is possible that event handling thread was woken up due
 		 * to a fault/error that occurred for a queue group, but before
 		 * the corresponding fault data was read by the thread the
 		 * queue group was already terminated by the userspace.
 		 */
-		dev_dbg(kctx->kbdev->dev, "Neither event nor error signaled");
+		if (!dump)
+			dev_dbg(kctx->kbdev->dev,
+				"Neither event nor error signaled");
 	}
 
 	if (copy_to_user(buf, &event_data, data_size) != 0) {
@@ -2119,7 +2135,8 @@ int kbase_event_pending(struct kbase_context *ctx)
 	WARN_ON_ONCE(!ctx);
 
 	return (atomic_read(&ctx->event_count) != 0) ||
-		kbase_csf_error_pending(ctx);
+		kbase_csf_error_pending(ctx) ||
+		kbase_csf_cpu_queue_dump_needed(ctx);
 }
 #else
 int kbase_event_pending(struct kbase_context *ctx)
@@ -2302,6 +2319,7 @@ static DEVICE_ATTR(power_policy, S_IRUGO | S_IWUSR, show_policy, set_policy);
 static ssize_t show_core_mask(struct device *dev, struct device_attribute *attr, char * const buf)
 {
 	struct kbase_device *kbdev;
+	unsigned long flags;
 	ssize_t ret = 0;
 
 	kbdev = to_kbase_device(dev);
@@ -2309,6 +2327,19 @@ static ssize_t show_core_mask(struct device *dev, struct device_attribute *attr,
 	if (!kbdev)
 		return -ENODEV;
 
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+
+#if MALI_USE_CSF
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+			 "Current debug core mask : 0x%llX\n",
+			 kbdev->pm.debug_core_mask);
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+			 "Current desired core mask : 0x%llX\n",
+			 kbase_pm_ca_get_core_mask(kbdev));
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+			 "Current in use core mask : 0x%llX\n",
+			 kbdev->pm.backend.shaders_avail);
+#else
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
 			"Current core mask (JS0) : 0x%llX\n",
 			kbdev->pm.debug_core_mask[0]);
@@ -2318,9 +2349,13 @@ static ssize_t show_core_mask(struct device *dev, struct device_attribute *attr,
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
 			"Current core mask (JS2) : 0x%llX\n",
 			kbdev->pm.debug_core_mask[2]);
+#endif /* MALI_USE_CSF */
+
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
 			"Available core mask : 0x%llX\n",
 			kbdev->gpu_props.props.raw_props.shader_present);
+
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	return ret;
 }
@@ -2340,17 +2375,35 @@ static ssize_t show_core_mask(struct device *dev, struct device_attribute *attr,
 static ssize_t set_core_mask(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct kbase_device *kbdev;
+#if MALI_USE_CSF
+	u64 new_core_mask;
+#else
 	u64 new_core_mask[3];
-	int items, i;
+	u64 group0_core_mask;
+	int i;
+#endif /* MALI_USE_CSF */
+
+	int items;
 	ssize_t err = count;
 	unsigned long flags;
-	u64 shader_present, group0_core_mask;
+	u64 shader_present;
 
 	kbdev = to_kbase_device(dev);
 
 	if (!kbdev)
 		return -ENODEV;
 
+#if MALI_USE_CSF
+	items = sscanf(buf, "%llx", &new_core_mask);
+
+	if (items != 1) {
+		dev_err(kbdev->dev,
+			"Couldn't process core mask write operation.\n"
+			"Use format <core_mask>\n");
+		err = -EINVAL;
+		goto end;
+	}
+#else
 	items = sscanf(buf, "%llx %llx %llx",
 			&new_core_mask[0], &new_core_mask[1],
 			&new_core_mask[2]);
@@ -2365,11 +2418,35 @@ static ssize_t set_core_mask(struct device *dev, struct device_attribute *attr, 
 
 	if (items == 1)
 		new_core_mask[1] = new_core_mask[2] = new_core_mask[0];
+#endif
 
 	mutex_lock(&kbdev->pm.lock);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	shader_present = kbdev->gpu_props.props.raw_props.shader_present;
+
+#if MALI_USE_CSF
+	if ((new_core_mask & shader_present) != new_core_mask) {
+		dev_err(dev,
+			"Invalid core mask 0x%llX: Includes non-existent cores (present = 0x%llX)",
+			new_core_mask, shader_present);
+		err = -EINVAL;
+		goto unlock;
+
+	} else if (!(new_core_mask & shader_present &
+		     kbdev->pm.backend.ca_cores_enabled)) {
+		dev_err(dev,
+			"Invalid core mask 0x%llX: No intersection with currently available cores (present = 0x%llX, CA enabled = 0x%llX\n",
+			new_core_mask,
+			kbdev->gpu_props.props.raw_props.shader_present,
+			kbdev->pm.backend.ca_cores_enabled);
+		err = -EINVAL;
+		goto unlock;
+	}
+
+	if (kbdev->pm.debug_core_mask != new_core_mask)
+		kbase_pm_set_debug_core_mask(kbdev, new_core_mask);
+#else
 	group0_core_mask = kbdev->gpu_props.props.coherency_info.group[0].core_mask;
 
 	for (i = 0; i < 3; ++i) {
@@ -2404,6 +2481,7 @@ static ssize_t set_core_mask(struct device *dev, struct device_attribute *attr, 
 		kbase_pm_set_debug_core_mask(kbdev, new_core_mask[0],
 				new_core_mask[1], new_core_mask[2]);
 	}
+#endif /* MALI_USE_CSF */
 
 unlock:
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
@@ -3031,8 +3109,6 @@ static ssize_t kbase_show_gpuinfo(struct device *dev,
 		  .name = "Mali-TTUX" },
 		{ .id = GPU_ID2_PRODUCT_LTUX >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
 		  .name = "Mali-LTUX" },
-		{ .id = GPU_ID2_PRODUCT_TE2X >> GPU_ID_VERSION_PRODUCT_ID_SHIFT,
-		  .name = "Mali-TE2X" },
 	};
 	const char *product_name = "(Unknown Mali GPU)";
 	struct kbase_device *kbdev;
@@ -3222,6 +3298,75 @@ static ssize_t show_pm_poweroff(struct device *dev,
 
 static DEVICE_ATTR(pm_poweroff, S_IRUGO | S_IWUSR, show_pm_poweroff,
 		set_pm_poweroff);
+
+#if MALI_USE_CSF
+/**
+ * set_idle_hysteresis_time - Store callback for CSF idle_hysteresis_time
+ *                            sysfs file.
+ * @dev:   The device with sysfs file is for
+ * @attr:  The attributes of the sysfs file
+ * @buf:   The value written to the sysfs file
+ * @count: The number of bytes written to the sysfs file
+ *
+ * This function is called when the idle_hysteresis_time sysfs file is
+ * written to.
+ *
+ * This file contains values of the idle idle hysteresis duration.
+ *
+ * Return: @count if the function succeeded. An error code on failure.
+ */
+static ssize_t set_idle_hysteresis_time(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct kbase_device *kbdev;
+	u32 dur;
+
+	kbdev = to_kbase_device(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	if (kstrtou32(buf, 0, &dur)) {
+		dev_err(kbdev->dev, "Couldn't process idle_hysteresis_time write operation.\n"
+				"Use format <idle_hysteresis_time>\n");
+		return -EINVAL;
+	}
+
+	kbase_csf_firmware_set_gpu_idle_hysteresis_time(kbdev, dur);
+
+	return count;
+}
+
+/**
+ * show_idle_hysteresis_time - Show callback for CSF idle_hysteresis_time
+ *                             sysfs entry.
+ * @dev:  The device this sysfs file is for.
+ * @attr: The attributes of the sysfs file.
+ * @buf:  The output buffer to receive the GPU information.
+ *
+ * This function is called to get the current idle hysteresis duration in ms.
+ *
+ * Return: The number of bytes output to @buf.
+ */
+static ssize_t show_idle_hysteresis_time(struct device *dev,
+		struct device_attribute *attr, char * const buf)
+{
+	struct kbase_device *kbdev;
+	ssize_t ret;
+	u32 dur;
+
+	kbdev = to_kbase_device(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	dur = kbase_csf_firmware_get_gpu_idle_hysteresis_time(kbdev);
+	ret = scnprintf(buf, PAGE_SIZE, "%u\n", dur);
+
+	return ret;
+}
+
+static DEVICE_ATTR(idle_hysteresis_time, S_IRUGO | S_IWUSR,
+		show_idle_hysteresis_time, set_idle_hysteresis_time);
+#endif
 
 /**
  * set_reset_timeout - Store callback for the reset_timeout sysfs file.
@@ -3458,6 +3603,203 @@ static ssize_t set_lp_mem_pool_max_size(struct device *dev,
 
 static DEVICE_ATTR(lp_mem_pool_max_size, S_IRUGO | S_IWUSR, show_lp_mem_pool_max_size,
 		set_lp_mem_pool_max_size);
+
+/**
+ * show_simplified_mem_pool_max_size - Show the maximum size for the memory
+ *                                     pool 0 of small (4KiB) pages.
+ * @dev:  The device this sysfs file is for.
+ * @attr: The attributes of the sysfs file.
+ * @buf:  The output buffer to receive the max size.
+ *
+ * This function is called to get the maximum size for the memory pool 0 of
+ * small (4KiB) pages. It is assumed that the maximum size value is same for
+ * all the pools.
+ *
+ * Return: The number of bytes output to @buf.
+ */
+static ssize_t show_simplified_mem_pool_max_size(struct device *dev,
+		struct device_attribute *attr, char * const buf)
+{
+	struct kbase_device *const kbdev = to_kbase_device(dev);
+
+	if (!kbdev)
+		return -ENODEV;
+
+	return kbase_debugfs_helper_get_attr_to_string(buf, PAGE_SIZE,
+		kbdev->mem_pools.small, 1, kbase_mem_pool_debugfs_max_size);
+}
+
+/**
+ * set_simplified_mem_pool_max_size - Set the same maximum size for all the
+ *                                    memory pools of small (4KiB) pages.
+ * @dev:   The device with sysfs file is for
+ * @attr:  The attributes of the sysfs file
+ * @buf:   The value written to the sysfs file
+ * @count: The number of bytes written to the sysfs file
+ *
+ * This function is called to set the same maximum size for all the memory
+ * pools of small (4KiB) pages.
+ *
+ * Return: The number of bytes output to @buf.
+ */
+static ssize_t set_simplified_mem_pool_max_size(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct kbase_device *const kbdev = to_kbase_device(dev);
+	unsigned long new_size;
+	int gid;
+	int err;
+
+	if (!kbdev)
+		return -ENODEV;
+
+	err = kstrtoul(buf, 0, &new_size);
+	if (err)
+		return -EINVAL;
+
+	for (gid = 0; gid < MEMORY_GROUP_MANAGER_NR_GROUPS; ++gid)
+		kbase_mem_pool_debugfs_set_max_size(
+			kbdev->mem_pools.small, gid, (size_t)new_size);
+
+	return count;
+}
+
+static DEVICE_ATTR(max_size, 0600, show_simplified_mem_pool_max_size,
+		set_simplified_mem_pool_max_size);
+
+/**
+ * show_simplified_lp_mem_pool_max_size - Show the maximum size for the memory
+ *                                        pool 0 of large (2MiB) pages.
+ * @dev:  The device this sysfs file is for.
+ * @attr: The attributes of the sysfs file.
+ * @buf:  The output buffer to receive the total current pool size.
+ *
+ * This function is called to get the maximum size for the memory pool 0 of
+ * large (2MiB) pages. It is assumed that the maximum size value is same for
+ * all the pools.
+ *
+ * Return: The number of bytes output to @buf.
+ */
+static ssize_t show_simplified_lp_mem_pool_max_size(struct device *dev,
+		struct device_attribute *attr, char * const buf)
+{
+	struct kbase_device *const kbdev = to_kbase_device(dev);
+
+	if (!kbdev)
+		return -ENODEV;
+
+	return kbase_debugfs_helper_get_attr_to_string(buf, PAGE_SIZE,
+		kbdev->mem_pools.large, 1, kbase_mem_pool_debugfs_max_size);
+}
+
+/**
+ * set_simplified_lp_mem_pool_max_size - Set the same maximum size for all the
+ *                                       memory pools of large (2MiB) pages.
+ * @dev:   The device with sysfs file is for
+ * @attr:  The attributes of the sysfs file
+ * @buf:   The value written to the sysfs file
+ * @count: The number of bytes written to the sysfs file
+ *
+ * This function is called to set the same maximum size for all the memory
+ * pools of large (2MiB) pages.
+ *
+ * Return: The number of bytes output to @buf.
+ */
+static ssize_t set_simplified_lp_mem_pool_max_size(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct kbase_device *const kbdev = to_kbase_device(dev);
+	unsigned long new_size;
+	int gid;
+	int err;
+
+	if (!kbdev)
+		return -ENODEV;
+
+	err = kstrtoul(buf, 0, &new_size);
+	if (err)
+		return -EINVAL;
+
+	for (gid = 0; gid < MEMORY_GROUP_MANAGER_NR_GROUPS; ++gid)
+		kbase_mem_pool_debugfs_set_max_size(
+			kbdev->mem_pools.large, gid, (size_t)new_size);
+
+	return count;
+}
+
+static DEVICE_ATTR(lp_max_size, 0600, show_simplified_lp_mem_pool_max_size,
+		set_simplified_lp_mem_pool_max_size);
+
+/**
+ * show_simplified_ctx_default_max_size - Show the default maximum size for the
+ *                                        memory pool 0 of small (4KiB) pages.
+ * @dev:  The device this sysfs file is for.
+ * @attr: The attributes of the sysfs file.
+ * @buf:  The output buffer to receive the pool size.
+ *
+ * This function is called to get the default ctx maximum size for the memory
+ * pool 0 of small (4KiB) pages. It is assumed that maximum size value is same
+ * for all the pools. The maximum size for the pool of large (2MiB) pages will
+ * be same as max size of the pool of small (4KiB) pages in terms of bytes.
+ *
+ * Return: The number of bytes output to @buf.
+ */
+static ssize_t show_simplified_ctx_default_max_size(struct device *dev,
+		struct device_attribute *attr, char * const buf)
+{
+	struct kbase_device *kbdev = to_kbase_device(dev);
+	size_t max_size;
+
+	if (!kbdev)
+		return -ENODEV;
+
+	max_size = kbase_mem_pool_config_debugfs_max_size(
+			kbdev->mem_pool_defaults.small, 0);
+
+	return scnprintf(buf, PAGE_SIZE, "%zu\n", max_size);
+}
+
+/**
+ * set_simplified_ctx_default_max_size - Set the same default maximum size for
+ *                                       all the pools created for new
+ *                                       contexts. This covers the pool of
+ *                                       large pages as well and its max size
+ *                                       will be same as max size of the pool
+ *                                       of small pages in terms of bytes.
+ * @dev:  The device this sysfs file is for.
+ * @attr: The attributes of the sysfs file.
+ * @buf:  The value written to the sysfs file.
+ * @count: The number of bytes written to the sysfs file.
+ *
+ * This function is called to set the same maximum size for all pools created
+ * for new contexts.
+ *
+ * Return: @count if the function succeeded. An error code on failure.
+ */
+static ssize_t set_simplified_ctx_default_max_size(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct kbase_device *kbdev;
+	unsigned long new_size;
+	int err;
+
+	kbdev = to_kbase_device(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	err = kstrtoul(buf, 0, &new_size);
+	if (err)
+		return -EINVAL;
+
+	kbase_mem_pool_group_config_set_max_size(
+		&kbdev->mem_pool_defaults, (size_t)new_size);
+
+	return count;
+}
+
+static DEVICE_ATTR(ctx_default_max_size, 0600,
+		show_simplified_ctx_default_max_size,
+		set_simplified_ctx_default_max_size);
 
 #if !MALI_USE_CSF
 /**
@@ -3822,6 +4164,10 @@ static const struct protected_mode_ops kbasep_native_protected_ops = {
 	.protected_mode_disable = kbasep_protected_mode_disable
 };
 
+#ifndef PLATFORM_PROTECTED_CALLBACKS
+#define PLATFORM_PROTECTED_CALLBACKS (&kbasep_native_protected_ops)
+#endif /* PLATFORM_PROTECTED_CALLBACKS */
+
 int kbase_protected_mode_init(struct kbase_device *kbdev)
 {
 	/* Use native protected ops */
@@ -3830,7 +4176,7 @@ int kbase_protected_mode_init(struct kbase_device *kbdev)
 	if (!kbdev->protected_dev)
 		return -ENOMEM;
 	kbdev->protected_dev->data = kbdev;
-	kbdev->protected_ops = &kbasep_native_protected_ops;
+	kbdev->protected_ops = PLATFORM_PROTECTED_CALLBACKS;
 	INIT_WORK(&kbdev->protected_mode_hwcnt_disable_work,
 		kbasep_protected_mode_hwcnt_disable_worker);
 	kbdev->protected_mode_hwcnt_desired = true;
@@ -4415,7 +4761,7 @@ int kbase_device_debugfs_init(struct kbase_device *kbdev)
 
 	kbasep_gpu_memory_debugfs_init(kbdev);
 	kbase_as_fault_debugfs_init(kbdev);
-#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY_VIA_DEBUG_FS
+#ifdef CONFIG_MALI_PRFCNT_SET_SELECT_VIA_DEBUG_FS
 	kbase_instr_backend_debugfs_init(kbdev);
 #endif
 	/* fops_* variables created by invocations of macro
@@ -4473,6 +4819,8 @@ int kbase_device_debugfs_init(struct kbase_device *kbdev)
 			kbdev->mali_debugfs_directory, kbdev,
 			&kbasep_serialize_jobs_debugfs_fops);
 #endif
+
+	kbase_dvfs_status_debugfs_init(kbdev);
 
 	return 0;
 
@@ -4604,6 +4952,9 @@ static struct attribute *kbase_attrs[] = {
 	&dev_attr_gpuinfo.attr,
 	&dev_attr_dvfs_period.attr,
 	&dev_attr_pm_poweroff.attr,
+#if MALI_USE_CSF
+	&dev_attr_idle_hysteresis_time.attr,
+#endif
 	&dev_attr_reset_timeout.attr,
 #if !MALI_USE_CSF
 	&dev_attr_js_scheduling_period.attr,
@@ -4620,10 +4971,23 @@ static struct attribute *kbase_attrs[] = {
 	NULL
 };
 
+static struct attribute *kbase_mempool_attrs[] = {
+	&dev_attr_max_size.attr,
+	&dev_attr_lp_max_size.attr,
+	&dev_attr_ctx_default_max_size.attr,
+	NULL
+};
+
 #define SYSFS_SCHEDULING_GROUP "scheduling"
 static const struct attribute_group kbase_scheduling_attr_group = {
 	.name = SYSFS_SCHEDULING_GROUP,
 	.attrs = kbase_scheduling_attrs,
+};
+
+#define SYSFS_MEMPOOL_GROUP "mempool"
+static const struct attribute_group kbase_mempool_attr_group = {
+	.name = SYSFS_MEMPOOL_GROUP,
+	.attrs = kbase_mempool_attrs,
 };
 
 static const struct attribute_group kbase_attr_group = {
@@ -4641,15 +5005,28 @@ int kbase_sysfs_init(struct kbase_device *kbdev)
 	kbdev->mdev.mode = 0666;
 
 	err = sysfs_create_group(&kbdev->dev->kobj, &kbase_attr_group);
-	if (!err) {
-		err = sysfs_create_group(&kbdev->dev->kobj,
-					 &kbase_scheduling_attr_group);
-		if (err) {
-			dev_err(kbdev->dev, "Creation of %s sysfs group failed",
-				SYSFS_SCHEDULING_GROUP);
-			sysfs_remove_group(&kbdev->dev->kobj,
-					   &kbase_attr_group);
-		}
+	if (err)
+		return err;
+
+	err = sysfs_create_group(&kbdev->dev->kobj,
+			&kbase_scheduling_attr_group);
+	if (err) {
+		dev_err(kbdev->dev, "Creation of %s sysfs group failed",
+			SYSFS_SCHEDULING_GROUP);
+		sysfs_remove_group(&kbdev->dev->kobj,
+			&kbase_attr_group);
+		return err;
+	}
+
+	err = sysfs_create_group(&kbdev->dev->kobj,
+			&kbase_mempool_attr_group);
+	if (err) {
+		dev_err(kbdev->dev, "Creation of %s sysfs group failed",
+			SYSFS_MEMPOOL_GROUP);
+		sysfs_remove_group(&kbdev->dev->kobj,
+			&kbase_scheduling_attr_group);
+		sysfs_remove_group(&kbdev->dev->kobj,
+			&kbase_attr_group);
 	}
 
 	return err;
@@ -4657,6 +5034,7 @@ int kbase_sysfs_init(struct kbase_device *kbdev)
 
 void kbase_sysfs_term(struct kbase_device *kbdev)
 {
+	sysfs_remove_group(&kbdev->dev->kobj, &kbase_mempool_attr_group);
 	sysfs_remove_group(&kbdev->dev->kobj, &kbase_scheduling_attr_group);
 	sysfs_remove_group(&kbdev->dev->kobj, &kbase_attr_group);
 	put_device(kbdev->dev);
@@ -4974,6 +5352,7 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION(MALI_RELEASE_NAME " (UK version " \
 		__stringify(BASE_UK_VERSION_MAJOR) "." \
 		__stringify(BASE_UK_VERSION_MINOR) ")");
+MODULE_SOFTDEP("pre: memory_group_manager");
 
 #define CREATE_TRACE_POINTS
 /* Create the trace points (otherwise we just get code to call a tracepoint) */

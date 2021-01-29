@@ -75,12 +75,12 @@ int kbase_instr_hwcnt_enable_internal(struct kbase_device *kbdev,
 
 	/* Configure */
 	prfcnt_config = kctx->as_nr << PRFCNT_CONFIG_AS_SHIFT;
-#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY_VIA_DEBUG_FS
-	if (kbdev->hwcnt.backend.use_secondary_override)
+#ifdef CONFIG_MALI_PRFCNT_SET_SELECT_VIA_DEBUG_FS
+	prfcnt_config |= kbdev->hwcnt.backend.override_counter_set
+			 << PRFCNT_CONFIG_SETSELECT_SHIFT;
 #else
-	if (enable->use_secondary)
+	prfcnt_config |= enable->counter_set << PRFCNT_CONFIG_SETSELECT_SHIFT;
 #endif
-		prfcnt_config |= 1 << PRFCNT_CONFIG_SETSELECT_SHIFT;
 
 #if MALI_USE_CSF
 	kbase_reg_write(kbdev, GPU_CONTROL_MCU_REG(PRFCNT_CONFIG),
@@ -209,7 +209,6 @@ int kbase_instr_hwcnt_disable_internal(struct kbase_context *kctx)
 									kctx);
 
 	err = 0;
-
  out:
 	return err;
 }
@@ -305,39 +304,6 @@ bool kbase_instr_hwcnt_dump_complete(struct kbase_context *kctx,
 }
 KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_dump_complete);
 
-void kbasep_cache_clean_worker(struct work_struct *data)
-{
-	struct kbase_device *kbdev;
-	unsigned long flags, pm_flags;
-
-	kbdev = container_of(data, struct kbase_device,
-						hwcnt.backend.cache_clean_work);
-
-	spin_lock_irqsave(&kbdev->hwaccess_lock, pm_flags);
-	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
-
-	/* Clean and invalidate the caches so we're sure the mmu tables for the
-	 * dump buffer is valid.
-	 */
-	KBASE_DEBUG_ASSERT(kbdev->hwcnt.backend.state ==
-					KBASE_INSTR_STATE_REQUEST_CLEAN);
-	kbase_gpu_start_cache_clean_nolock(kbdev);
-	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, pm_flags);
-
-	kbase_gpu_wait_cache_clean(kbdev);
-
-	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
-	KBASE_DEBUG_ASSERT(kbdev->hwcnt.backend.state ==
-					KBASE_INSTR_STATE_REQUEST_CLEAN);
-	/* All finished and idle */
-	kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_IDLE;
-	kbdev->hwcnt.backend.triggered = 1;
-	wake_up(&kbdev->hwcnt.backend.wait);
-
-	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
-}
-
 #if MALI_USE_CSF
 /**
  * kbasep_hwcnt_irq_poll_tasklet - tasklet to poll MCU IRQ status register
@@ -395,20 +361,10 @@ void kbase_instr_hwcnt_sample_done(struct kbase_device *kbdev)
 		kbdev->hwcnt.backend.triggered = 1;
 		wake_up(&kbdev->hwcnt.backend.wait);
 	} else if (kbdev->hwcnt.backend.state == KBASE_INSTR_STATE_DUMPING) {
-		if (kbdev->mmu_mode->flags & KBASE_MMU_MODE_HAS_NON_CACHEABLE) {
-			/* All finished and idle */
-			kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_IDLE;
-			kbdev->hwcnt.backend.triggered = 1;
-			wake_up(&kbdev->hwcnt.backend.wait);
-		} else {
-			int ret;
-			/* Always clean and invalidate the cache after a successful dump
-			 */
-			kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_REQUEST_CLEAN;
-			ret = queue_work(kbdev->hwcnt.backend.cache_clean_wq,
-						&kbdev->hwcnt.backend.cache_clean_work);
-			KBASE_DEBUG_ASSERT(ret);
-		}
+		/* All finished and idle */
+		kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_IDLE;
+		kbdev->hwcnt.backend.triggered = 1;
+		wake_up(&kbdev->hwcnt.backend.wait);
 	}
 
 	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
@@ -480,8 +436,6 @@ int kbase_instr_backend_init(struct kbase_device *kbdev)
 	kbdev->hwcnt.backend.state = KBASE_INSTR_STATE_DISABLED;
 
 	init_waitqueue_head(&kbdev->hwcnt.backend.wait);
-	INIT_WORK(&kbdev->hwcnt.backend.cache_clean_work,
-						kbasep_cache_clean_worker);
 
 #if MALI_USE_CSF
 	tasklet_init(&kbdev->hwcnt.backend.csf_hwc_irq_poll_tasklet,
@@ -490,15 +444,17 @@ int kbase_instr_backend_init(struct kbase_device *kbdev)
 
 	kbdev->hwcnt.backend.triggered = 0;
 
-#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY_VIA_DEBUG_FS
-	kbdev->hwcnt.backend.use_secondary_override = false;
+#ifdef CONFIG_MALI_PRFCNT_SET_SELECT_VIA_DEBUG_FS
+/* Use the build time option for the override default. */
+#if defined(CONFIG_MALI_PRFCNT_SET_SECONDARY)
+	kbdev->hwcnt.backend.override_counter_set = KBASE_HWCNT_SET_SECONDARY;
+#elif defined(CONFIG_MALI_PRFCNT_SET_TERTIARY)
+	kbdev->hwcnt.backend.override_counter_set = KBASE_HWCNT_SET_TERTIARY;
+#else
+	/* Default to primary */
+	kbdev->hwcnt.backend.override_counter_set = KBASE_HWCNT_SET_PRIMARY;
 #endif
-
-	kbdev->hwcnt.backend.cache_clean_wq =
-			alloc_workqueue("Mali cache cleaning workqueue", 0, 1);
-	if (NULL == kbdev->hwcnt.backend.cache_clean_wq)
-		ret = -EINVAL;
-
+#endif
 	return ret;
 }
 
@@ -507,14 +463,20 @@ void kbase_instr_backend_term(struct kbase_device *kbdev)
 #if MALI_USE_CSF
 	tasklet_kill(&kbdev->hwcnt.backend.csf_hwc_irq_poll_tasklet);
 #endif
-	destroy_workqueue(kbdev->hwcnt.backend.cache_clean_wq);
 }
 
-#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY_VIA_DEBUG_FS
+#ifdef CONFIG_MALI_PRFCNT_SET_SELECT_VIA_DEBUG_FS
 void kbase_instr_backend_debugfs_init(struct kbase_device *kbdev)
 {
-	debugfs_create_bool("hwcnt_use_secondary", S_IRUGO | S_IWUSR,
-		kbdev->mali_debugfs_directory,
-		&kbdev->hwcnt.backend.use_secondary_override);
+	/* No validation is done on the debugfs input. Invalid input could cause
+	 * performance counter errors. This is acceptable since this is a debug
+	 * only feature and users should know what they are doing.
+	 *
+	 * Valid inputs are the values accepted bythe SET_SELECT bits of the
+	 * PRFCNT_CONFIG register as defined in the architecture specification.
+	*/
+	debugfs_create_u8("hwcnt_set_select", S_IRUGO | S_IWUSR,
+			  kbdev->mali_debugfs_directory,
+			  (u8 *)&kbdev->hwcnt.backend.override_counter_set);
 }
 #endif

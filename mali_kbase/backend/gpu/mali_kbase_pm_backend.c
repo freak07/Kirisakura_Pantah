@@ -156,15 +156,23 @@ int kbase_hwaccess_pm_init(struct kbase_device *kbdev)
 #endif /* CONFIG_MALI_DEBUG */
 	init_waitqueue_head(&kbdev->pm.backend.gpu_in_desired_state_wait);
 
+#if !MALI_USE_CSF
 	/* Initialise the metrics subsystem */
 	ret = kbasep_pm_metrics_init(kbdev);
 	if (ret)
 		return ret;
+#else
+	/* Due to dependency on kbase_ipa_control, the metrics subsystem can't
+	 * be initialized here.
+	 */
+	CSTD_UNUSED(ret);
+#endif
 
 	init_waitqueue_head(&kbdev->pm.backend.reset_done_wait);
 	kbdev->pm.backend.reset_done = false;
 
 	init_waitqueue_head(&kbdev->pm.zero_active_count_wait);
+	init_waitqueue_head(&kbdev->pm.resume_wait);
 	kbdev->pm.active_count = 0;
 
 	spin_lock_init(&kbdev->pm.backend.gpu_cycle_counter_requests_lock);
@@ -221,7 +229,9 @@ pm_state_machine_fail:
 	kbase_pm_policy_term(kbdev);
 	kbase_pm_ca_term(kbdev);
 workq_fail:
+#if !MALI_USE_CSF
 	kbasep_pm_metrics_term(kbdev);
+#endif
 	return -EINVAL;
 }
 
@@ -568,11 +578,24 @@ int kbase_hwaccess_pm_powerup(struct kbase_device *kbdev,
 		kbase_pm_unlock(kbdev);
 		return ret;
 	}
-
+#if MALI_USE_CSF
+	kbdev->pm.debug_core_mask =
+		kbdev->gpu_props.props.raw_props.shader_present;
+	spin_lock_irqsave(&kbdev->hwaccess_lock, irq_flags);
+	/* Set the initial value for 'shaders_avail'. It would be later
+	 * modified only from the MCU state machine, when the shader core
+	 * allocation enable mask request has completed. So its value would
+	 * indicate the mask of cores that are currently being used by FW for
+	 * the allocation of endpoints requested by CSGs.
+	 */
+	kbdev->pm.backend.shaders_avail = kbase_pm_ca_get_core_mask(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, irq_flags);
+#else
 	kbdev->pm.debug_core_mask_all = kbdev->pm.debug_core_mask[0] =
 			kbdev->pm.debug_core_mask[1] =
 			kbdev->pm.debug_core_mask[2] =
 			kbdev->gpu_props.props.raw_props.shader_present;
+#endif
 
 	/* Pretend the GPU is active to prevent a power policy turning the GPU
 	 * cores off */
@@ -645,8 +668,10 @@ void kbase_hwaccess_pm_term(struct kbase_device *kbdev)
 	kbase_pm_policy_term(kbdev);
 	kbase_pm_ca_term(kbdev);
 
+#if !MALI_USE_CSF
 	/* Shut down the metrics subsystem */
 	kbasep_pm_metrics_term(kbdev);
+#endif
 
 	destroy_workqueue(kbdev->pm.backend.gpu_poweroff_wait_wq);
 }
@@ -665,6 +690,17 @@ void kbase_pm_power_changed(struct kbase_device *kbdev)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
 
+#if MALI_USE_CSF
+void kbase_pm_set_debug_core_mask(struct kbase_device *kbdev, u64 new_core_mask)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+	lockdep_assert_held(&kbdev->pm.lock);
+
+	kbdev->pm.debug_core_mask = new_core_mask;
+	kbase_pm_update_dynamic_cores_onoff(kbdev);
+}
+KBASE_EXPORT_TEST_API(kbase_pm_set_debug_core_mask);
+#else
 void kbase_pm_set_debug_core_mask(struct kbase_device *kbdev,
 		u64 new_core_mask_js0, u64 new_core_mask_js1,
 		u64 new_core_mask_js2)
@@ -685,6 +721,7 @@ void kbase_pm_set_debug_core_mask(struct kbase_device *kbdev,
 
 	kbase_pm_update_dynamic_cores_onoff(kbdev);
 }
+#endif /* MALI_USE_CSF */
 
 void kbase_hwaccess_pm_gpu_active(struct kbase_device *kbdev)
 {
@@ -735,6 +772,7 @@ void kbase_hwaccess_pm_resume(struct kbase_device *kbdev)
 	kbase_backend_timer_resume(kbdev);
 #endif /* !MALI_USE_CSF */
 
+	wake_up_all(&kbdev->pm.resume_wait);
 	kbase_pm_unlock(kbdev);
 }
 

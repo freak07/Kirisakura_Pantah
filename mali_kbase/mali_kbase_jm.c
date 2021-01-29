@@ -110,7 +110,6 @@ void kbase_jm_try_kick_all(struct kbase_device *kbdev)
 		up(&js_devdata->schedule_sem);
 	}
 }
-#endif /* !MALI_USE_CSF */
 
 void kbase_jm_idle_ctx(struct kbase_device *kbdev, struct kbase_context *kctx)
 {
@@ -127,7 +126,6 @@ void kbase_jm_idle_ctx(struct kbase_device *kbdev, struct kbase_context *kctx)
 	}
 }
 
-#if !MALI_USE_CSF
 struct kbase_jd_atom *kbase_jm_return_atom_to_js(struct kbase_device *kbdev,
 				struct kbase_jd_atom *katom)
 {

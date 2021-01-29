@@ -155,7 +155,6 @@ struct kbase_context;
 struct kbase_device;
 struct kbase_as;
 struct kbase_mmu_setup;
-struct kbase_ipa_model_vinstr_data;
 struct kbase_kinstr_jm;
 
 /**
@@ -384,13 +383,25 @@ struct kbase_pm_device_data {
 #endif /* CONFIG_MALI_ARBITER_SUPPORT */
 	/* Wait queue set when active_count == 0 */
 	wait_queue_head_t zero_active_count_wait;
+	/* Wait queue to block the termination of a Kbase context until the
+	 * system resume of GPU device.
+	 */
+	wait_queue_head_t resume_wait;
 
+#if MALI_USE_CSF
+	/**
+	 * Bit masks identifying the available shader cores that are specified
+	 * via sysfs.
+	 */
+	u64 debug_core_mask;
+#else
 	/**
 	 * Bit masks identifying the available shader cores that are specified
 	 * via sysfs. One mask per job slot.
 	 */
 	u64 debug_core_mask[BASE_JM_MAX_NR_SLOTS];
 	u64 debug_core_mask_all;
+#endif /* MALI_USE_CSF */
 
 	/**
 	 * Callback for initializing the runtime power management.
@@ -1019,8 +1030,6 @@ struct kbase_device {
 		 * the difference between last_metrics and the current values.
 		 */
 		struct kbasep_pm_metrics last_metrics;
-		/* Model data to pass to ipa_gpu_active/idle() */
-		struct kbase_ipa_model_vinstr_data *model_data;
 
 		/* true if use of fallback model has been forced by the User */
 		bool force_fallback_model;
@@ -1111,7 +1120,7 @@ struct kbase_device {
 	u8 l2_hash_override;
 
 #if MALI_USE_CSF
-	/* Command-stream front-end for the device. */
+	/* CSF object for the GPU device. */
 	struct kbase_csf_device csf;
 #else
 	struct kbasep_js_device_data js_data;
@@ -1777,30 +1786,5 @@ static inline bool kbase_device_is_cpu_coherent(struct kbase_device *kbdev)
 #define KBASE_CLEAN_CACHE_MAX_LOOPS     100000
 /* Maximum number of loops polling the GPU for an AS command to complete before we assume the GPU has hung */
 #define KBASE_AS_INACTIVE_MAX_LOOPS     100000000
-
-/* JobDescriptorHeader - taken from the architecture specifications, the layout
- * is currently identical for all GPU archs. */
-struct job_descriptor_header {
-	u32 exception_status;
-	u32 first_incomplete_task;
-	u64 fault_pointer;
-	u8 job_descriptor_size : 1;
-	u8 job_type : 7;
-	u8 job_barrier : 1;
-	u8 _reserved_01 : 1;
-	u8 _reserved_1 : 1;
-	u8 _reserved_02 : 1;
-	u8 _reserved_03 : 1;
-	u8 _reserved_2 : 1;
-	u8 _reserved_04 : 1;
-	u8 _reserved_05 : 1;
-	u16 job_index;
-	u16 job_dependency_index_1;
-	u16 job_dependency_index_2;
-	union {
-		u64 _64;
-		u32 _32;
-	} next_job;
-};
 
 #endif				/* _KBASE_DEFS_H_ */

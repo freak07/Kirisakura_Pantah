@@ -99,6 +99,8 @@ enum kbase_l2_core_state {
  * @KBASE_MCU_ON_HWCNT_ENABLE: The Global requests have completed and MCU is
  *                             now ready for use and hwcnt is being enabled.
  * @KBASE_MCU_ON:             The MCU is active and hwcnt has been enabled.
+ * @KBASE_MCU_ON_CORE_MASK_UPDATE_PEND: The MCU is active and mask of enabled
+ *                                      shader cores is being updated.
  * @KBASE_MCU_ON_HWCNT_DISABLE: The MCU is on and hwcnt is being disabled.
  * @KBASE_MCU_ON_HALT:        The MCU is on and hwcnt has been disabled,
  *                            MCU halt would be triggered.
@@ -178,8 +180,10 @@ enum kbase_shader_core_state {
 struct kbasep_pm_metrics {
 	u32 time_busy;
 	u32 time_idle;
+#if !MALI_USE_CSF
 	u32 busy_cl[2];
 	u32 busy_gl;
+#endif
 };
 
 /**
@@ -205,9 +209,14 @@ struct kbasep_pm_metrics {
  */
 struct kbasep_pm_metrics_state {
 	ktime_t time_period_start;
+#if MALI_USE_CSF
+	/* Handle returned on registering DVFS as a kbase_ipa_control client */
+	void *ipa_control_client;
+#else
 	bool gpu_active;
 	u32 active_cl_ctx[2];
 	u32 active_gl_ctx[3];
+#endif
 	spinlock_t lock;
 
 	void *platform_data;
@@ -335,10 +344,10 @@ union kbase_pm_policy_data {
  * @shaders_avail: This is updated by the state machine when it is in a state
  *                 where it can write to the SHADER_PWRON or PWROFF registers
  *                 to have the same set of available cores as specified by
- *                 @shaders_desired_mask. So it would eventually have the same
- *                 value as @shaders_desired_mask and would precisely indicate
- *                 the cores that are currently available. This is internal to
- *                 shader state machine and should *not* be modified elsewhere.
+ *                 @shaders_desired_mask. So would precisely indicate the cores
+ *                 that are currently available. This is internal to shader
+ *                 state machine of JM GPUs and should *not* be modified
+ *                 elsewhere.
  * @shaders_desired_mask: This is updated by the state machine when it is in
  *                        a state where it can handle changes to the core
  *                        availability (either by DVFS or sysfs). This is

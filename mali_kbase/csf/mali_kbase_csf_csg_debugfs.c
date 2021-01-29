@@ -428,6 +428,61 @@ DEFINE_SIMPLE_ATTRIBUTE(kbasep_csf_debugfs_scheduling_timer_kick_fops,
 		&kbasep_csf_debugfs_scheduling_timer_kick_set,
 		"%llu\n");
 
+/**
+ * kbase_csf_debugfs_scheduler_suspend_get() - get if the scheduler is suspended.
+ *
+ * @data: The debugfs dentry private data, a pointer to kbase_device
+ * @val: The debugfs output value, boolean: 1 suspended, 0 otherwise
+ *
+ * Return: 0
+ */
+static int kbase_csf_debugfs_scheduler_suspend_get(
+		void *data, u64 *val)
+{
+	struct kbase_device *kbdev = data;
+	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
+
+	kbase_csf_scheduler_lock(kbdev);
+	*val = (scheduler->state == SCHED_SUSPENDED);
+	kbase_csf_scheduler_unlock(kbdev);
+
+	return 0;
+}
+
+/**
+ * kbase_csf_debugfs_scheduler_suspend_set() - set the scheduler to suspended.
+ *
+ * @data: The debugfs dentry private data, a pointer to kbase_device
+ * @val: The debugfs input value, boolean: 1 suspend, 0 otherwise
+ *
+ * Return: Negative value if already in requested state, 0 otherwise.
+ */
+static int kbase_csf_debugfs_scheduler_suspend_set(
+		void *data, u64 val)
+{
+	struct kbase_device *kbdev = data;
+	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
+	enum kbase_csf_scheduler_state state;
+
+	kbase_csf_scheduler_lock(kbdev);
+	state = scheduler->state;
+	kbase_csf_scheduler_unlock(kbdev);
+
+	if (val && (state != SCHED_SUSPENDED))
+		kbase_csf_scheduler_pm_suspend(kbdev);
+	else if (!val && (state == SCHED_SUSPENDED))
+		kbase_csf_scheduler_pm_resume(kbdev);
+	else
+		return -1;
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(kbasep_csf_debugfs_scheduler_suspend_fops,
+		&kbase_csf_debugfs_scheduler_suspend_get,
+		&kbase_csf_debugfs_scheduler_suspend_set,
+		"%llu\n");
+
 void kbase_csf_debugfs_init(struct kbase_device *kbdev)
 {
 	debugfs_create_file("active_groups", 0444,
@@ -440,6 +495,9 @@ void kbase_csf_debugfs_init(struct kbase_device *kbdev)
 	debugfs_create_file("scheduling_timer_kick", 0200,
 			kbdev->mali_debugfs_directory, kbdev,
 			&kbasep_csf_debugfs_scheduling_timer_kick_fops);
+	debugfs_create_file("scheduler_suspend", 0644,
+			kbdev->mali_debugfs_directory, kbdev,
+			&kbasep_csf_debugfs_scheduler_suspend_fops);
 
 	kbase_csf_tl_reader_debugfs_init(kbdev);
 	kbase_csf_firmware_trace_buffer_debugfs_init(kbdev);

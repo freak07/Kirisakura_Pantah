@@ -44,15 +44,14 @@
  * struct kbase_hwcnt_backend_jm_info - Information used to create an instance
  *                                      of a JM hardware counter backend.
  * @kbdev:         KBase device.
- * @use_secondary: True if secondary performance counters should be used,
- *                 else false. Ignored if secondary counters are not supported.
+ * @counter_set:   The performance counter set to use.
  * @metadata:      Hardware counter metadata.
  * @dump_bytes:    Bytes of GPU memory required to perform a
  *                 hardware counter dump.
  */
 struct kbase_hwcnt_backend_jm_info {
 	struct kbase_device *kbdev;
-	bool use_secondary;
+	enum kbase_hwcnt_set counter_set;
 	const struct kbase_hwcnt_metadata *metadata;
 	size_t dump_bytes;
 };
@@ -226,7 +225,8 @@ static int kbasep_hwcnt_backend_jm_dump_enable_nolock(
 		(struct kbase_hwcnt_backend_jm *)backend;
 	struct kbase_context *kctx;
 	struct kbase_device *kbdev;
-	struct kbase_hwcnt_physical_enable_map phys;
+	struct kbase_hwcnt_physical_enable_map phys_enable_map;
+	enum kbase_hwcnt_physical_set phys_counter_set;
 	struct kbase_instr_hwcnt_enable enable;
 	u64 timestamp_ns;
 
@@ -239,13 +239,16 @@ static int kbasep_hwcnt_backend_jm_dump_enable_nolock(
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-	kbase_hwcnt_gpu_enable_map_to_physical(&phys, enable_map);
+	kbase_hwcnt_gpu_enable_map_to_physical(&phys_enable_map, enable_map);
 
-	enable.fe_bm = phys.fe_bm;
-	enable.shader_bm = phys.shader_bm;
-	enable.tiler_bm = phys.tiler_bm;
-	enable.mmu_l2_bm = phys.mmu_l2_bm;
-	enable.use_secondary = backend_jm->info->use_secondary;
+	kbase_hwcnt_gpu_set_to_physical(&phys_counter_set,
+					backend_jm->info->counter_set);
+
+	enable.fe_bm = phys_enable_map.fe_bm;
+	enable.shader_bm = phys_enable_map.shader_bm;
+	enable.tiler_bm = phys_enable_map.tiler_bm;
+	enable.mmu_l2_bm = phys_enable_map.mmu_l2_bm;
+	enable.counter_set = phys_counter_set;
 	enable.dump_buffer = backend_jm->gpu_dump_va;
 	enable.dump_buffer_bytes = backend_jm->info->dump_bytes;
 
@@ -454,10 +457,8 @@ static int kbasep_hwcnt_backend_jm_dump_alloc(
 	flags = BASE_MEM_PROT_CPU_RD |
 		BASE_MEM_PROT_GPU_WR |
 		BASEP_MEM_PERMANENT_KERNEL_MAPPING |
-		BASE_MEM_CACHED_CPU;
-
-	if (kctx->kbdev->mmu_mode->flags & KBASE_MMU_MODE_HAS_NON_CACHEABLE)
-		flags |= BASE_MEM_UNCACHED_GPU;
+		BASE_MEM_CACHED_CPU |
+		BASE_MEM_UNCACHED_GPU;
 
 	nr_pages = PFN_UP(info->dump_bytes);
 
@@ -672,16 +673,19 @@ static int kbasep_hwcnt_backend_jm_info_create(
 
 	info->kbdev = kbdev;
 
-#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY
-	info->use_secondary = true;
+#if defined(CONFIG_MALI_PRFCNT_SET_SECONDARY)
+	info->counter_set = KBASE_HWCNT_SET_SECONDARY;
+#elif defined(CONFIG_MALI_PRFCNT_SET_TERTIARY)
+	info->counter_set = KBASE_HWCNT_SET_TERTIARY;
 #else
-	info->use_secondary = false;
+	/* Default to primary */
+	info->counter_set = KBASE_HWCNT_SET_PRIMARY;
 #endif
 
-	errcode = kbase_hwcnt_gpu_metadata_create(
-		&hwcnt_gpu_info, info->use_secondary,
-		&info->metadata,
-		&info->dump_bytes);
+	errcode = kbase_hwcnt_gpu_metadata_create(&hwcnt_gpu_info,
+						  info->counter_set,
+						  &info->metadata,
+						  &info->dump_bytes);
 	if (errcode)
 		goto error;
 
