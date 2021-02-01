@@ -80,7 +80,7 @@ static int pixel_gpu_secure_mode_enable(struct protected_mode_device *pdev)
  *
  * @pdev: Pointer to the &struct protected_mode_device associated with the GPU
  *
- * Context: The caller needs to hold the GPU HW access lock.
+ * Context: The caller needs to hold the GPU PM access lock.
  *
  * Return: On success, returns 0. Otherwise returns a non-zero value to indicate
  * failure.
@@ -92,7 +92,7 @@ static int pixel_gpu_secure_mode_disable(struct protected_mode_device *pdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	int ret = 0;
 
-	lockdep_assert_held(&kbdev->hwaccess_lock);
+	lockdep_assert_held(&kbdev->pm.lock);
 
 	/* This function is called whenever the GPU is reset, whether it was
 	 * previously in protected mode or not. SMC returns an error if we try
