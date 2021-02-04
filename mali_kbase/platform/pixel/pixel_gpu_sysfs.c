@@ -410,6 +410,19 @@ static ssize_t min_freq_show(struct device *dev, struct device_attribute *attr, 
 	return scnprintf(buf, PAGE_SIZE, "%d\n", pc->dvfs.table[pc->dvfs.level_min].clk1);
 }
 
+static ssize_t scaling_min_compute_freq_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+
+	if (!pc)
+		return -ENODEV;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+		pc->dvfs.table[pc->dvfs.level_scaling_compute_min].clk1);
+}
+
 static ssize_t scaling_max_freq_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct kbase_device *kbdev = dev->driver_data;
@@ -596,6 +609,7 @@ DEVICE_ATTR_RO(available_frequencies);
 DEVICE_ATTR_RO(cur_freq);
 DEVICE_ATTR_RO(max_freq);
 DEVICE_ATTR_RO(min_freq);
+DEVICE_ATTR_RO(scaling_min_compute_freq);
 DEVICE_ATTR_RW(scaling_max_freq);
 DEVICE_ATTR_RW(scaling_min_freq);
 DEVICE_ATTR_RO(time_in_state);
@@ -627,6 +641,7 @@ static struct {
 	{ "cur_freq", &dev_attr_cur_freq },
 	{ "max_freq", &dev_attr_max_freq },
 	{ "min_freq", &dev_attr_min_freq },
+	{ "min_compute_freq", &dev_attr_scaling_min_compute_freq },
 	{ "scaling_max_freq", &dev_attr_scaling_max_freq },
 	{ "scaling_min_freq", &dev_attr_scaling_min_freq },
 	{ "time_in_state", &dev_attr_time_in_state },

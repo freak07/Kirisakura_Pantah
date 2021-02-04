@@ -204,11 +204,14 @@ static void gpu_dvfs_clockdown_worker(struct work_struct *data)
 void gpu_dvfs_select_level(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
-	int util;
+	int util, util_gl, util_cl;
 
 	if (gpu_power_status(kbdev)) {
 		util = atomic_read(&pc->dvfs.util);
-		pc->dvfs.level_target = gpu_dvfs_governor_get_next_level(kbdev, util);
+		util_gl = atomic_read(&pc->dvfs.util_gl);
+		util_cl = atomic_read(&pc->dvfs.util_cl);
+		pc->dvfs.level_target = gpu_dvfs_governor_get_next_level(kbdev,
+			util, util_gl, util_cl);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS
 		/*
@@ -251,8 +254,8 @@ static void gpu_dvfs_control_worker(struct work_struct *data)
  *
  * @kbdev:         The &struct kbase_device for the GPU.
  * @utilisation:   The calculated utilization as measured by the core Mali driver's metrics system.
- * @util_gl_share: The calculated GL share of utilization. Currently unused.
- * @util_cl_share: The calculated CL share of utilization per core group. Currently unused.
+ * @util_gl_share: The calculated GL share of utilization.
+ * @util_cl_share: The calculated CL share of utilization per core group.
  *
  * This is the function that bridges the core Mali driver and the Pixel integration code. As this is
  * made in interrupt context, it is swiftly handed off to a work_queue for further processing.
@@ -266,8 +269,12 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation,
 {
 	struct pixel_context *pc = kbdev->platform_context;
 	GPU_ATRACE_INT("GPU Utilization", utilisation);
+	GPU_ATRACE_INT("GPU Util % GL", util_gl_share);
+	GPU_ATRACE_INT("GPU Util % CL", util_cl_share[0] + util_cl_share[1]);
 
 	atomic_set(&pc->dvfs.util, utilisation);
+	atomic_set(&pc->dvfs.util_gl, util_gl_share);
+	atomic_set(&pc->dvfs.util_cl, util_cl_share[0] + util_cl_share[1]);
 	queue_work(pc->dvfs.control_wq, &pc->dvfs.control_work);
 
 	return 1;
@@ -328,6 +335,7 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 	struct dvfs_rate_volt gpu0_vf_map[16];
 	struct dvfs_rate_volt gpu1_vf_map[16];
 	int gpu0_level_count, gpu1_level_count;
+	int scaling_compute_freq_min = 0;
 
 	bool use_asv_v1;
 
@@ -386,6 +394,9 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		of_property_read_u32_array(np, "gpu_dvfs_table_v2",
 			of_data_int_array, dvfs_table_size);
 
+	of_property_read_u32(np, "gpu_dvfs_compute_min",
+		&scaling_compute_freq_min);
+
 	/* Process DVFS table data from device tree and store it in OPP table */
 	for (i = 0; i < dvfs_table_row_num; i++) {
 		idx = i * dvfs_table_col_num;
@@ -405,6 +416,9 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		/* Handle case where CPU cluster 2 has no limit set */
 		if (!gpu_dvfs_table[i].qos.cpu2_max)
 			gpu_dvfs_table[i].qos.cpu2_max = CPU_FREQ_MAX;
+
+		if (gpu_dvfs_table[i].clk1 >= scaling_compute_freq_min)
+			pc->dvfs.level_scaling_compute_min = i;
 
 		/* Get and validate voltages from cal-if */
 		if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk0,

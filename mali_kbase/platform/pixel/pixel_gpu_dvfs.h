@@ -13,8 +13,10 @@
 /**
  * typedef gpu_dvfs_governor_logic_fn - Determines the next level based on utilization.
  *
- * @kbdev: The &struct kbase_device of the GPU.
- * @util:  The integer utilization percentage the GPU is running at.
+ * @kbdev:     The &struct kbase_device of the GPU.
+ * @util:      The integer utilization percentage the GPU is running at.
+ * @util_gl:   Percentage of utilization from a GL context.
+ * @util_cl:   Percentage of utilization from a CL context.
  *
  * This function is not expected to take any clock limits into consideration when
  * recommending the next level.
@@ -23,7 +25,8 @@
  *
  * Return: The index of the next recommended level.
  */
-typedef int (*gpu_dvfs_governor_logic_fn)(struct kbase_device *kbdev, int util);
+typedef int (*gpu_dvfs_governor_logic_fn)(struct kbase_device *kbdev, int util,
+	int util_gl, int util_cl);
 
 /**
  * enum gpu_dvfs_governor_type - Pixel GPU DVFS governor.
@@ -78,7 +81,8 @@ struct gpu_dvfs_qos_vote {
 	struct exynos_pm_qos_request req;
 };
 
-int gpu_dvfs_governor_get_next_level(struct kbase_device *kbdev, int util);
+int gpu_dvfs_governor_get_next_level(struct kbase_device *kbdev, int util,
+	int util_gl, int util_cl);
 int gpu_dvfs_governor_set_governor(struct kbase_device *kbdev, enum gpu_dvfs_governor_type gov);
 enum gpu_dvfs_governor_type gpu_dvfs_governor_get_id(const char *name);
 ssize_t gpu_dvfs_governor_print_available(char *buf, ssize_t size);

@@ -196,6 +196,8 @@ struct gpu_dvfs_metrics_uid_stats;
  *                              incoming utilization data from the Mali driver into DVFS changes on
  *                              the GPU.
  * @dvfs.util:                  Stores incoming utilization metrics from the Mali driver.
+ * @dvfs.util_gl:               Percentage of utilization from a GL context.
+ * @dvfs.util_cl:               Percentage of utilization from a CL context.
  * @dvfs.clockdown_wq:          Delayed workqueue for clocking down the GPU after it has been idle
  *                              for a period of time.
  * @dvfs.clockdown_work:        &struct delayed_work_struct storing link to Pixel GPU code to set
@@ -270,6 +272,8 @@ struct pixel_context {
 		struct workqueue_struct *control_wq;
 		struct work_struct control_work;
 		atomic_t util;
+		atomic_t util_gl;
+		atomic_t util_cl;
 
 		struct workqueue_struct *clockdown_wq;
 		struct delayed_work clockdown_work;
@@ -286,6 +290,7 @@ struct pixel_context {
 		int level_min;
 		int level_scaling_max;
 		int level_scaling_min;
+		int level_scaling_compute_min;
 
 		struct {
 			enum gpu_dvfs_governor_type curr;
