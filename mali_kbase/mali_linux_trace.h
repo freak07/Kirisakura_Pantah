@@ -421,7 +421,7 @@ TRACE_EVENT(sysgraph,
 		__entry->message    = message;
 		__entry->atom_id    = atom_id;
 	),
-	TP_printk("msg=%u proc_id=%u, param1=%d\n", __entry->message,
+	TP_printk("msg=%u proc_id=%u, param1=%d", __entry->message,
 		 __entry->proc_id,  __entry->atom_id)
 );
 
@@ -447,7 +447,7 @@ TRACE_EVENT(sysgraph_gpu,
 		__entry->atom_id    = atom_id;
 		__entry->js         = js;
 	),
-	TP_printk("msg=%u proc_id=%u, param1=%d, param2=%d\n",
+	TP_printk("msg=%u proc_id=%u, param1=%d, param2=%d",
 		  __entry->message,  __entry->proc_id,
 		  __entry->atom_id, __entry->js)
 );
