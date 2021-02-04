@@ -115,7 +115,8 @@ void gpu_dvfs_update_level_locks(struct kbase_device *kbdev)
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
- * This function updates GPU metrics and outputs trace events to track the change in power status.
+ * This function ensures DVFS level is proper, updates GPU metrics and outputs trace events to track
+ * the change in power status.
  *
  * Context: Process context. Takes and releases the DVFS lock
  */
@@ -124,7 +125,10 @@ void gpu_dvfs_event_power_on(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 
 	mutex_lock(&pc->dvfs.lock);
-	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, true);
+	if (pc->dvfs.level_target != pc->dvfs.level)
+		gpu_dvfs_select_level(kbdev);
+	else
+		gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, true);
 	mutex_unlock(&pc->dvfs.lock);
 
 	cancel_delayed_work(&pc->dvfs.clockdown_work);
