@@ -71,6 +71,15 @@ static bool kbase_gpu_fault_interrupt(struct kbase_device *kbdev)
 		if (!as_valid || (as_nr == MCU_AS_NR)) {
 			kbase_report_gpu_fault(kbdev, status, as_nr, as_valid);
 
+			/* MCU bus fault could mean hardware counters will stop
+			 * working.
+			 * Put the backend into the unrecoverable error state to
+			 * cause current and subsequent counter operations to
+			 * immediately fail, avoiding the risk of a hang.
+			 */
+			kbase_hwcnt_backend_csf_on_unrecoverable_error(
+				&kbdev->hwcnt_gpu_iface);
+
 			dev_err(kbdev->dev, "GPU bus fault triggering gpu-reset ...\n");
 			if (kbase_prepare_to_reset_gpu(kbdev))
 				kbase_reset_gpu(kbdev);
@@ -108,9 +117,32 @@ void kbase_gpu_interrupt(struct kbase_device *kbdev, u32 val)
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 		kbase_csf_scheduler_spin_lock(kbdev, &flags);
-		if (!WARN_ON(!kbase_csf_scheduler_protected_mode_in_use(kbdev)))
+		if (!WARN_ON(!kbase_csf_scheduler_protected_mode_in_use(
+			    kbdev))) {
+			struct base_gpu_queue_group_error const
+				err_payload = { .error_type =
+							BASE_GPU_QUEUE_GROUP_ERROR_FATAL,
+						.payload = {
+							.fatal_group = {
+								.status =
+									GPU_EXCEPTION_TYPE_SW_FAULT_0,
+							} } };
+
 			scheduler->active_protm_grp->faulted = true;
+			kbase_csf_add_group_fatal_error(
+				scheduler->active_protm_grp, &err_payload);
+			kbase_event_wakeup(scheduler->active_protm_grp->kctx);
+		}
 		kbase_csf_scheduler_spin_unlock(kbdev, flags);
+
+		/* Protected fault means we're unlikely to have the counter
+		 * operations we might do during reset acknowledged.
+		 * Put the backend into the unrecoverable error state to cause
+		 * current and subsequent counter operations to immediately
+		 * fail, avoiding the risk of a hang.
+		 */
+		kbase_hwcnt_backend_csf_on_unrecoverable_error(
+			&kbdev->hwcnt_gpu_iface);
 
 		if (kbase_prepare_to_reset_gpu(kbdev))
 			kbase_reset_gpu(kbdev);

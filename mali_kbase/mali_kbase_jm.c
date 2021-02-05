@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *
  * (C) COPYRIGHT 2014-2020 ARM Limited. All rights reserved.
@@ -19,7 +20,6 @@
  * SPDX-License-Identifier: GPL-2.0
  *
  */
-
 
 /*
  * HW access job manager common APIs
@@ -110,7 +110,6 @@ void kbase_jm_try_kick_all(struct kbase_device *kbdev)
 		up(&js_devdata->schedule_sem);
 	}
 }
-#endif /* !MALI_USE_CSF */
 
 void kbase_jm_idle_ctx(struct kbase_device *kbdev, struct kbase_context *kctx)
 {
@@ -127,7 +126,6 @@ void kbase_jm_idle_ctx(struct kbase_device *kbdev, struct kbase_context *kctx)
 	}
 }
 
-#if !MALI_USE_CSF
 struct kbase_jd_atom *kbase_jm_return_atom_to_js(struct kbase_device *kbdev,
 				struct kbase_jd_atom *katom)
 {

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -18,9 +18,26 @@
  *
  * SPDX-License-Identifier: GPL-2.0
  *
+ *//* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *
+ * (C) COPYRIGHT 2011-2020 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the
+ * GNU General Public License version 2 as published by the Free Software
+ * Foundation, and any use by you of this program is subject to the terms
+ * of such GNU license.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
  */
-
-
 
 /**
  * @file mali_kbase_defs.h
@@ -40,7 +57,11 @@
 #include <mali_kbase_instr_defs.h>
 #include <mali_kbase_pm.h>
 #include <mali_kbase_gpuprops_types.h>
+#if MALI_USE_CSF
+#include <mali_kbase_hwcnt_backend_csf.h>
+#else
 #include <mali_kbase_hwcnt_backend_jm.h>
+#endif
 #include <protected_mode_switcher.h>
 
 #include <linux/atomic.h>
@@ -75,8 +96,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/memory_group_manager.h>
 
-#if defined(CONFIG_PM_RUNTIME) || \
-	(defined(CONFIG_PM) && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
+#if defined(CONFIG_PM_RUNTIME) || defined(CONFIG_PM)
 #define KBASE_PM_RUNTIME 1
 #endif
 
@@ -138,24 +158,28 @@
  */
 #define KBASE_HWCNT_GPU_VIRTUALIZER_DUMP_THRESHOLD_NS (200 * NSEC_PER_USEC)
 
+#if MALI_USE_CSF
+/* The buffer count of CSF hwcnt backend ring buffer, which is used when CSF
+ * hwcnt backend allocate the ring buffer to communicate with CSF firmware for
+ * HWC dump samples.
+ * To meet the hardware requirement, this number MUST be power of 2, otherwise,
+ * CSF hwcnt backend creation will be failed.
+ */
+#define KBASE_HWCNT_BACKEND_CSF_RING_BUFFER_COUNT (128)
+#endif
+
 /* Maximum number of clock/regulator pairs that may be referenced by
  * the device node.
  * This is dependent on support for of_property_read_u64_array() in the
  * kernel.
  */
-#if (KERNEL_VERSION(4, 0, 0) <= LINUX_VERSION_CODE) || \
-			defined(LSK_OPPV2_BACKPORT)
 #define BASE_MAX_NR_CLOCKS_REGULATORS (2)
-#else
-#define BASE_MAX_NR_CLOCKS_REGULATORS (1)
-#endif
 
 /* Forward declarations */
 struct kbase_context;
 struct kbase_device;
 struct kbase_as;
 struct kbase_mmu_setup;
-struct kbase_ipa_model_vinstr_data;
 struct kbase_kinstr_jm;
 
 /**
@@ -179,11 +203,7 @@ struct kbase_io_access {
  * @buf: array of kbase_io_access
  */
 struct kbase_io_history {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
 	bool enabled;
-#else
-	u32 enabled;
-#endif
 
 	spinlock_t lock;
 	size_t count;
@@ -384,13 +404,25 @@ struct kbase_pm_device_data {
 #endif /* CONFIG_MALI_ARBITER_SUPPORT */
 	/* Wait queue set when active_count == 0 */
 	wait_queue_head_t zero_active_count_wait;
+	/* Wait queue to block the termination of a Kbase context until the
+	 * system resume of GPU device.
+	 */
+	wait_queue_head_t resume_wait;
 
+#if MALI_USE_CSF
+	/**
+	 * Bit masks identifying the available shader cores that are specified
+	 * via sysfs.
+	 */
+	u64 debug_core_mask;
+#else
 	/**
 	 * Bit masks identifying the available shader cores that are specified
 	 * via sysfs. One mask per job slot.
 	 */
 	u64 debug_core_mask[BASE_JM_MAX_NR_SLOTS];
 	u64 debug_core_mask_all;
+#endif /* MALI_USE_CSF */
 
 	/**
 	 * Callback for initializing the runtime power management.
@@ -418,6 +450,12 @@ struct kbase_pm_device_data {
 	 * The state of the arbiter VM machine
 	 */
 	struct kbase_arbiter_vm_state *arb_vm_state;
+
+	/**
+	 * Used by virtualization to notify the arbiter that there are users
+	 * waiting for the GPU so that it can request and resume the driver.
+	 */
+	atomic_t gpu_users_waiting;
 #endif /* CONFIG_MALI_ARBITER_SUPPORT */
 
 	/**
@@ -871,6 +909,8 @@ struct kbase_process {
  *                          Job Scheduler
  * @l2_size_override:       Used to set L2 cache size via device tree blob
  * @l2_hash_override:       Used to set L2 cache hash via device tree blob
+ * @l2_hash_values_override: true if @l2_hash_values is valid.
+ * @l2_hash_values:         Used to set L2 asn_hash via device tree blob
  * @process_root:           rb_tree root node for maintaining a rb_tree of
  *                          kbase_process based on key tgid(thread group ID).
  * @dma_buf_root:           rb_tree root node for maintaining a rb_tree of
@@ -889,6 +929,7 @@ struct kbase_process {
  * @job_done_worker_thread: Thread for job_done work.
  * @event_worker:           Worker for event work.
  * @event_worker_thread:    Thread for event work.
+ * @pcm_dev:                The priority control manager device.
  */
 struct kbase_device {
 	u32 hw_quirks_sc;
@@ -957,6 +998,9 @@ struct kbase_device {
 	s8 nr_hw_address_spaces;
 	s8 nr_user_address_spaces;
 
+#if MALI_USE_CSF
+	struct kbase_hwcnt_backend_csf_if hwcnt_backend_csf_if_fw;
+#else
 	struct kbase_hwcnt {
 		/* The lock should be used when accessing any of the following members */
 		spinlock_t lock;
@@ -967,6 +1011,7 @@ struct kbase_device {
 
 		struct kbase_instr_backend backend;
 	} hwcnt;
+#endif
 
 	struct kbase_hwcnt_backend_interface hwcnt_gpu_iface;
 	struct kbase_hwcnt_context *hwcnt_gpu_ctx;
@@ -1000,17 +1045,10 @@ struct kbase_device {
 	struct kbase_devfreq_opp *devfreq_table;
 	int num_opps;
 	struct kbasep_pm_metrics last_devfreq_metrics;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 	struct kbase_devfreq_queue_info devfreq_queue;
-#endif
 
 #ifdef CONFIG_DEVFREQ_THERMAL
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0)
-	struct devfreq_cooling_device *devfreq_cooling;
-#else
 	struct thermal_cooling_device *devfreq_cooling;
-#endif
 	bool ipa_protection_mode_switched;
 	struct {
 		/* Access to this struct must be with ipa.lock held */
@@ -1023,11 +1061,13 @@ struct kbase_device {
 		 * the difference between last_metrics and the current values.
 		 */
 		struct kbasep_pm_metrics last_metrics;
-		/* Model data to pass to ipa_gpu_active/idle() */
-		struct kbase_ipa_model_vinstr_data *model_data;
 
 		/* true if use of fallback model has been forced by the User */
 		bool force_fallback_model;
+		/* Records the time when counters, used for dynamic energy
+		 * estimation, were last sampled.
+		 */
+		ktime_t last_sample_time;
 	} ipa;
 #endif /* CONFIG_DEVFREQ_THERMAL */
 #endif /* CONFIG_MALI_DEVFREQ */
@@ -1052,7 +1092,7 @@ struct kbase_device {
 
 #if !MALI_CUSTOMER_RELEASE
 	struct {
-		u16 reg_offset;
+		u32 reg_offset;
 	} regs_dump_debugfs_data;
 #endif /* !MALI_CUSTOMER_RELEASE */
 #endif /* CONFIG_DEBUG_FS */
@@ -1069,8 +1109,7 @@ struct kbase_device {
 
 	bool poweroff_pending;
 
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+#if (KERNEL_VERSION(4, 4, 0) <= LINUX_VERSION_CODE)
 	bool infinite_cache_active_default;
 #else
 	u32 infinite_cache_active_default;
@@ -1113,9 +1152,11 @@ struct kbase_device {
 
 	u8 l2_size_override;
 	u8 l2_hash_override;
+	bool l2_hash_values_override;
+	u32 l2_hash_values[ASN_HASH_COUNT];
 
 #if MALI_USE_CSF
-	/* Command-stream front-end for the device. */
+	/* CSF object for the GPU device. */
 	struct kbase_csf_device csf;
 #else
 	struct kbasep_js_device_data js_data;
@@ -1155,6 +1196,8 @@ struct kbase_device {
 		/* Pointer to the arbiter device */
 		struct kbase_arbiter_device arb;
 #endif
+	/* Priority Control Manager device */
+	struct priority_control_manager_device *pcm_dev;
 };
 
 /**
@@ -1294,6 +1337,30 @@ enum kbase_context_flags {
 	KCTX_JPL_ENABLED = 1U << 16,
 #endif /* !MALI_JIT_PRESSURE_LIMIT_BASE */
 };
+
+#if MALI_USE_CSF
+/**
+ * enum kbase_ctx_mmu_flush_pending_state - State for the pending mmu flush
+ *                                          operation for a kbase context.
+ *
+ * @KCTX_MMU_FLUSH_NOT_PEND: Set when there is no MMU flush operation pending
+ *                           for a kbase context or deferred flush operation
+ *                           is performed.
+ *
+ * @KCTX_MMU_FLUSH_PEND_NO_SYNC: Set when the MMU flush operation is deferred
+ *                               for a kbase context when it is inactive and
+ *                               the sync flag passed is 0.
+ *
+ * @KCTX_MMU_FLUSH_PEND_SYNC: Set when the MMU flush operation is deferred
+ *                            for a kbase context when it is inactive and
+ *                            the sync flag passed is 1.
+ */
+enum kbase_ctx_mmu_flush_pending_state {
+	KCTX_MMU_FLUSH_NOT_PEND,
+	KCTX_MMU_FLUSH_PEND_NO_SYNC,
+	KCTX_MMU_FLUSH_PEND_SYNC,
+};
+#endif
 
 struct kbase_sub_alloc {
 	struct list_head link;
@@ -1553,6 +1620,8 @@ struct kbase_sub_alloc {
  * @atoms_count:          Number of GPU atoms currently in use, per priority
  * @create_flags:         Flags used in context creation.
  * @kinstr_jm:            Kernel job manager instrumentation context handle
+ * @tl_kctx_list_node:    List item into the device timeline's list of
+ *                        contexts, for timeline summarization.
  * @platform_data:        Pointer to platform specific per-context data.
  *
  * A kernel base context is an entity among which the GPU is scheduled.
@@ -1700,6 +1769,16 @@ struct kbase_context {
 #if !MALI_USE_CSF
 	struct kbase_kinstr_jm *kinstr_jm;
 #endif
+	struct list_head tl_kctx_list_node;
+
+#if MALI_USE_CSF
+	/* Tracks if the MMU flush operations are pending for the context.
+	 * The flush required due to unmap is also tracked.
+	 * It is supposed to be in KCTX_MMU_FLUSH_NOT_PEND state whilst a
+	 * context is active and shall be updated with mmu_hw_mutex lock held.
+	 */
+	enum kbase_ctx_mmu_flush_pending_state mmu_flush_pend_state;
+#endif
 
 	void* platform_data;
 };
@@ -1787,30 +1866,5 @@ static inline bool kbase_device_is_cpu_coherent(struct kbase_device *kbdev)
 #define KBASE_CLEAN_CACHE_MAX_LOOPS     100000
 /* Maximum number of loops polling the GPU for an AS command to complete before we assume the GPU has hung */
 #define KBASE_AS_INACTIVE_MAX_LOOPS     100000000
-
-/* JobDescriptorHeader - taken from the architecture specifications, the layout
- * is currently identical for all GPU archs. */
-struct job_descriptor_header {
-	u32 exception_status;
-	u32 first_incomplete_task;
-	u64 fault_pointer;
-	u8 job_descriptor_size : 1;
-	u8 job_type : 7;
-	u8 job_barrier : 1;
-	u8 _reserved_01 : 1;
-	u8 _reserved_1 : 1;
-	u8 _reserved_02 : 1;
-	u8 _reserved_03 : 1;
-	u8 _reserved_2 : 1;
-	u8 _reserved_04 : 1;
-	u8 _reserved_05 : 1;
-	u16 job_index;
-	u16 job_dependency_index_1;
-	u16 job_dependency_index_2;
-	union {
-		u64 _64;
-		u32 _32;
-	} next_job;
-};
 
 #endif				/* _KBASE_DEFS_H_ */

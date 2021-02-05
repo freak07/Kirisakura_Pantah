@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -17,6 +17,25 @@
  * http://www.gnu.org/licenses/gpl-2.0.html.
  *
  * SPDX-License-Identifier: GPL-2.0
+ *
+ *//* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *
+ * (C) COPYRIGHT 2020 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the
+ * GNU General Public License version 2 as published by the Free Software
+ * Foundation, and any use by you of this program is subject to the terms
+ * of such GNU license.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
  *
  */
 
@@ -320,14 +339,16 @@ enum base_kcpu_command_type {
 
 /**
  * enum base_queue_group_priority - Priority of a GPU Command Queue Group.
- * @BASE_QUEUE_GROUP_PRIORITY_HIGH:   GPU Command Queue Group is of high
- *                                    priority.
- * @BASE_QUEUE_GROUP_PRIORITY_MEDIUM: GPU Command Queue Group is of medium
- *                                    priority.
- * @BASE_QUEUE_GROUP_PRIORITY_LOW:    GPU Command Queue Group is of low
- *                                    priority.
- * @BASE_QUEUE_GROUP_PRIORITY_COUNT:  Number of GPU Command Queue Group
- *                                    priority levels.
+ * @BASE_QUEUE_GROUP_PRIORITY_HIGH:     GPU Command Queue Group is of high
+ *                                      priority.
+ * @BASE_QUEUE_GROUP_PRIORITY_MEDIUM:   GPU Command Queue Group is of medium
+ *                                      priority.
+ * @BASE_QUEUE_GROUP_PRIORITY_LOW:      GPU Command Queue Group is of low
+ *                                      priority.
+ * @BASE_QUEUE_GROUP_PRIORITY_REALTIME: GPU Command Queue Group is of real-time
+ *                                      priority.
+ * @BASE_QUEUE_GROUP_PRIORITY_COUNT:    Number of GPU Command Queue Group
+ *                                      priority levels.
  *
  * Currently this is in order of highest to lowest, but if new levels are added
  * then those new levels may be out of order to preserve the ABI compatibility
@@ -342,6 +363,7 @@ enum base_queue_group_priority {
 	BASE_QUEUE_GROUP_PRIORITY_HIGH = 0,
 	BASE_QUEUE_GROUP_PRIORITY_MEDIUM,
 	BASE_QUEUE_GROUP_PRIORITY_LOW,
+	BASE_QUEUE_GROUP_PRIORITY_REALTIME,
 	BASE_QUEUE_GROUP_PRIORITY_COUNT
 };
 
@@ -416,7 +438,7 @@ struct base_kcpu_command_jit_free_info {
  *
  * @buffer:		Pointer to an array of elements of the type char.
  * @size:		Number of elements in the @buffer array.
- * @group_handle:	Handle to the mapping of command stream group.
+ * @group_handle:	Handle to the mapping of CSG.
  * @padding:		padding to a multiple of 64 bits.
  */
 struct base_kcpu_command_group_suspend_info {
@@ -450,7 +472,7 @@ struct base_kcpu_command {
 };
 
 /**
- * struct basep_cs_stream_control - Command Stream interface capabilities.
+ * struct basep_cs_stream_control - CSI capabilities.
  *
  * @features: Features of this stream
  * @padding:  Padding to a multiple of 64 bits.
@@ -461,7 +483,7 @@ struct basep_cs_stream_control {
 };
 
 /**
- * struct basep_cs_group_control - Command Stream Group interface capabilities.
+ * struct basep_cs_group_control - CSG interface capabilities.
  *
  * @features:     Features of this group
  * @stream_num:   Number of streams in this group
@@ -561,6 +583,8 @@ struct base_gpu_queue_group_error {
  * @BASE_CSF_NOTIFICATION_EVENT:                 Notification with kernel event
  * @BASE_CSF_NOTIFICATION_GPU_QUEUE_GROUP_ERROR: Notification with GPU fatal
  *                                               error
+ * @BASE_CSF_NOTIFICATION_CPU_QUEUE_DUMP:        Notification with dumping cpu
+ *                                               queue
  * @BASE_CSF_NOTIFICATION_COUNT:                 The number of notification type
  *
  * This type is used for &struct_base_csf_notification.type.
@@ -568,6 +592,7 @@ struct base_gpu_queue_group_error {
 enum base_csf_notification_type {
 	BASE_CSF_NOTIFICATION_EVENT = 0,
 	BASE_CSF_NOTIFICATION_GPU_QUEUE_GROUP_ERROR,
+	BASE_CSF_NOTIFICATION_CPU_QUEUE_DUMP,
 	BASE_CSF_NOTIFICATION_COUNT
 };
 
@@ -591,6 +616,7 @@ struct base_csf_notification {
 			u8 padding[7];
 			struct base_gpu_queue_group_error error;
 		} csg_error;
+
 		u8 align[56];
 	} payload;
 };

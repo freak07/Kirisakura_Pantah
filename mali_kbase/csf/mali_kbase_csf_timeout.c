@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *
  * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
@@ -35,8 +36,7 @@
 /**
  * set_timeout - set a new global progress timeout.
  *
- * @kbdev:   Instance of a GPU platform device that implements a command
- *           stream front-end interface.
+ * @kbdev:   Instance of a GPU platform device that implements a CSF interface.
  * @timeout: the maximum number of GPU cycles without forward progress to allow
  *           to elapse before terminating a GPU command queue group.
  *

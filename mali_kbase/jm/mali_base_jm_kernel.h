@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -18,7 +18,27 @@
  *
  * SPDX-License-Identifier: GPL-2.0
  *
+ *//* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *
+ * (C) COPYRIGHT 2020 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the
+ * GNU General Public License version 2 as published by the Free Software
+ * Foundation, and any use by you of this program is subject to the terms
+ * of such GNU license.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
  */
+
 #ifndef _BASE_JM_KERNEL_H_
 #define _BASE_JM_KERNEL_H_
 
@@ -121,9 +141,9 @@
 #define BASE_MEM_RESERVED_BIT_19 ((base_mem_alloc_flags)1 << 19)
 
 /**
- * Memory starting from the end of the initial commit is aligned to 'extent'
- * pages, where 'extent' must be a power of 2 and no more than
- * BASE_MEM_TILER_ALIGN_TOP_EXTENT_MAX_PAGES
+ * Memory starting from the end of the initial commit is aligned to 'extension'
+ * pages, where 'extension' must be a power of 2 and no more than
+ * BASE_MEM_TILER_ALIGN_TOP_EXTENSION_MAX_PAGES
  */
 #define BASE_MEM_TILER_ALIGN_TOP ((base_mem_alloc_flags)1 << 20)
 
@@ -201,8 +221,8 @@
 						BASE_MEM_COOKIE_BASE)
 
 /* Similar to BASE_MEM_TILER_ALIGN_TOP, memory starting from the end of the
- * initial commit is aligned to 'extent' pages, where 'extent' must be a power
- * of 2 and no more than BASE_MEM_TILER_ALIGN_TOP_EXTENT_MAX_PAGES
+ * initial commit is aligned to 'extension' pages, where 'extension' must be a power
+ * of 2 and no more than BASE_MEM_TILER_ALIGN_TOP_EXTENSION_MAX_PAGES
  */
 #define BASE_JIT_ALLOC_MEM_TILER_ALIGN_TOP  (1 << 0)
 
@@ -752,11 +772,15 @@ typedef u8 base_jd_prio;
 #define BASE_JD_PRIO_HIGH    ((base_jd_prio)1)
 /* Low atom priority. */
 #define BASE_JD_PRIO_LOW     ((base_jd_prio)2)
+/* Real-Time atom priority. This is a priority higher than BASE_JD_PRIO_HIGH,
+ * BASE_JD_PRIO_MEDIUM, and BASE_JD_PRIO_LOW
+ */
+#define BASE_JD_PRIO_REALTIME    ((base_jd_prio)3)
 
 /* Count of the number of priority levels. This itself is not a valid
  * base_jd_prio setting
  */
-#define BASE_JD_NR_PRIO_LEVELS 3
+#define BASE_JD_NR_PRIO_LEVELS 4
 
 /**
  * struct base_jd_atom_v2 - Node of a dependency graph used to submit a

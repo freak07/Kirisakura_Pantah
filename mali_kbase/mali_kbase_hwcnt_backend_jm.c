@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *
  * (C) COPYRIGHT 2018-2020 ARM Limited. All rights reserved.
@@ -34,25 +35,20 @@
 #endif
 #include "backend/gpu/mali_kbase_clk_rate_trace_mgr.h"
 
-#if MALI_USE_CSF
-#include "mali_kbase_ctx_sched.h"
-#else
 #include "backend/gpu/mali_kbase_pm_internal.h"
-#endif
 
 /**
  * struct kbase_hwcnt_backend_jm_info - Information used to create an instance
  *                                      of a JM hardware counter backend.
  * @kbdev:         KBase device.
- * @use_secondary: True if secondary performance counters should be used,
- *                 else false. Ignored if secondary counters are not supported.
+ * @counter_set:   The performance counter set to use.
  * @metadata:      Hardware counter metadata.
  * @dump_bytes:    Bytes of GPU memory required to perform a
  *                 hardware counter dump.
  */
 struct kbase_hwcnt_backend_jm_info {
 	struct kbase_device *kbdev;
-	bool use_secondary;
+	enum kbase_hwcnt_set counter_set;
 	const struct kbase_hwcnt_metadata *metadata;
 	size_t dump_bytes;
 };
@@ -93,6 +89,47 @@ struct kbase_hwcnt_backend_jm {
 	struct kbase_clk_rate_listener rate_listener;
 	struct kbase_ccswe ccswe_shader_cores;
 };
+
+/**
+ * kbase_hwcnt_gpu_info_init() - Initialise an info structure used to create the
+ *                               hwcnt metadata.
+ * @kbdev: Non-NULL pointer to kbase device.
+ * @info:  Non-NULL pointer to data structure to be filled in.
+ *
+ * The initialised info struct will only be valid for use while kbdev is valid.
+ */
+int kbase_hwcnt_gpu_info_init(struct kbase_device *kbdev,
+			      struct kbase_hwcnt_gpu_info *info)
+{
+	size_t clk;
+
+	if (!kbdev || !info)
+		return -EINVAL;
+
+#ifdef CONFIG_MALI_NO_MALI
+	info->l2_count = KBASE_DUMMY_MODEL_MAX_MEMSYS_BLOCKS;
+	info->core_mask = (1ull << KBASE_DUMMY_MODEL_MAX_SHADER_CORES) - 1;
+#else /* CONFIG_MALI_NO_MALI */
+	{
+		const struct base_gpu_props *props = &kbdev->gpu_props.props;
+		const size_t l2_count = props->l2_props.num_l2_slices;
+		const size_t core_mask =
+			props->coherency_info.group[0].core_mask;
+
+		info->l2_count = l2_count;
+		info->core_mask = core_mask;
+	}
+#endif /* CONFIG_MALI_NO_MALI */
+
+	/* Determine the number of available clock domains. */
+	for (clk = 0; clk < BASE_MAX_NR_CLOCKS_REGULATORS; clk++) {
+		if (kbdev->pm.clk_rtm.clks[clk] == NULL)
+			break;
+	}
+	info->clk_cnt = clk;
+
+	return 0;
+}
 
 /**
  * kbasep_hwcnt_backend_jm_on_freq_change() - On freq change callback
@@ -136,10 +173,8 @@ static void kbasep_hwcnt_backend_jm_cc_enable(
 
 	if (kbase_hwcnt_clk_enable_map_enabled(
 		    clk_enable_map, KBASE_CLOCK_DOMAIN_TOP)) {
-#if !MALI_USE_CSF
 		/* turn on the cycle counter */
 		kbase_pm_request_gpu_cycle_counter_l2_is_on(kbdev);
-#endif
 		/* Read cycle count for top clock domain. */
 		kbase_backend_get_gpu_time_norequest(
 			kbdev, &cycle_count, NULL, NULL);
@@ -192,13 +227,12 @@ static void kbasep_hwcnt_backend_jm_cc_disable(
 	struct kbase_clk_rate_trace_manager *rtm = &kbdev->pm.clk_rtm;
 	u64 clk_enable_map = backend_jm->clk_enable_map;
 
-#if !MALI_USE_CSF
 	if (kbase_hwcnt_clk_enable_map_enabled(
 		clk_enable_map, KBASE_CLOCK_DOMAIN_TOP)) {
 		/* turn off the cycle counter */
 		kbase_pm_release_gpu_cycle_counter(kbdev);
 	}
-#endif
+
 	if (kbase_hwcnt_clk_enable_map_enabled(
 		clk_enable_map, KBASE_CLOCK_DOMAIN_SHADER_CORES)) {
 
@@ -226,7 +260,8 @@ static int kbasep_hwcnt_backend_jm_dump_enable_nolock(
 		(struct kbase_hwcnt_backend_jm *)backend;
 	struct kbase_context *kctx;
 	struct kbase_device *kbdev;
-	struct kbase_hwcnt_physical_enable_map phys;
+	struct kbase_hwcnt_physical_enable_map phys_enable_map;
+	enum kbase_hwcnt_physical_set phys_counter_set;
 	struct kbase_instr_hwcnt_enable enable;
 	u64 timestamp_ns;
 
@@ -239,13 +274,16 @@ static int kbasep_hwcnt_backend_jm_dump_enable_nolock(
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-	kbase_hwcnt_gpu_enable_map_to_physical(&phys, enable_map);
+	kbase_hwcnt_gpu_enable_map_to_physical(&phys_enable_map, enable_map);
 
-	enable.fe_bm = phys.fe_bm;
-	enable.shader_bm = phys.shader_bm;
-	enable.tiler_bm = phys.tiler_bm;
-	enable.mmu_l2_bm = phys.mmu_l2_bm;
-	enable.use_secondary = backend_jm->info->use_secondary;
+	kbase_hwcnt_gpu_set_to_physical(&phys_counter_set,
+					backend_jm->info->counter_set);
+
+	enable.fe_bm = phys_enable_map.fe_bm;
+	enable.shader_bm = phys_enable_map.shader_bm;
+	enable.tiler_bm = phys_enable_map.tiler_bm;
+	enable.mmu_l2_bm = phys_enable_map.mmu_l2_bm;
+	enable.counter_set = phys_counter_set;
 	enable.dump_buffer = backend_jm->gpu_dump_va;
 	enable.dump_buffer_bytes = backend_jm->info->dump_bytes;
 
@@ -424,9 +462,9 @@ static int kbasep_hwcnt_backend_jm_dump_get(
 		dst->clk_cnt_buf[clk] = backend_jm->cycle_count_elapsed[clk];
 	}
 
-	return kbase_hwcnt_gpu_dump_get(
-		dst, backend_jm->cpu_dump_va, dst_enable_map,
-		backend_jm->pm_core_mask, accumulate);
+	return kbase_hwcnt_jm_dump_get(dst, backend_jm->cpu_dump_va,
+				       dst_enable_map, backend_jm->pm_core_mask,
+				       accumulate);
 }
 
 /**
@@ -454,10 +492,8 @@ static int kbasep_hwcnt_backend_jm_dump_alloc(
 	flags = BASE_MEM_PROT_CPU_RD |
 		BASE_MEM_PROT_GPU_WR |
 		BASEP_MEM_PERMANENT_KERNEL_MAPPING |
-		BASE_MEM_CACHED_CPU;
-
-	if (kctx->kbdev->mmu_mode->flags & KBASE_MMU_MODE_HAS_NON_CACHEABLE)
-		flags |= BASE_MEM_UNCACHED_GPU;
+		BASE_MEM_CACHED_CPU |
+		BASE_MEM_UNCACHED_GPU;
 
 	nr_pages = PFN_UP(info->dump_bytes);
 
@@ -496,9 +532,6 @@ static void kbasep_hwcnt_backend_jm_destroy(
 		return;
 
 	if (backend->kctx) {
-#if MALI_USE_CSF
-		unsigned long flags;
-#endif
 		struct kbase_context *kctx = backend->kctx;
 		struct kbase_device *kbdev = kctx->kbdev;
 
@@ -509,13 +542,7 @@ static void kbasep_hwcnt_backend_jm_destroy(
 			kbasep_hwcnt_backend_jm_dump_free(
 				kctx, backend->gpu_dump_va);
 
-#if MALI_USE_CSF
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		kbase_ctx_sched_release_ctx(kctx);
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-#else
 		kbasep_js_release_privileged_ctx(kbdev, kctx);
-#endif
 		kbase_destroy_context(kctx);
 	}
 
@@ -533,9 +560,6 @@ static int kbasep_hwcnt_backend_jm_create(
 	const struct kbase_hwcnt_backend_jm_info *info,
 	struct kbase_hwcnt_backend_jm **out_backend)
 {
-#if MALI_USE_CSF
-	unsigned long flags;
-#endif
 	int errcode;
 	struct kbase_device *kbdev;
 	struct kbase_hwcnt_backend_jm *backend = NULL;
@@ -556,17 +580,7 @@ static int kbasep_hwcnt_backend_jm_create(
 	if (!backend->kctx)
 		goto alloc_error;
 
-#if MALI_USE_CSF
-	kbase_pm_context_active(kbdev);
-	mutex_lock(&kbdev->mmu_hw_mutex);
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	kbase_ctx_sched_retain_ctx(backend->kctx);
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-	mutex_unlock(&kbdev->mmu_hw_mutex);
-	kbase_pm_context_idle(kbdev);
-#else
 	kbasep_js_schedule_privileged_ctx(kbdev, backend->kctx);
-#endif
 
 	errcode = kbasep_hwcnt_backend_jm_dump_alloc(
 		info, backend->kctx, &backend->gpu_dump_va);
@@ -594,6 +608,16 @@ alloc_error:
 error:
 	kbasep_hwcnt_backend_jm_destroy(backend);
 	return errcode;
+}
+
+/* JM backend implementation of kbase_hwcnt_backend_metadata_fn */
+static const struct kbase_hwcnt_metadata *
+kbasep_hwcnt_backend_jm_metadata(const struct kbase_hwcnt_backend_info *info)
+{
+	if (!info)
+		return NULL;
+
+	return ((const struct kbase_hwcnt_backend_jm_info *)info)->metadata;
 }
 
 /* JM backend implementation of kbase_hwcnt_backend_init_fn */
@@ -640,7 +664,7 @@ static void kbasep_hwcnt_backend_jm_info_destroy(
 	if (!info)
 		return;
 
-	kbase_hwcnt_gpu_metadata_destroy(info->metadata);
+	kbase_hwcnt_jm_metadata_destroy(info->metadata);
 	kfree(info);
 }
 
@@ -672,16 +696,19 @@ static int kbasep_hwcnt_backend_jm_info_create(
 
 	info->kbdev = kbdev;
 
-#ifdef CONFIG_MALI_PRFCNT_SET_SECONDARY
-	info->use_secondary = true;
+#if defined(CONFIG_MALI_PRFCNT_SET_SECONDARY)
+	info->counter_set = KBASE_HWCNT_SET_SECONDARY;
+#elif defined(CONFIG_MALI_PRFCNT_SET_TERTIARY)
+	info->counter_set = KBASE_HWCNT_SET_TERTIARY;
 #else
-	info->use_secondary = false;
+	/* Default to primary */
+	info->counter_set = KBASE_HWCNT_SET_PRIMARY;
 #endif
 
-	errcode = kbase_hwcnt_gpu_metadata_create(
-		&hwcnt_gpu_info, info->use_secondary,
-		&info->metadata,
-		&info->dump_bytes);
+	errcode = kbase_hwcnt_jm_metadata_create(&hwcnt_gpu_info,
+						 info->counter_set,
+						 &info->metadata,
+						 &info->dump_bytes);
 	if (errcode)
 		goto error;
 
@@ -708,8 +735,8 @@ int kbase_hwcnt_backend_jm_create(
 	if (errcode)
 		return errcode;
 
-	iface->metadata = info->metadata;
 	iface->info = (struct kbase_hwcnt_backend_info *)info;
+	iface->metadata = kbasep_hwcnt_backend_jm_metadata;
 	iface->init = kbasep_hwcnt_backend_jm_init;
 	iface->term = kbasep_hwcnt_backend_jm_term;
 	iface->timestamp_ns = kbasep_hwcnt_backend_jm_timestamp_ns;
