@@ -183,27 +183,24 @@ static void gpu_dvfs_clockdown_worker(struct work_struct *data)
 }
 
 /**
- * gpu_dvfs_control_worker() - The main DVFS entry point for the Pixel GPU integration.
+ * gpu_dvfs_select_level() - The main DVFS entry point for the Pixel GPU integration.
  *
- * @data: Worker data structure, used to determine the corresponding GPU context.
+ * @kbdev: The &struct kbase_device for the GPU.
  *
  * This function handles the processing of incoming GPU utilization data from the core Mali driver
- * that was passed via &kbase_platform_dvfs_event.
+ * that was passed via &kbase_platform_dvfs_event or changes to DVFS policy.
  *
  * If the GPU is powered on, the reported utilization is used to determine whether a level change is
  * required via the current governor and if so, make that change.
  *
  * If the GPU is powered off, no action is taken.
  *
- * Context: Process context. Takes and releases the DVFS lock.
+ * Context: Process context. Must be called with DVFS lock.
  */
-static void gpu_dvfs_control_worker(struct work_struct *data)
+void gpu_dvfs_select_level(struct kbase_device *kbdev)
 {
-	struct pixel_context *pc = container_of(data, struct pixel_context, dvfs.control_work);
-	struct kbase_device *kbdev = pc->kbdev;
+	struct pixel_context *pc = kbdev->platform_context;
 	int util;
-
-	mutex_lock(&pc->dvfs.lock);
 
 	if (gpu_power_status(kbdev)) {
 		util = atomic_read(&pc->dvfs.util);
@@ -226,9 +223,23 @@ static void gpu_dvfs_control_worker(struct work_struct *data)
 
 	}
 
-	mutex_unlock(&pc->dvfs.lock);
-
 	GPU_LOG(LOG_DEBUG, kbdev, "dvfs worker is called\n");
+}
+
+/**
+ * gpu_dvfs_control_worker() - The workqueue worker that changes DVFS on utilization change.
+ *
+ * @data: Worker data structure, used to determine the corresponding GPU context.
+ *
+ * This function handles the processing of incoming GPU utilization data by extracting wq entry and
+ * passing to gpu_dvfs_select_level().
+ */
+static void gpu_dvfs_control_worker(struct work_struct *data)
+{
+	struct pixel_context *pc = container_of(data, struct pixel_context, dvfs.control_work);
+	mutex_lock(&pc->dvfs.lock);
+	gpu_dvfs_select_level(pc->kbdev);
+	mutex_unlock(&pc->dvfs.lock);
 }
 
 /**

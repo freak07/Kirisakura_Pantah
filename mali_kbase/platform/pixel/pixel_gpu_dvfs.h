@@ -137,5 +137,6 @@ void gpu_tmu_term(struct kbase_device *kbdev);
 /* Common */
 
 void gpu_dvfs_update_level_locks(struct kbase_device *kbdev);
+void gpu_dvfs_select_level(struct kbase_device *kbdev);
 
 #endif /* _PIXEL_GPU_DVFS_H_ */

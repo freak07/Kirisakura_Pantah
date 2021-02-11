@@ -62,6 +62,14 @@ extern struct protected_mode_ops pixel_protected_ops;
  */
 #define AUTO_SUSPEND_DELAY (100)
 
+/**
+ * DVFS Utilization evaluation period
+ *
+ * The amount of time (in milliseconds) between sucessive measurements of the
+ * GPU utilization. This also affects how frequently the DVFS update logic runs.
+ */
+#define DEFAULT_PM_DVFS_PERIOD (20)
+
 /* Linux includes */
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 #include <linux/atomic.h>

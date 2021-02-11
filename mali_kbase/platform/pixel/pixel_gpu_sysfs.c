@@ -444,6 +444,7 @@ static ssize_t scaling_max_freq_store(struct device *dev, struct device_attribut
 	pc->dvfs.level_scaling_max = level;
 	pc->dvfs.level_scaling_min = max(level, pc->dvfs.level_scaling_min);
 	gpu_dvfs_update_level_locks(kbdev);
+	gpu_dvfs_select_level(kbdev);
 	mutex_unlock(&pc->dvfs.lock);
 
 	return count;
@@ -483,6 +484,7 @@ static ssize_t scaling_min_freq_store(struct device *dev, struct device_attribut
 	pc->dvfs.level_scaling_min = level;
 	pc->dvfs.level_scaling_max = min(level, pc->dvfs.level_scaling_max);
 	gpu_dvfs_update_level_locks(kbdev);
+	gpu_dvfs_select_level(kbdev);
 	mutex_unlock(&pc->dvfs.lock);
 
 	return count;
