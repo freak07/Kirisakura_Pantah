@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -18,9 +18,26 @@
  *
  * SPDX-License-Identifier: GPL-2.0
  *
+ *//* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the
+ * GNU General Public License version 2 as published by the Free Software
+ * Foundation, and any use by you of this program is subject to the terms
+ * of such GNU license.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
  */
-
-
 
 /**
  * @file mali_kbase_mem.h
@@ -48,10 +65,13 @@ static inline void kbase_process_page_usage_inc(struct kbase_context *kctx,
 /* Part of the workaround for uTLB invalid pages is to ensure we grow/shrink tmem by 4 pages at a time */
 #define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2_HW_ISSUE_8316 (2)	/* round to 4 pages */
 
-/* Part of the workaround for PRLAM-9630 requires us to grow/shrink memory by 8 pages.
-The MMU reads in 8 page table entries from memory at a time, if we have more than one page fault within the same 8 pages and
-page tables are updated accordingly, the MMU does not re-read the page table entries from memory for the subsequent page table
-updates and generates duplicate page faults as the page table information used by the MMU is not valid.   */
+/* Part of the workaround for PRLAM-9630 requires us to grow/shrink memory by
+ * 8 pages. The MMU reads in 8 page table entries from memory at a time, if we
+ * have more than one page fault within the same 8 pages and page tables are
+ * updated accordingly, the MMU does not re-read the page table entries from
+ * memory for the subsequent page table updates and generates duplicate page
+ * faults as the page table information used by the MMU is not valid.
+ */
 #define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2_HW_ISSUE_9630 (3)	/* round to 8 pages */
 
 #define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2 (0)	/* round to 1 page */
@@ -81,7 +101,8 @@ enum kbase_memory_type {
 };
 
 /* internal structure, mirroring base_mem_aliasing_info,
- * but with alloc instead of a gpu va (handle) */
+ * but with alloc instead of a gpu va (handle)
+ */
 struct kbase_aliased {
 	struct kbase_mem_phy_alloc *alloc; /* NULL for special, non-NULL for native */
 	u64 offset; /* in pages */
@@ -105,7 +126,9 @@ struct kbase_aliased {
  * updated as part of the change.
  *
  * @kref: number of users of this alloc
- * @gpu_mappings: count number of times mapped on the GPU
+ * @gpu_mappings: count number of times mapped on the GPU. Indicates the number
+ *                of references there are to the physical pages from different
+ *                GPU VA regions.
  * @nents: 0..N
  * @pages: N elements, only 0..nents are valid
  * @mappings: List of CPU mappings of this physical memory allocation.
@@ -211,7 +234,7 @@ static inline void kbase_mem_phy_alloc_gpu_unmapped(struct kbase_mem_phy_alloc *
 	KBASE_DEBUG_ASSERT(alloc);
 	/* we only track mappings of NATIVE buffers */
 	if (alloc->type == KBASE_MEM_TYPE_NATIVE)
-		if (0 > atomic_dec_return(&alloc->gpu_mappings)) {
+		if (atomic_dec_return(&alloc->gpu_mappings) < 0) {
 			pr_err("Mismatched %s:\n", __func__);
 			dump_stack();
 		}
@@ -263,7 +286,7 @@ static inline struct kbase_mem_phy_alloc *kbase_mem_phy_alloc_put(struct kbase_m
  * @threshold_pages: If non-zero and the amount of memory committed to a region
  *                   that can grow on page fault exceeds this number of pages
  *                   then the driver switches to incremental rendering.
- * @extent:    Number of pages allocated on page fault.
+ * @extension:    Number of pages allocated on page fault.
  * @cpu_alloc: The physical memory we mmap to the CPU when mapping this region.
  * @gpu_alloc: The physical memory we mmap to the GPU when mapping this region.
  * @jit_node:     Links to neighboring regions in the just-in-time memory pool.
@@ -341,8 +364,9 @@ struct kbase_va_region {
 #endif
 
 #if !MALI_USE_CSF
-/* The top of the initial commit is aligned to extent pages.
- * Extent must be a power of 2 */
+/* The top of the initial commit is aligned to extension pages.
+ * Extent must be a power of 2
+ */
 #define KBASE_REG_TILER_ALIGN_TOP   (1ul << 23)
 #else
 /* Bit 23 is reserved.
@@ -416,7 +440,7 @@ struct kbase_va_region {
 #endif
 
 	unsigned long flags;
-	size_t extent;
+	size_t extension;
 	struct kbase_mem_phy_alloc *cpu_alloc;
 	struct kbase_mem_phy_alloc *gpu_alloc;
 	struct list_head jit_node;
@@ -1072,7 +1096,7 @@ bool kbase_check_import_flags(unsigned long flags);
  * @flags:        The flags passed from user space
  * @va_pages:     The size of the requested region, in pages.
  * @commit_pages: Number of pages to commit initially.
- * @extent:       Number of pages to grow by on GPU page fault and/or alignment
+ * @extension:       Number of pages to grow by on GPU page fault and/or alignment
  *                (depending on flags)
  *
  * Makes checks on the size parameters passed in from user space for a memory
@@ -1081,7 +1105,7 @@ bool kbase_check_import_flags(unsigned long flags);
  * Return: 0 if sizes are valid for these flags, negative error code otherwise
  */
 int kbase_check_alloc_sizes(struct kbase_context *kctx, unsigned long flags,
-		u64 va_pages, u64 commit_pages, u64 extent);
+			    u64 va_pages, u64 commit_pages, u64 extension);
 
 /**
  * kbase_update_region_flags - Convert user space flags to kernel region flags
@@ -1400,7 +1424,8 @@ static inline void kbase_set_dma_addr(struct page *p, dma_addr_t dma_addr)
 		/* on 32-bit ARM with LPAE dma_addr_t becomes larger, but the
 		 * private field stays the same. So we have to be clever and
 		 * use the fact that we only store DMA addresses of whole pages,
-		 * so the low bits should be zero */
+		 * so the low bits should be zero
+		 */
 		KBASE_DEBUG_ASSERT(!(dma_addr & (PAGE_SIZE - 1)));
 		set_page_private(p, dma_addr >> PAGE_SHIFT);
 	} else {

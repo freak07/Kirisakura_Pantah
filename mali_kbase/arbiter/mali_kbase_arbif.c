@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0
-
 /*
  *
  * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
@@ -34,6 +33,12 @@
 #include <linux/of_platform.h>
 #include "mali_kbase_arbiter_interface.h"
 
+/**
+ * on_gpu_stop() - sends KBASE_VM_GPU_STOP_EVT event on VM stop
+ * @dev: arbiter interface device handle
+ *
+ * call back function to signal a GPU STOP event from arbiter interface
+ */
 static void on_gpu_stop(struct device *dev)
 {
 	struct kbase_device *kbdev = dev_get_drvdata(dev);
@@ -42,6 +47,12 @@ static void on_gpu_stop(struct device *dev)
 	kbase_arbiter_pm_vm_event(kbdev, KBASE_VM_GPU_STOP_EVT);
 }
 
+/**
+ * on_gpu_granted() - sends KBASE_VM_GPU_GRANTED_EVT event on GPU granted
+ * @dev: arbiter interface device handle
+ *
+ * call back function to signal a GPU GRANT event from arbiter interface
+ */
 static void on_gpu_granted(struct device *dev)
 {
 	struct kbase_device *kbdev = dev_get_drvdata(dev);
@@ -50,6 +61,12 @@ static void on_gpu_granted(struct device *dev)
 	kbase_arbiter_pm_vm_event(kbdev, KBASE_VM_GPU_GRANTED_EVT);
 }
 
+/**
+ * on_gpu_lost() - sends KBASE_VM_GPU_LOST_EVT event  on GPU granted
+ * @dev: arbiter interface device handle
+ *
+ * call back function to signal a GPU LOST event from arbiter interface
+ */
 static void on_gpu_lost(struct device *dev)
 {
 	struct kbase_device *kbdev = dev_get_drvdata(dev);
@@ -57,6 +74,14 @@ static void on_gpu_lost(struct device *dev)
 	kbase_arbiter_pm_vm_event(kbdev, KBASE_VM_GPU_LOST_EVT);
 }
 
+/**
+ * kbase_arbif_init() - Kbase Arbiter interface initialisation.
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ *
+ * Initialise Kbase Arbiter interface and assign callback functions.
+ *
+ * Return: 0 on success else a Linux error code
+ */
 int kbase_arbif_init(struct kbase_device *kbdev)
 {
 #ifdef CONFIG_OF
@@ -119,6 +144,12 @@ int kbase_arbif_init(struct kbase_device *kbdev)
 	return 0;
 }
 
+/**
+ * kbase_arbif_destroy() - De-init Kbase arbiter interface
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ *
+ * De-initialise Kbase arbiter interface
+ */
 void kbase_arbif_destroy(struct kbase_device *kbdev)
 {
 	struct arbiter_if_dev *arb_if = kbdev->arb.arb_if;
@@ -133,6 +164,12 @@ void kbase_arbif_destroy(struct kbase_device *kbdev)
 	kbdev->arb.arb_dev = NULL;
 }
 
+/**
+ * kbase_arbif_gpu_request() - Request GPU from
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ *
+ * call back function from arb interface to arbiter requesting GPU for VM
+ */
 void kbase_arbif_gpu_request(struct kbase_device *kbdev)
 {
 	struct arbiter_if_dev *arb_if = kbdev->arb.arb_if;
@@ -143,6 +180,12 @@ void kbase_arbif_gpu_request(struct kbase_device *kbdev)
 	}
 }
 
+/**
+ * kbase_arbif_gpu_stopped() - send GPU stopped message to the arbiter
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ * @gpu_required: GPU request flag
+ *
+ */
 void kbase_arbif_gpu_stopped(struct kbase_device *kbdev, u8 gpu_required)
 {
 	struct arbiter_if_dev *arb_if = kbdev->arb.arb_if;
@@ -154,6 +197,12 @@ void kbase_arbif_gpu_stopped(struct kbase_device *kbdev, u8 gpu_required)
 	}
 }
 
+/**
+ * kbase_arbif_gpu_active() - Sends a GPU_ACTIVE message to the Arbiter
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ *
+ * Informs the arbiter VM is active
+ */
 void kbase_arbif_gpu_active(struct kbase_device *kbdev)
 {
 	struct arbiter_if_dev *arb_if = kbdev->arb.arb_if;
@@ -164,6 +213,12 @@ void kbase_arbif_gpu_active(struct kbase_device *kbdev)
 	}
 }
 
+/**
+ * kbase_arbif_gpu_idle() - Inform the arbiter that the VM has gone idle
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ *
+ * Informs the arbiter VM is idle
+ */
 void kbase_arbif_gpu_idle(struct kbase_device *kbdev)
 {
 	struct arbiter_if_dev *arb_if = kbdev->arb.arb_if;

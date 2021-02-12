@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -18,9 +18,26 @@
  *
  * SPDX-License-Identifier: GPL-2.0
  *
+ *//* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *
+ * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the
+ * GNU General Public License version 2 as published by the Free Software
+ * Foundation, and any use by you of this program is subject to the terms
+ * of such GNU license.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
  */
-
-
 
 /*
  * Power management API definitions used internally by GPU backend
@@ -492,7 +509,8 @@ void kbase_pm_register_access_enable(struct kbase_device *kbdev);
 void kbase_pm_register_access_disable(struct kbase_device *kbdev);
 
 /* NOTE: kbase_pm_is_suspending is in mali_kbase.h, because it is an inline
- * function */
+ * function
+ */
 
 /**
  * kbase_pm_metrics_is_active - Check if the power management metrics
@@ -551,9 +569,14 @@ void kbase_pm_get_dvfs_metrics(struct kbase_device *kbdev,
  * Return:         Returns 0 on failure and non zero on success.
  */
 
+#if MALI_USE_CSF
+int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation);
+#else
 int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation,
-	u32 util_gl_share, u32 util_cl_share[2]);
+			      u32 util_gl_share, u32 util_cl_share[2]);
 #endif
+
+#endif /* CONFIG_MALI_MIDGARD_DVFS */
 
 void kbase_pm_power_changed(struct kbase_device *kbdev);
 
@@ -707,6 +730,72 @@ extern bool corestack_driver_control;
  * Return: true if l2 need to power on
  */
 bool kbase_pm_is_l2_desired(struct kbase_device *kbdev);
+
+#if MALI_USE_CSF
+/**
+ * kbase_pm_is_mcu_desired - Check whether MCU is desired
+ *
+ * @kbdev: Device pointer
+ *
+ * This shall be called to check whether MCU needs to be enabled.
+ *
+ * Return: true if MCU needs to be enabled.
+ */
+bool kbase_pm_is_mcu_desired(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_idle_groups_sched_suspendable - Check whether the scheduler can be
+ *                                        suspended to low power state when all
+ *                                        the CSGs are idle
+ *
+ * @kbdev: Device pointer
+ *
+ * Return: true if allowed to enter the suspended state.
+ */
+static inline
+bool kbase_pm_idle_groups_sched_suspendable(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	return !(kbdev->pm.backend.csf_pm_sched_flags &
+		 CSF_DYNAMIC_PM_SCHED_IGNORE_IDLE);
+}
+
+/**
+ * kbase_pm_no_runnables_sched_suspendable - Check whether the scheduler can be
+ *                                        suspended to low power state when
+ *                                        there are no runnable CSGs.
+ *
+ * @kbdev: Device pointer
+ *
+ * Return: true if allowed to enter the suspended state.
+ */
+static inline
+bool kbase_pm_no_runnables_sched_suspendable(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	return !(kbdev->pm.backend.csf_pm_sched_flags &
+		 CSF_DYNAMIC_PM_SCHED_NO_SUSPEND);
+}
+
+/**
+ * kbase_pm_no_mcu_core_pwroff - Check whether the PM is required to keep the
+ *                               MCU core powered in accordance to the active
+ *                               power management policy
+ *
+ * @kbdev: Device pointer
+ *
+ * Return: true if the MCU is to retain powered.
+ */
+static inline bool kbase_pm_no_mcu_core_pwroff(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	return kbdev->pm.backend.csf_pm_sched_flags &
+		CSF_DYNAMIC_PM_CORE_KEEP_ON;
+}
+#endif
 
 /**
  * kbase_pm_lock - Lock all necessary mutexes to perform PM actions

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2018-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -17,6 +17,25 @@
  * http://www.gnu.org/licenses/gpl-2.0.html.
  *
  * SPDX-License-Identifier: GPL-2.0
+ *
+ *//* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *
+ * (C) COPYRIGHT 2018-2020 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the
+ * GNU General Public License version 2 as published by the Free Software
+ * Foundation, and any use by you of this program is subject to the terms
+ * of such GNU license.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
  *
  */
 
@@ -91,8 +110,8 @@
 #define DB_BLK_DOORBELL 0x0000 /* (WO) Doorbell request */
 
 /* CS_KERNEL_INPUT_BLOCK register offsets */
-#define CS_REQ 0x0000 /* () Command stream request flags */
-#define CS_CONFIG 0x0004 /* () Command stream configuration */
+#define CS_REQ 0x0000 /* () CS request flags */
+#define CS_CONFIG 0x0004 /* () CS configuration */
 #define CS_ACK_IRQ_MASK 0x000C /* () Command steam interrupt mask */
 #define CS_BASE_LO 0x0010 /* () Base pointer for the ring buffer, low word */
 #define CS_BASE_HI 0x0014 /* () Base pointer for the ring buffer, high word */
@@ -107,14 +126,16 @@
 #define CS_USER_OUTPUT_HI 0x003C /* () CS user mode input page address, high word */
 
 /* CS_KERNEL_OUTPUT_BLOCK register offsets */
-#define CS_ACK 0x0000 /* () Command stream acknowledge flags */
+#define CS_ACK 0x0000 /* () CS acknowledge flags */
 #define CS_STATUS_CMD_PTR_LO 0x0040 /* () Program pointer current value, low word */
 #define CS_STATUS_CMD_PTR_HI 0x0044 /* () Program pointer current value, high word */
 #define CS_STATUS_WAIT 0x0048 /* () Wait condition status register */
-#define CS_STATUS_REQ_RESOURCE 0x004C /* () Indicates the resources requested by the command stream */
+#define CS_STATUS_REQ_RESOURCE 0x004C /* () Indicates the resources requested by the CS */
 #define CS_STATUS_WAIT_SYNC_POINTER_LO 0x0050 /* () Sync object pointer, low word */
 #define CS_STATUS_WAIT_SYNC_POINTER_HI 0x0054 /* () Sync object pointer, high word */
 #define CS_STATUS_WAIT_SYNC_VALUE 0x0058 /* () Sync object test value */
+#define CS_STATUS_SCOREBOARDS 0x005C /* () Scoreboard status */
+#define CS_STATUS_BLOCKED_REASON 0x0060 /* () Blocked reason */
 #define CS_FAULT 0x0080 /* () Recoverable fault information */
 #define CS_FATAL 0x0084 /* () Unrecoverable fault information */
 #define CS_FAULT_INFO_LO 0x0088 /* () Additional information about a recoverable fault, low word */
@@ -136,13 +157,13 @@
 /* CS_USER_OUTPUT_BLOCK register offsets */
 #define CS_EXTRACT_LO 0x0000 /* () Current extract offset for ring buffer, low word */
 #define CS_EXTRACT_HI 0x0004 /* () Current extract offset for ring buffer, high word */
-#define CS_ACTIVE 0x0008 /* () Initial extract offset when the command stream is started */
+#define CS_ACTIVE 0x0008 /* () Initial extract offset when the CS is started */
 
 /* CSG_INPUT_BLOCK register offsets */
 #define CSG_REQ 0x0000 /* () CSG request */
 #define CSG_ACK_IRQ_MASK 0x0004 /* () Global acknowledge interrupt mask */
 #define CSG_DB_REQ 0x0008 /* () Global doorbell request */
-#define CSG_IRQ_ACK 0x000C /* () Command stream IRQ acknowledge */
+#define CSG_IRQ_ACK 0x000C /* () CS IRQ acknowledge */
 #define CSG_ALLOW_COMPUTE_LO 0x0020 /* () Allowed compute endpoints, low word */
 #define CSG_ALLOW_COMPUTE_HI 0x0024 /* () Allowed compute endpoints, high word */
 #define CSG_ALLOW_FRAGMENT_LO 0x0028 /* () Allowed fragment endpoints, low word */
@@ -156,9 +177,9 @@
 #define CSG_CONFIG 0x0050 /* () CSG configuration options */
 
 /* CSG_OUTPUT_BLOCK register offsets */
-#define CSG_ACK 0x0000 /* () Command stream group acknowledge flags */
-#define CSG_DB_ACK 0x0008 /* () Command stream kernel doorbell acknowledge flags */
-#define CSG_IRQ_REQ 0x000C /* () Command stream interrupt request flags */
+#define CSG_ACK 0x0000 /* () CSG acknowledge flags */
+#define CSG_DB_ACK 0x0008 /* () CS kernel doorbell acknowledge flags */
+#define CSG_IRQ_REQ 0x000C /* () CS interrupt request flags */
 #define CSG_STATUS_EP_CURRENT 0x0010 /* () Endpoint allocation status register */
 #define CSG_STATUS_EP_REQ 0x0014 /* () Endpoint request status register */
 #define CSG_RESOURCE_DEP 0x001C /* () Current resource dependencies */
@@ -177,12 +198,12 @@
 #define GROUP_CONTROL_COUNT 16
 
 /* STREAM_CONTROL_BLOCK register offsets */
-#define STREAM_FEATURES 0x0000 /* () Command Stream interface features */
+#define STREAM_FEATURES 0x0000 /* () CSI features */
 #define STREAM_INPUT_VA 0x0004 /* () Address of CS_KERNEL_INPUT_BLOCK */
 #define STREAM_OUTPUT_VA 0x0008 /* () Address of CS_KERNEL_OUTPUT_BLOCK */
 
 /* GROUP_CONTROL_BLOCK register offsets */
-#define GROUP_FEATURES 0x0000 /* () Command Stream Group interface features */
+#define GROUP_FEATURES 0x0000 /* () CSG interface features */
 #define GROUP_INPUT_VA 0x0004 /* () Address of CSG_INPUT_BLOCK */
 #define GROUP_OUTPUT_VA 0x0008 /* () Address of CSG_OUTPUT_BLOCK */
 #define GROUP_SUSPEND_SIZE 0x000C /* () Size of CSG suspend buffer */
@@ -207,6 +228,7 @@
 #define GLB_PRFCNT_JASID 0x0024 /* () Performance counter address space */
 #define GLB_PRFCNT_BASE_LO 0x0028 /* () Performance counter buffer address, low word */
 #define GLB_PRFCNT_BASE_HI 0x002C /* () Performance counter buffer address, high word */
+#define GLB_PRFCNT_EXTRACT 0x0030 /* () Performance counter buffer extract index */
 #define GLB_PRFCNT_CONFIG 0x0040 /* () Performance counter configuration */
 #define GLB_PRFCNT_CSG_SELECT 0x0044 /* () CSG performance counting enable */
 #define GLB_PRFCNT_FW_EN 0x0048 /* () Performance counter enable for firmware */
@@ -228,12 +250,20 @@
 #define GLB_DB_ACK 0x0008 /* () Global doorbell acknowledge */
 #define GLB_HALT_STATUS 0x0010 /* () Global halt status */
 #define GLB_PRFCNT_STATUS 0x0014 /* () Performance counter status */
+#define GLB_PRFCNT_INSERT 0x0018 /* () Performance counter buffer insert index */
 #define GLB_DEBUG_FWUTF_RESULT 0x0FE0 /* () Firmware debug test result */
 #define GLB_DEBUG_ACK 0x0FFC /* () Global debug acknowledge */
+
+/* USER register offsets */
+#define LATEST_FLUSH 0x0000 /* () Flush ID of latest clean-and-invalidate operation */
 
 /* End register offsets */
 
 /* CS_KERNEL_INPUT_BLOCK register set definitions */
+/* GLB_VERSION register */
+#define GLB_VERSION_PATCH_SHIFT (0)
+#define GLB_VERSION_MINOR_SHIFT (16)
+#define GLB_VERSION_MAJOR_SHIFT (24)
 
 /* CS_REQ register */
 #define CS_REQ_STATE_SHIFT 0
@@ -250,15 +280,6 @@
 #define CS_REQ_EXTRACT_EVENT_GET(reg_val) (((reg_val)&CS_REQ_EXTRACT_EVENT_MASK) >> CS_REQ_EXTRACT_EVENT_SHIFT)
 #define CS_REQ_EXTRACT_EVENT_SET(reg_val, value) \
 	(((reg_val) & ~CS_REQ_EXTRACT_EVENT_MASK) | (((value) << CS_REQ_EXTRACT_EVENT_SHIFT) & CS_REQ_EXTRACT_EVENT_MASK))
-
-/* From 10.x.5, CS_REQ_ERROR_MODE is removed but TI2 bitfile upload not finished.
- * Need to remove on GPUCORE-23972
- */
-#define CS_REQ_ERROR_MODE_SHIFT 5
-#define CS_REQ_ERROR_MODE_MASK (0x1 << CS_REQ_ERROR_MODE_SHIFT)
-#define CS_REQ_ERROR_MODE_GET(reg_val) ((reg_val & CS_REQ_ERROR_MODE_MASK) >> CS_REQ_ERROR_MODE_SHIFT)
-#define CS_REQ_ERROR_MODE_SET(reg_val, value) \
-         ((reg_val & ~CS_REQ_ERROR_MODE_MASK) | ((value << CS_REQ_ERROR_MODE_SHIFT) & CS_REQ_ERROR_MODE_MASK))
 
 #define CS_REQ_IDLE_SYNC_WAIT_SHIFT 8
 #define CS_REQ_IDLE_SYNC_WAIT_MASK (0x1 << CS_REQ_IDLE_SYNC_WAIT_SHIFT)
@@ -550,6 +571,39 @@
 #define CS_STATUS_WAIT_SYNC_VALUE_VALUE_SET(reg_val, value) \
 	(((reg_val) & ~CS_STATUS_WAIT_SYNC_VALUE_VALUE_MASK) |  \
 	 (((value) << CS_STATUS_WAIT_SYNC_VALUE_VALUE_SHIFT) & CS_STATUS_WAIT_SYNC_VALUE_VALUE_MASK))
+
+/* CS_STATUS_SCOREBOARDS register */
+#define CS_STATUS_SCOREBOARDS_NONZERO_SHIFT (0)
+#define CS_STATUS_SCOREBOARDS_NONZERO_MASK                                     \
+	((0xFFFF) << CS_STATUS_SCOREBOARDS_NONZERO_SHIFT)
+#define CS_STATUS_SCOREBOARDS_NONZERO_GET(reg_val)                             \
+	(((reg_val)&CS_STATUS_SCOREBOARDS_NONZERO_MASK) >>                     \
+	 CS_STATUS_SCOREBOARDS_NONZERO_SHIFT)
+#define CS_STATUS_SCOREBOARDS_NONZERO_SET(reg_val, value)                      \
+	(((reg_val) & ~CS_STATUS_SCOREBOARDS_NONZERO_MASK) |                   \
+	 (((value) << CS_STATUS_SCOREBOARDS_NONZERO_SHIFT) &                   \
+	  CS_STATUS_SCOREBOARDS_NONZERO_MASK))
+
+/* CS_STATUS_BLOCKED_REASON register */
+#define CS_STATUS_BLOCKED_REASON_REASON_SHIFT (0)
+#define CS_STATUS_BLOCKED_REASON_REASON_MASK                                   \
+	((0xF) << CS_STATUS_BLOCKED_REASON_REASON_SHIFT)
+#define CS_STATUS_BLOCKED_REASON_REASON_GET(reg_val)                           \
+	(((reg_val)&CS_STATUS_BLOCKED_REASON_REASON_MASK) >>                   \
+	 CS_STATUS_BLOCKED_REASON_REASON_SHIFT)
+#define CS_STATUS_BLOCKED_REASON_REASON_SET(reg_val, value)                    \
+	(((reg_val) & ~CS_STATUS_BLOCKED_REASON_REASON_MASK) |                 \
+	 (((value) << CS_STATUS_BLOCKED_REASON_REASON_SHIFT) &                 \
+	  CS_STATUS_BLOCKED_REASON_REASON_MASK))
+/* CS_STATUS_BLOCKED_REASON_reason values */
+#define CS_STATUS_BLOCKED_REASON_REASON_UNBLOCKED 0x0
+#define CS_STATUS_BLOCKED_REASON_REASON_WAIT 0x1
+#define CS_STATUS_BLOCKED_REASON_REASON_PROGRESS_WAIT 0x2
+#define CS_STATUS_BLOCKED_REASON_REASON_SYNC_WAIT 0x3
+#define CS_STATUS_BLOCKED_REASON_REASON_DEFERRED 0x4
+#define CS_STATUS_BLOCKED_REASON_REASON_RESOURCE 0x5
+#define CS_STATUS_BLOCKED_REASON_REASON_FLUSH 0x6
+/* End of CS_STATUS_BLOCKED_REASON_reason values */
 
 /* CS_FAULT register */
 #define CS_FAULT_EXCEPTION_TYPE_SHIFT 0
@@ -1085,6 +1139,19 @@
 #define GLB_REQ_PROTM_EXIT_GET(reg_val) (((reg_val)&GLB_REQ_PROTM_EXIT_MASK) >> GLB_REQ_PROTM_EXIT_SHIFT)
 #define GLB_REQ_PROTM_EXIT_SET(reg_val, value) \
 	(((reg_val) & ~GLB_REQ_PROTM_EXIT_MASK) | (((value) << GLB_REQ_PROTM_EXIT_SHIFT) & GLB_REQ_PROTM_EXIT_MASK))
+#define GLB_REQ_PRFCNT_THRESHOLD_SHIFT 24
+#define GLB_REQ_PRFCNT_THRESHOLD_MASK (0x1 << GLB_REQ_PRFCNT_THRESHOLD_SHIFT)
+#define GLB_REQ_PRFCNT_THRESHOLD_GET(reg_val) \
+	(((reg_val)&GLB_REQ_PRFCNT_THRESHOLD_MASK) >> GLB_REQ_PRFCNT_THRESHOLD_SHIFT)
+#define GLB_REQ_PRFCNT_THRESHOLD_SET(reg_val, value) \
+	(((reg_val) & ~GLB_REQ_PRFCNT_THRESHOLD_MASK) |  \
+	 (((value) << GLB_REQ_PRFCNT_THRESHOLD_SHIFT) & GLB_REQ_PRFCNT_THRESHOLD_MASK))
+#define GLB_REQ_PRFCNT_OVERFLOW_SHIFT 25
+#define GLB_REQ_PRFCNT_OVERFLOW_MASK (0x1 << GLB_REQ_PRFCNT_OVERFLOW_SHIFT)
+#define GLB_REQ_PRFCNT_OVERFLOW_GET(reg_val) (((reg_val)&GLB_REQ_PRFCNT_OVERFLOW_MASK) >> GLB_REQ_PRFCNT_OVERFLOW_SHIFT)
+#define GLB_REQ_PRFCNT_OVERFLOW_SET(reg_val, value) \
+	(((reg_val) & ~GLB_REQ_PRFCNT_OVERFLOW_MASK) |  \
+	 (((value) << GLB_REQ_PRFCNT_OVERFLOW_SHIFT) & GLB_REQ_PRFCNT_OVERFLOW_MASK))
 #define GLB_REQ_DEBUG_CSF_REQ_SHIFT 30
 #define GLB_REQ_DEBUG_CSF_REQ_MASK (0x1 << GLB_REQ_DEBUG_CSF_REQ_SHIFT)
 #define GLB_REQ_DEBUG_CSF_REQ_GET(reg_val) (((reg_val)&GLB_REQ_DEBUG_CSF_REQ_MASK) >> GLB_REQ_DEBUG_CSF_REQ_SHIFT)
@@ -1188,6 +1255,20 @@
 #define GLB_ACK_IRQ_MASK_PROTM_EXIT_SET(reg_val, value) \
 	(((reg_val) & ~GLB_ACK_IRQ_MASK_PROTM_EXIT_MASK) |  \
 	 (((value) << GLB_ACK_IRQ_MASK_PROTM_EXIT_SHIFT) & GLB_ACK_IRQ_MASK_PROTM_EXIT_MASK))
+#define GLB_ACK_IRQ_MASK_PRFCNT_THRESHOLD_SHIFT 24
+#define GLB_ACK_IRQ_MASK_PRFCNT_THRESHOLD_MASK (0x1 << GLB_ACK_IRQ_MASK_PRFCNT_THRESHOLD_SHIFT)
+#define GLB_ACK_IRQ_MASK_PRFCNT_THRESHOLD_GET(reg_val) \
+	(((reg_val)&GLB_ACK_IRQ_MASK_PRFCNT_THRESHOLD_MASK) >> GLB_ACK_IRQ_MASK_PRFCNT_THRESHOLD_SHIFT)
+#define GLB_ACK_IRQ_MASK_PRFCNT_THRESHOLD_SET(reg_val, value) \
+	(((reg_val) & ~GLB_ACK_IRQ_MASK_PRFCNT_THRESHOLD_MASK) |  \
+	 (((value) << GLB_ACK_IRQ_MASK_PRFCNT_THRESHOLD_SHIFT) & GLB_ACK_IRQ_MASK_PRFCNT_THRESHOLD_MASK))
+#define GLB_ACK_IRQ_MASK_PRFCNT_OVERFLOW_SHIFT 25
+#define GLB_ACK_IRQ_MASK_PRFCNT_OVERFLOW_MASK (0x1 << GLB_ACK_IRQ_MASK_PRFCNT_OVERFLOW_SHIFT)
+#define GLB_ACK_IRQ_MASK_PRFCNT_OVERFLOW_GET(reg_val) \
+	(((reg_val)&GLB_ACK_IRQ_MASK_PRFCNT_OVERFLOW_MASK) >> GLB_ACK_IRQ_MASK_PRFCNT_OVERFLOW_SHIFT)
+#define GLB_ACK_IRQ_MASK_PRFCNT_OVERFLOW_SET(reg_val, value) \
+	(((reg_val) & ~GLB_ACK_IRQ_MASK_PRFCNT_OVERFLOW_MASK) |  \
+	 (((value) << GLB_ACK_IRQ_MASK_PRFCNT_OVERFLOW_SHIFT) & GLB_ACK_IRQ_MASK_PRFCNT_OVERFLOW_MASK))
 #define GLB_ACK_IRQ_MASK_DEBUG_CSF_REQ_SHIFT 30
 #define GLB_ACK_IRQ_MASK_DEBUG_CSF_REQ_MASK (0x1 << GLB_ACK_IRQ_MASK_DEBUG_CSF_REQ_SHIFT)
 #define GLB_ACK_IRQ_MASK_DEBUG_CSF_REQ_GET(reg_val) \
@@ -1211,6 +1292,26 @@
 #define GLB_PROGRESS_TIMER_TIMEOUT_SET(reg_val, value) \
 	(((reg_val) & ~GLB_PROGRESS_TIMER_TIMEOUT_MASK) |  \
 	 (((value) << GLB_PROGRESS_TIMER_TIMEOUT_SHIFT) & GLB_PROGRESS_TIMER_TIMEOUT_MASK))
+
+/* GLB_PWROFF_TIMER register */
+#define GLB_PWROFF_TIMER_TIMEOUT_SHIFT 0
+#define GLB_PWROFF_TIMER_TIMEOUT_MASK (0x7FFFFFFF << GLB_PWROFF_TIMER_TIMEOUT_SHIFT)
+#define GLB_PWROFF_TIMER_TIMEOUT_GET(reg_val) \
+	(((reg_val)&GLB_PWROFF_TIMER_TIMEOUT_MASK) >> GLB_PWROFF_TIMER_TIMEOUT_SHIFT)
+#define GLB_PWROFF_TIMER_TIMEOUT_SET(reg_val, value) \
+	(((reg_val) & ~GLB_PWROFF_TIMER_TIMEOUT_MASK) |  \
+	 (((value) << GLB_PWROFF_TIMER_TIMEOUT_SHIFT) & GLB_PWROFF_TIMER_TIMEOUT_MASK))
+#define GLB_PWROFF_TIMER_TIMER_SOURCE_SHIFT 31
+#define GLB_PWROFF_TIMER_TIMER_SOURCE_MASK (0x1 << GLB_PWROFF_TIMER_TIMER_SOURCE_SHIFT)
+#define GLB_PWROFF_TIMER_TIMER_SOURCE_GET(reg_val) \
+	(((reg_val)&GLB_PWROFF_TIMER_TIMER_SOURCE_MASK) >> GLB_PWROFF_TIMER_TIMER_SOURCE_SHIFT)
+#define GLB_PWROFF_TIMER_TIMER_SOURCE_SET(reg_val, value) \
+	(((reg_val) & ~GLB_PWROFF_TIMER_TIMER_SOURCE_MASK) |  \
+	 (((value) << GLB_PWROFF_TIMER_TIMER_SOURCE_SHIFT) & GLB_PWROFF_TIMER_TIMER_SOURCE_MASK))
+/* GLB_PWROFF_TIMER_TIMER_SOURCE values */
+#define GLB_PWROFF_TIMER_TIMER_SOURCE_SYSTEM_TIMESTAMP 0x0
+#define GLB_PWROFF_TIMER_TIMER_SOURCE_GPU_COUNTER 0x1
+/* End of GLB_PWROFF_TIMER_TIMER_SOURCE values */
 
 /* GLB_ALLOC_EN register */
 #define GLB_ALLOC_EN_MASK_SHIFT 0
@@ -1248,5 +1349,53 @@
 #define GLB_ACK_CFG_ALLOC_EN_SET(reg_val, value) \
 	(((reg_val) & ~GLB_ACK_CFG_ALLOC_EN_MASK) | (((value) << GLB_ACK_CFG_ALLOC_EN_SHIFT) & GLB_ACK_CFG_ALLOC_EN_MASK))
 /* End of GLB_OUTPUT_BLOCK register set definitions */
+
+/* The following register and fields are for headers before 10.x.7/11.x.4 */
+#define GLB_REQ_IDLE_ENABLE_SHIFT (10)
+#define GLB_REQ_REQ_IDLE_ENABLE (1 << GLB_REQ_IDLE_ENABLE_SHIFT)
+#define GLB_REQ_REQ_IDLE_DISABLE (0 << GLB_REQ_IDLE_ENABLE_SHIFT)
+#define GLB_REQ_IDLE_ENABLE_MASK (0x1 << GLB_REQ_IDLE_ENABLE_SHIFT)
+#define GLB_REQ_IDLE_DISABLE_MASK (0x1 << GLB_REQ_IDLE_ENABLE_SHIFT)
+#define GLB_REQ_IDLE_EVENT_SHIFT (26)
+#define GLB_REQ_IDLE_EVENT_MASK (0x1 << GLB_REQ_IDLE_EVENT_SHIFT)
+#define GLB_ACK_IDLE_ENABLE_SHIFT (10)
+#define GLB_ACK_ACK_IDLE_ENABLE (1 << GLB_ACK_IDLE_ENABLE_SHIFT)
+#define GLB_ACK_ACK_IDLE_DISABLE (0 << GLB_ACK_IDLE_ENABLE_SHIFT)
+#define GLB_ACK_IDLE_ENABLE_MASK (0x1 << GLB_ACK_IDLE_ENABLE_SHIFT)
+#define GLB_ACK_IDLE_EVENT_SHIFT (26)
+#define GLB_ACK_IDLE_EVENT_MASK (0x1 << GLB_REQ_IDLE_EVENT_SHIFT)
+
+#define GLB_ACK_IRQ_MASK_IDLE_EVENT_SHIFT (26)
+#define GLB_ACK_IRQ_MASK_IDLE_EVENT_MASK (0x1 << GLB_ACK_IRQ_MASK_IDLE_EVENT_SHIFT)
+
+#define GLB_IDLE_TIMER (0x0080)
+/* GLB_IDLE_TIMER register */
+#define GLB_IDLE_TIMER_TIMEOUT_SHIFT (0)
+#define GLB_IDLE_TIMER_TIMEOUT_MASK ((0x7FFFFFFF) << GLB_IDLE_TIMER_TIMEOUT_SHIFT)
+#define GLB_IDLE_TIMER_TIMEOUT_GET(reg_val) (((reg_val)&GLB_IDLE_TIMER_TIMEOUT_MASK) >> GLB_IDLE_TIMER_TIMEOUT_SHIFT)
+#define GLB_IDLE_TIMER_TIMEOUT_SET(reg_val, value) \
+	(((reg_val) & ~GLB_IDLE_TIMER_TIMEOUT_MASK) |  \
+	 (((value) << GLB_IDLE_TIMER_TIMEOUT_SHIFT) & GLB_IDLE_TIMER_TIMEOUT_MASK))
+#define GLB_IDLE_TIMER_TIMER_SOURCE_SHIFT (31)
+#define GLB_IDLE_TIMER_TIMER_SOURCE_MASK ((0x1) << GLB_IDLE_TIMER_TIMER_SOURCE_SHIFT)
+#define GLB_IDLE_TIMER_TIMER_SOURCE_GET(reg_val) \
+	(((reg_val)&GLB_IDLE_TIMER_TIMER_SOURCE_MASK) >> GLB_IDLE_TIMER_TIMER_SOURCE_SHIFT)
+#define GLB_IDLE_TIMER_TIMER_SOURCE_SET(reg_val, value) \
+	(((reg_val) & ~GLB_IDLE_TIMER_TIMER_SOURCE_MASK) |  \
+	 (((value) << GLB_IDLE_TIMER_TIMER_SOURCE_SHIFT) & GLB_IDLE_TIMER_TIMER_SOURCE_MASK))
+/* GLB_IDLE_TIMER_TIMER_SOURCE values */
+#define GLB_IDLE_TIMER_TIMER_SOURCE_SYSTEM_TIMESTAMP 0x0
+#define GLB_IDLE_TIMER_TIMER_SOURCE_GPU_COUNTER 0x1
+/* End of GLB_IDLE_TIMER_TIMER_SOURCE values */
+
+#define CSG_STATUS_STATE (0x0018) /* CSG state status register */
+/* CSG_STATUS_STATE register */
+#define CSG_STATUS_STATE_IDLE_SHIFT (0)
+#define CSG_STATUS_STATE_IDLE_MASK ((0x1) << CSG_STATUS_STATE_IDLE_SHIFT)
+#define CSG_STATUS_STATE_IDLE_GET(reg_val) \
+	(((reg_val)&CSG_STATUS_STATE_IDLE_MASK) >> CSG_STATUS_STATE_IDLE_SHIFT)
+#define CSG_STATUS_STATE_IDLE_SET(reg_val, value) \
+	(((reg_val) & ~CSG_STATUS_STATE_IDLE_MASK) |  \
+	(((value) << CSG_STATUS_STATE_IDLE_SHIFT) & CSG_STATUS_STATE_IDLE_MASK))
 
 #endif /* _GPU_CSF_REGISTERS_H_ */

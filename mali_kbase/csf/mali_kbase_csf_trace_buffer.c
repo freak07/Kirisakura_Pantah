@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *
  * (C) COPYRIGHT 2018-2020 ARM Limited. All rights reserved.
@@ -29,6 +30,12 @@
 
 #include <linux/list.h>
 #include <linux/mman.h>
+
+#ifdef CONFIG_DEBUG_FS
+#if (KERNEL_VERSION(4, 7, 0) > LINUX_VERSION_CODE)
+#define DEFINE_DEBUGFS_ATTRIBUTE DEFINE_SIMPLE_ATTRIBUTE
+#endif
+#endif
 
 /**
  * struct firmware_trace_buffer - Trace Buffer within the MCU firmware
