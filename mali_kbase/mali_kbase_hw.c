@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *
  * (C) COPYRIGHT 2012-2020 ARM Limited. All rights reserved.
@@ -19,8 +20,6 @@
  * SPDX-License-Identifier: GPL-2.0
  *
  */
-
-
 
 /*
  * Run-time work-arounds helpers
@@ -88,9 +87,6 @@ void kbase_hw_set_features_mask(struct kbase_device *kbdev)
 		/* Fallthrough */
 	case GPU_ID2_PRODUCT_LTUX:
 		features = base_hw_features_tTUx;
-		break;
-	case GPU_ID2_PRODUCT_TE2X:
-		features = base_hw_features_tE2x;
 		break;
 	default:
 		features = base_hw_features_generic;
@@ -240,12 +236,9 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 		  {U32_MAX, NULL} } },
 
 		{GPU_ID2_PRODUCT_LTUX,
-		 {{GPU_ID2_VERSION_MAKE(3, 0, 0), base_hw_issues_tTUx_r0p0},
+		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tTUx_r0p0},
 		  {U32_MAX, NULL} } },
 
-		{GPU_ID2_PRODUCT_TE2X,
-		 {{GPU_ID2_VERSION_MAKE(0, 0, 0), base_hw_issues_tE2x_r0p0},
-		  {U32_MAX, NULL} } },
 	};
 
 	u32 gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
@@ -278,8 +271,8 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 			}
 
 			/* Check whether this is a candidate for most recent
-				known version not later than the actual
-				version. */
+			 * known version not later than the actual version.
+			 */
 			if ((version > product->map[v].version) &&
 				(product->map[v].version >= fallback_version)) {
 #if MALI_CUSTOMER_RELEASE
@@ -296,7 +289,8 @@ static const enum base_hw_issue *kbase_hw_get_issues_for_new_id(
 
 		if ((issues == NULL) && (fallback_issues != NULL)) {
 			/* Fall back to the issue set of the most recent known
-				version not later than the actual version. */
+			 * version not later than the actual version.
+			 */
 			issues = fallback_issues;
 
 #if MALI_CUSTOMER_RELEASE
@@ -349,7 +343,8 @@ int kbase_hw_set_issues_mask(struct kbase_device *kbdev)
 
 #if !MALI_CUSTOMER_RELEASE
 		/* The GPU ID might have been replaced with the last
-			known version of the same GPU. */
+		 * known version of the same GPU.
+		 */
 		gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
 #endif
 	} else {
@@ -402,9 +397,6 @@ int kbase_hw_set_issues_mask(struct kbase_device *kbdev)
 		case GPU_ID2_PRODUCT_TTUX:
 		case GPU_ID2_PRODUCT_LTUX:
 			issues = base_hw_issues_model_tTUx;
-			break;
-		case GPU_ID2_PRODUCT_TE2X:
-			issues = base_hw_issues_model_tE2x;
 			break;
 		default:
 			dev_err(kbdev->dev,

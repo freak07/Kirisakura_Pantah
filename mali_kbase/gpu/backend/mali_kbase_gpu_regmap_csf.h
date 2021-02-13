@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -18,6 +18,25 @@
  *
  * SPDX-License-Identifier: GPL-2.0
  *
+ *//* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *
+ * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the
+ * GNU General Public License version 2 as published by the Free Software
+ * Foundation, and any use by you of this program is subject to the terms
+ * of such GNU license.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
  */
 
 #ifndef _KBASE_GPU_REGMAP_CSF_H_
@@ -27,9 +46,43 @@
 #error "Cannot be compiled with JM"
 #endif
 
-#include "csf/mali_gpu_csf_control_registers.h"
-#define GPU_CONTROL_MCU_REG(r)  (GPU_CONTROL_MCU + (r))
+/* IPA control registers */
 
+#define IPA_CONTROL_BASE       0x40000
+#define IPA_CONTROL_REG(r)     (IPA_CONTROL_BASE+(r))
+#define COMMAND                0x000 /* (WO) Command register */
+#define STATUS                 0x004 /* (RO) Status register */
+#define TIMER                  0x008 /* (RW) Timer control register */
+
+#define SELECT_CSHW_LO         0x010 /* (RW) Counter select for CS hardware, low word */
+#define SELECT_CSHW_HI         0x014 /* (RW) Counter select for CS hardware, high word */
+#define SELECT_MEMSYS_LO       0x018 /* (RW) Counter select for Memory system, low word */
+#define SELECT_MEMSYS_HI       0x01C /* (RW) Counter select for Memory system, high word */
+#define SELECT_TILER_LO        0x020 /* (RW) Counter select for Tiler cores, low word */
+#define SELECT_TILER_HI        0x024 /* (RW) Counter select for Tiler cores, high word */
+#define SELECT_SHADER_LO       0x028 /* (RW) Counter select for Shader cores, low word */
+#define SELECT_SHADER_HI       0x02C /* (RW) Counter select for Shader cores, high word */
+
+/* Accumulated counter values for CS hardware */
+#define VALUE_CSHW_BASE        0x100
+#define VALUE_CSHW_REG_LO(n)   (VALUE_CSHW_BASE + ((n) << 3))       /* (RO) Counter value #n, low word */
+#define VALUE_CSHW_REG_HI(n)   (VALUE_CSHW_BASE + ((n) << 3) + 4)   /* (RO) Counter value #n, high word */
+
+/* Accumulated counter values for memory system */
+#define VALUE_MEMSYS_BASE      0x140
+#define VALUE_MEMSYS_REG_LO(n) (VALUE_MEMSYS_BASE + ((n) << 3))     /* (RO) Counter value #n, low word */
+#define VALUE_MEMSYS_REG_HI(n) (VALUE_MEMSYS_BASE + ((n) << 3) + 4) /* (RO) Counter value #n, high word */
+
+#define VALUE_TILER_BASE       0x180
+#define VALUE_TILER_REG_LO(n)  (VALUE_TILER_BASE + ((n) << 3))      /* (RO) Counter value #n, low word */
+#define VALUE_TILER_REG_HI(n)  (VALUE_TILER_BASE + ((n) << 3) + 4)  /* (RO) Counter value #n, high word */
+
+#define VALUE_SHADER_BASE      0x1C0
+#define VALUE_SHADER_REG_LO(n) (VALUE_SHADER_BASE + ((n) << 3))     /* (RO) Counter value #n, low word */
+#define VALUE_SHADER_REG_HI(n) (VALUE_SHADER_BASE + ((n) << 3) + 4) /* (RO) Counter value #n, high word */
+
+
+#include "csf/mali_gpu_csf_control_registers.h"
 
 /* Set to implementation defined, outer caching */
 #define AS_MEMATTR_AARCH64_OUTER_IMPL_DEF 0x88ull
@@ -68,13 +121,14 @@
 /* Normal memory, shared between MCU and Host */
 #define AS_MEMATTR_INDEX_SHARED                6
 
-/* Configuration bits for the Command Stream Frontend. */
+/* Configuration bits for the CSF. */
 #define CSF_CONFIG 0xF00
 
 /* CSF_CONFIG register */
 #define CSF_CONFIG_FORCE_COHERENCY_FEATURES_SHIFT 2
 
 /* GPU control registers */
+#define CORE_FEATURES           0x008   /* () Shader Core Features */
 #define MCU_CONTROL             0x700
 #define MCU_STATUS              0x704
 
@@ -95,7 +149,7 @@
 				 */
 
 #define PRFCNT_CSHW_EN   0x06C  /* (RW) Performance counter
-				 * enable for Command Stream Hardware
+				 * enable for CS Hardware
 				 */
 
 #define PRFCNT_SHADER_EN 0x070  /* (RW) Performance counter enable
@@ -128,7 +182,7 @@
  */
 #define GPU_COMMAND_RESET_PAYLOAD_FAST_RESET 0x00
 
-/* This will leave the state of active command streams UNDEFINED, but will leave the external bus in a defined and
+/* This will leave the state of active CSs UNDEFINED, but will leave the external bus in a defined and
  * idle state.
  */
 #define GPU_COMMAND_RESET_PAYLOAD_SOFT_RESET 0x01
@@ -245,9 +299,12 @@
 #define GPU_FAULTSTATUS_ACCESS_TYPE_WRITE 0x3
 /* End of GPU_FAULTSTATUS_ACCESS_TYPE values */
 
-/* TODO: Remove once 10.x.6 headers became available */
+/* Implementation-dependent exception codes used to indicate CSG
+ * and CS errors that are not specified in the specs.
+ */
 #define GPU_EXCEPTION_TYPE_SW_FAULT_0 ((u8)0x70)
 #define GPU_EXCEPTION_TYPE_SW_FAULT_1 ((u8)0x71)
+#define GPU_EXCEPTION_TYPE_SW_FAULT_2 ((u8)0x72)
 
 /* GPU_FAULTSTATUS_EXCEPTION_TYPE values */
 #define GPU_FAULTSTATUS_EXCEPTION_TYPE_OK 0x00

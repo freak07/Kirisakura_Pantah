@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *
  * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
@@ -29,14 +30,14 @@ const char *kbase_gpu_exception_name(u32 const exception_code)
 	const char *e;
 
 	switch (exception_code) {
-	/* Command Stream exceptions */
+	/* CS exceptions */
 	case CS_FAULT_EXCEPTION_TYPE_CS_RESOURCE_TERMINATED:
 		e = "CS_RESOURCE_TERMINATED";
 		break;
 	case CS_FAULT_EXCEPTION_TYPE_CS_INHERIT_FAULT:
 		e = "CS_INHERIT_FAULT";
 		break;
-	/* Command Stream fatal exceptions */
+	/* CS fatal exceptions */
 	case CS_FATAL_EXCEPTION_TYPE_CS_CONFIG_FAULT:
 		e = "CS_CONFIG_FAULT";
 		break;

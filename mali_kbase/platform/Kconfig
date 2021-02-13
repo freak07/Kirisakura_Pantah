@@ -19,8 +19,6 @@
 #
 #
 
-
-
 # Add your platform specific Kconfig file here
 #
 # "drivers/gpu/arm/midgard/platform/xxx/Kconfig"

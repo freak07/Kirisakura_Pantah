@@ -21,7 +21,7 @@
 
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= "r27p0-01eac0"
+MALI_RELEASE_NAME ?= "r29p0-01eac0"
 
 # Append pixel to release name for debugging
 MALI_RELEASE_NAME := $(MALI_RELEASE_NAME)-pixel
@@ -105,7 +105,6 @@ SRC := \
 	mali_kbase_config.c \
 	mali_kbase_vinstr.c \
 	mali_kbase_hwcnt.c \
-	mali_kbase_hwcnt_backend_jm.c \
 	mali_kbase_hwcnt_gpu.c \
 	mali_kbase_hwcnt_legacy.c \
 	mali_kbase_hwcnt_types.c \
@@ -130,6 +129,7 @@ SRC := \
 	mali_kbase_strings.c \
 	mali_kbase_as_fault_debugfs.c \
 	mali_kbase_regs_history_debugfs.c \
+	mali_kbase_dvfs_debugfs.c \
 	mali_power_gpu_frequency_trace.c \
 	mali_kbase_trace_gpu_mem.c \
 	thirdparty/mali_kbase_mmap.c \
@@ -141,6 +141,8 @@ SRC := \
 
 ifeq ($(MALI_USE_CSF),1)
 	SRC += \
+		mali_kbase_hwcnt_backend_csf.c \
+		mali_kbase_hwcnt_backend_csf_if_fw.c \
 		debug/backend/mali_kbase_debug_ktrace_csf.c \
 		device/backend/mali_kbase_device_csf.c \
 		device/backend/mali_kbase_device_hw_csf.c \
@@ -150,6 +152,7 @@ ifeq ($(MALI_USE_CSF),1)
 		context/backend/mali_kbase_context_csf.c
 else
 	SRC += \
+		mali_kbase_hwcnt_backend_jm.c \
 		mali_kbase_dummy_job_wa.c \
 		mali_kbase_debug_job_fault.c \
 		mali_kbase_event.c \

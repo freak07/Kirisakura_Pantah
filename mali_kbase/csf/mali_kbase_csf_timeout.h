@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2019 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -18,6 +18,25 @@
  *
  * SPDX-License-Identifier: GPL-2.0
  *
+ *//* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *
+ * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the
+ * GNU General Public License version 2 as published by the Free Software
+ * Foundation, and any use by you of this program is subject to the terms
+ * of such GNU license.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
+ *
  */
 
 #ifndef _KBASE_CSF_TIMEOUT_H_
@@ -28,8 +47,8 @@ struct kbase_device;
 /**
  * kbase_csf_timeout_init - Initialize the progress timeout.
  *
- * @kbdev: Instance of a GPU platform device that implements a command
- *         stream front-end interface. Must be zero-initialized.
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
+ *         Must be zero-initialized.
  *
  * The progress timeout is the number of GPU clock cycles allowed to elapse
  * before the driver terminates a GPU command queue group in which a task is
@@ -46,8 +65,7 @@ int kbase_csf_timeout_init(struct kbase_device *kbdev);
 /**
  * kbase_csf_timeout_term - Terminate the progress timeout.
  *
- * @kbdev: Instance of a GPU platform device that implements a command
- *         stream front-end interface.
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
  *
  * Removes the sysfs file which allowed the timeout to be reconfigured.
  * Does nothing if called on a zero-initialized object.
@@ -57,8 +75,7 @@ void kbase_csf_timeout_term(struct kbase_device *kbdev);
 /**
  * kbase_csf_timeout_get - get the current global progress timeout.
  *
- * @kbdev: Instance of a GPU platform device that implements a command
- *         stream front-end interface.
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
  *
  * Return: the maximum number of GPU cycles that is allowed to elapse without
  *         forward progress before the driver terminates a GPU command queue
