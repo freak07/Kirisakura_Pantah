@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  *
- * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -73,7 +73,7 @@ typedef unsigned int __poll_t;
  */
 DEFINE_STATIC_KEY_FALSE(basep_kinstr_jm_reader_static_key);
 
-#define KBASE_KINSTR_JM_VERSION 1
+#define KBASE_KINSTR_JM_VERSION 2
 
 /**
  * struct kbase_kinstr_jm - The context for the kernel job manager atom tracing
@@ -827,7 +827,7 @@ void kbasep_kinstr_jm_atom_state(
 
 	switch (state) {
 	case KBASE_KINSTR_JM_READER_ATOM_STATE_START:
-		change.data.start.slot = katom->jobslot;
+		change.data.start.slot = katom->slot_nr;
 		break;
 	default:
 		break;
