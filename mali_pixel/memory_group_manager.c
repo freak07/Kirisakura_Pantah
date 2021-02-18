@@ -3,24 +3,26 @@
  * memory_group_manager.c
  *
  * C) COPYRIGHT 2019 ARM Limited. All rights reserved.
- * C) COPYRIGHT 2019-2020 Google LLC
+ * C) COPYRIGHT 2019-2021 Google LLC
  *
  */
 
 /* Turn this on for more debug */
 //#define DEBUG
 
-#include <linux/fs.h>
-#include <linux/of.h>
-#include <linux/slab.h>
-#include <linux/platform_device.h>
-#include <linux/version.h>
-#include <linux/module.h>
 #include <linux/atomic.h>
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
 #endif
+#include <linux/fs.h>
+#include <linux/io.h>
 #include <linux/mm.h>
+#include <linux/module.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
+#include <linux/slab.h>
+#include <linux/version.h>
+
 #include <linux/memory_group_manager.h>
 
 #include <soc/google/pt.h>
@@ -583,6 +585,18 @@ static void mgm_term_data(struct mgm_groups *data)
 	mgm_debugfs_term(data);
 }
 
+static void mgm_initialize_g3d_regs()
+{
+	/* In order to advertise the availability of ACE Lite (IO coherency) to
+	 * the GPU, we need to write a register in G3D. We write the value 1 to
+	 * indicate that ACE Lite is available.
+	 */
+	#define G3D_COHERENCY_FEATURES_REG (0x1c420400)
+	void __iomem *g3d_coherency_features;
+	g3d_coherency_features = ioremap(G3D_COHERENCY_FEATURES_REG, 4);
+	__raw_writel(0x1, g3d_coherency_features);
+}
+
 static int memory_group_manager_probe(struct platform_device *pdev)
 {
 	struct memory_group_manager_device *mgm_dev;
@@ -614,6 +628,8 @@ static int memory_group_manager_probe(struct platform_device *pdev)
 		kfree(mgm_dev);
 		return -ENOENT;
 	}
+
+	mgm_initialize_g3d_regs();
 
 	platform_set_drvdata(pdev, mgm_dev);
 	dev_info(&pdev->dev, "Memory group manager probed successfully\n");
