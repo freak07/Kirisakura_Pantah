@@ -98,7 +98,7 @@ struct kbase_hwcnt_backend_jm {
  *
  * The initialised info struct will only be valid for use while kbdev is valid.
  */
-int kbase_hwcnt_gpu_info_init(struct kbase_device *kbdev,
+static int kbase_hwcnt_gpu_info_init(struct kbase_device *kbdev,
 			      struct kbase_hwcnt_gpu_info *info)
 {
 	size_t clk;
