@@ -703,6 +703,18 @@ struct kbase_ioctl_context_priority_check {
 #define KBASE_IOCTL_CONTEXT_PRIORITY_CHECK \
 	_IOWR(KBASE_IOCTL_TYPE, 54, struct kbase_ioctl_context_priority_check)
 
+/**
+ * struct kbase_ioctl_apc_request - GPU asynchronous power control (APC) request
+ *
+ * @dur_usec: Duration for GPU to stay awake.
+ */
+struct kbase_ioctl_apc_request {
+	__u32 dur_usec;
+};
+
+#define KBASE_IOCTL_APC_REQUEST \
+	_IOW(KBASE_IOCTL_TYPE, 66, struct kbase_ioctl_apc_request)
+
 /***************
  * test ioctls *
  ***************/
