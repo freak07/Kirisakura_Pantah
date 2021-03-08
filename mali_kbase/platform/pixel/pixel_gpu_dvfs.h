@@ -46,6 +46,7 @@ enum gpu_dvfs_governor_type {
 	 * value, then it will recommend a move to a lower throughput level.
 	 */
 	GPU_DVFS_GOVERNOR_BASIC = 0,
+	GPU_DVFS_GOVERNOR_QUICKSTEP,
 	/* Insert new governors here */
 	GPU_DVFS_GOVERNOR_COUNT,
 	GPU_DVFS_GOVERNOR_INVALID,
