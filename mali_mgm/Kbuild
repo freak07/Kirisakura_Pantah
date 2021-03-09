@@ -25,4 +25,5 @@ src:=$(if $(patsubst /%,,$(src)),$(srctree)/$(src),$(src))
 # Add include path for related GPU modules
 ccflags-y += -I$(src)/../common/include
 
-obj-$(CONFIG_MALI_MEMORY_GROUP_MANAGER) := memory_group_manager.o
+obj-$(CONFIG_MALI_MEMORY_GROUP_MANAGER) := mali_mgm.o
+mali_mgm-objs := memory_group_manager.o
