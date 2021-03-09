@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0
+
+bob_kernel_module {
+    name: "priority_control_manager",
+    srcs: [
+        "Kbuild",
+        "priority_control_manager.c",
+    ],
+    kbuild_options: ["CONFIG_MALI_PRIORITY_CONTROL_MANAGER=m"],
+    defaults: ["kernel_defaults"],
+}
