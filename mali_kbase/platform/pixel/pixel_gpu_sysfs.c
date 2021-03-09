@@ -514,7 +514,7 @@ static ssize_t time_in_state_show(struct device *dev, struct device_attribute *a
 
 static ssize_t trans_stat_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	int i, j, t, total;
+	int i, j, t, total = 0;
 	ssize_t ret = 0;
 	struct kbase_device *kbdev = dev->driver_data;
 	struct pixel_context *pc = kbdev->platform_context;
