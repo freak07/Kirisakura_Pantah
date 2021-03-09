@@ -120,6 +120,7 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
 			if (level != next_level) {
 				pc->dvfs.table[next_level].metrics.entry_count++;
 				pc->dvfs.table[next_level].metrics.time_last_entry = curr;
+				gpu_dvfs_metrics_transtab_entry(pc, level, next_level)++;
 				gpu_dvfs_metrics_uid_level_change(kbdev, curr);
 			}
 		} else {
@@ -143,6 +144,7 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
 				 */
 				pc->dvfs.table[next_level].metrics.entry_count++;
 				pc->dvfs.table[next_level].metrics.time_last_entry = curr;
+				gpu_dvfs_metrics_transtab_entry(pc, level, next_level)++;
 			}
 		}
 
@@ -371,7 +373,7 @@ void gpu_dvfs_kctx_term(struct kbase_context *kctx)
  *
  * Context: Process context. Takes and releases the DVFS lock.
  *
- * Return: This function currently always returns 0 for success.
+ * Return: On success, returns 0 otherwise returns an error code.
  */
 int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
 {
@@ -381,6 +383,11 @@ int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
 
 	pc->dvfs.metrics.last_time = ktime_get_ns();
 	pc->dvfs.metrics.last_power_state = gpu_power_status(kbdev);
+
+	pc->dvfs.metrics.transtab = kzalloc(sizeof(int) * gpu_dvfs_metrics_transtab_size(pc),
+		GFP_KERNEL);
+	if (pc->dvfs.metrics.transtab == NULL)
+		return -ENOMEM;
 
 	pc->dvfs.table[pc->dvfs.level].metrics.entry_count++;
 	pc->dvfs.table[pc->dvfs.level].metrics.time_last_entry =
@@ -403,6 +410,8 @@ void gpu_dvfs_metrics_term(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 	struct gpu_dvfs_metrics_uid_stats *entry, *tmp;
+
+	kfree(pc->dvfs.metrics.transtab);
 
 	list_for_each_entry_safe(entry, tmp, &pc->dvfs.metrics.uid_stats_list, uid_list_link) {
 		list_del(&entry->uid_list_link);

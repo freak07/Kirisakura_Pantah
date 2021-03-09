@@ -512,6 +512,45 @@ static ssize_t time_in_state_show(struct device *dev, struct device_attribute *a
 	return ret;
 }
 
+static ssize_t trans_stat_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int i, j, t, total;
+	ssize_t ret = 0;
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+
+	if (!pc)
+		return -ENODEV;
+
+	/* First trigger an update */
+	mutex_lock(&pc->dvfs.lock);
+	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, gpu_power_status(kbdev));
+	mutex_unlock(&pc->dvfs.lock);
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%9s  :   %s\n", "From", "To");
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%12s", ":");
+	for (i = pc->dvfs.level_max; i <= pc->dvfs.level_min; i++)
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%10d", pc->dvfs.table[i].clk1);
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%11s\n", "time(ms)");
+
+	for (i = pc->dvfs.level_max; i <= pc->dvfs.level_min; i++) {
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s%10d:",
+			(i == pc->dvfs.level) ? "*" : " ", pc->dvfs.table[i].clk1);
+		for (j = pc->dvfs.level_max; j <= pc->dvfs.level_min; j++) {
+			t = gpu_dvfs_metrics_transtab_entry(pc, i, j);
+			total += t;
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%10d", t);
+		}
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%10d\n",
+			(u32)(pc->dvfs.table[i].metrics.time_total / NSEC_PER_MSEC));
+	}
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "Total transition : %d\n", total);
+
+	return ret;
+}
+
 static ssize_t available_governors_show(struct device *dev, struct device_attribute *attr,
 	char *buf)
 {
@@ -560,6 +599,7 @@ DEVICE_ATTR_RO(min_freq);
 DEVICE_ATTR_RW(scaling_max_freq);
 DEVICE_ATTR_RW(scaling_min_freq);
 DEVICE_ATTR_RO(time_in_state);
+DEVICE_ATTR_RO(trans_stat);
 DEVICE_ATTR_RO(available_governors);
 DEVICE_ATTR_RW(governor);
 
@@ -590,6 +630,7 @@ static struct {
 	{ "scaling_max_freq", &dev_attr_scaling_max_freq },
 	{ "scaling_min_freq", &dev_attr_scaling_min_freq },
 	{ "time_in_state", &dev_attr_time_in_state },
+	{ "trans_stat", &dev_attr_trans_stat },
 	{ "available_governors", &dev_attr_available_governors },
 	{ "governor", &dev_attr_governor }
 };

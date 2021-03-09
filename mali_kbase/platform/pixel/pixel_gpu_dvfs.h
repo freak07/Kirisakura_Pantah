@@ -119,6 +119,27 @@ void gpu_dvfs_metrics_job_end(struct kbase_jd_atom *atom);
 int gpu_dvfs_metrics_init(struct kbase_device *kbdev);
 void gpu_dvfs_metrics_term(struct kbase_device *kbdev);
 
+/**
+ * gpu_dvfs_metrics_transtab_size - Get the size of the transtab table
+ *
+ * @pc: Pointer to the Pixel Context
+ *
+ * Return: The size (in number of elements) of the transtab table
+ */
+#define gpu_dvfs_metrics_transtab_size(pc) ((pc)->dvfs.table_size * (pc)->dvfs.table_size)
+
+/**
+ * gpu_dvfs_metrics_transtab_entry - Macro to return array entry in transtab
+ *
+ * @pc: Pointer to the Pixel Context
+ * @i:  The 'From' offset in the transtab table
+ * @j:  The 'To' offset in the transtab table
+ *
+ * Return: Translates into code referring to the relevant array element in the transtab
+ */
+#define gpu_dvfs_metrics_transtab_entry(pc, i, j) \
+	((pc)->dvfs.metrics.transtab[(i) * (pc)->dvfs.table_size + (j)])
+
 /* QOS */
 
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS

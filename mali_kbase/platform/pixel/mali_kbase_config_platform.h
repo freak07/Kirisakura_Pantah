@@ -219,6 +219,7 @@ struct gpu_dvfs_metrics_uid_stats;
  *                                 logic was run.
  * @dvfs.metrics.last_power_state: The GPU's power state when the DVFS metric logic was last run.
  * @dvfs.metrics.last_level:       The GPU's level when the DVFS metric logic was last run.
+ * @dvfs.metrics.transtab:         Pointer to the DVFS transition table.
  * @dvfs.metrics.js_uid_stats:     An array of pointers to the per-UID stats blocks currently
  *                                 resident in each of the GPU's job slots. Access is controlled by
  *                                 the hwaccess lock.
@@ -295,6 +296,7 @@ struct pixel_context {
 			u64 last_time;
 			bool last_power_state;
 			int last_level;
+			int *transtab;
 			struct gpu_dvfs_metrics_uid_stats *js_uid_stats[BASE_JM_MAX_NR_SLOTS];
 			struct list_head uid_stats_list;
 		} metrics;
