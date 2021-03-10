@@ -208,8 +208,8 @@ static int gpu_tmu_notifier(struct notifier_block *notifier, unsigned long event
 			return NOTIFY_BAD;
 		}
 		GPU_LOG(LOG_INFO, kbdev,
-			"%s: GPU_THROTTLING event received, limiting clocks to level %d\n",
-			__func__, nd->data);
+			"%s: GPU_THROTTLING event received limiting GPU clock to %d kHz\n",
+			__func__, pc->dvfs.table[level].clk1);
 		break;
 	default:
 		GPU_LOG(LOG_WARN, kbdev, "%s: Unexpected TMU event received\n", __func__);
@@ -218,8 +218,8 @@ static int gpu_tmu_notifier(struct notifier_block *notifier, unsigned long event
 
 	/* Update the TMU lock level */
 	mutex_lock(&pc->dvfs.lock);
-	pc->dvfs.tmu.level_limit = level;
-	gpu_dvfs_update_level_locks(kbdev);
+	gpu_dvfs_update_level_lock(kbdev, GPU_DVFS_LEVEL_LOCK_THERMAL, -1, level);
+	gpu_dvfs_select_level(kbdev);
 	mutex_unlock(&pc->dvfs.lock);
 
 done:

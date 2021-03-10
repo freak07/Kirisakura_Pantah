@@ -166,8 +166,10 @@ struct gpu_dvfs_opp {
 	} qos;
 };
 
+#ifdef CONFIG_MALI_PIXEL_GPU_QOS
 /* Forward declaration of QOS request */
 struct gpu_dvfs_qos_vote;
+#endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
 /* Forward declaration of per-UID metrics */
 struct gpu_dvfs_metrics_uid_stats;
@@ -196,8 +198,8 @@ struct gpu_dvfs_metrics_uid_stats;
  *                              incoming utilization data from the Mali driver into DVFS changes on
  *                              the GPU.
  * @dvfs.util:                  Stores incoming utilization metrics from the Mali driver.
- * @dvfs.util_gl:               Percentage of utilization from a GL context.
- * @dvfs.util_cl:               Percentage of utilization from a CL context.
+ * @dvfs.util_gl:               Percentage of utilization from a non-OpenCL work
+ * @dvfs.util_cl:               Percentage of utilization from a OpenCL work.
  * @dvfs.clockdown_wq:          Delayed workqueue for clocking down the GPU after it has been idle
  *                              for a period of time.
  * @dvfs.clockdown_work:        &struct delayed_work_struct storing link to Pixel GPU code to set
@@ -214,8 +216,10 @@ struct gpu_dvfs_metrics_uid_stats;
  * @dvfs.level_target:          The level at which the GPU should run at next power on.
  * @dvfs.level_max:             The maximum throughput level available on the GPU. Set via DT.
  * @dvfs.level_min:             The minimum throughput level available of the GPU. Set via DT.
- * @dvfs.level_scaling_max:     The maximum throughput level the GPU can run at. Set via sysfs.
- * @dvfs.level_scaling_min:     The minimum throughput level the GPU can run at. Set via sysfs.
+ * @dvfs.level_scaling_max:     The maximum throughput level the GPU can run at. Should only be set
+ *                              via &gpu_dvfs_update_level_lock().
+ * @dvfs.level_scaling_min:     The minimum throughput level the GPU can run at. Should only be set
+ *                              via &gpu_dvfs_update_level_lock().
  *
  * @dvfs.metrics.last_time:        The last time (in ns) since device boot that the DVFS metric
  *                                 logic was run.
@@ -291,6 +295,7 @@ struct pixel_context {
 		int level_scaling_max;
 		int level_scaling_min;
 		int level_scaling_compute_min;
+		struct gpu_dvfs_level_lock level_locks[GPU_DVFS_LEVEL_LOCK_COUNT];
 
 		struct {
 			enum gpu_dvfs_governor_type curr;
@@ -329,7 +334,6 @@ struct pixel_context {
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
 		struct {
 			struct thermal_cooling_device *cdev;
-			int level_limit;
 		} tmu;
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 	} dvfs;
