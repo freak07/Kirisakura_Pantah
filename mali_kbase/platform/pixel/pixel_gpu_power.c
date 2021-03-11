@@ -25,7 +25,6 @@
 
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
-#include "pixel_gpu_debug.h"
 #include "pixel_gpu_control.h"
 #include "pixel_gpu_trace.h"
 
@@ -49,7 +48,7 @@ static int gpu_power_on(struct kbase_device *kbdev)
 	ret = exynos_pd_power_on(pc->pm.domain);
 
 	if (WARN_ON(ret < 0)) {
-		GPU_LOG(LOG_WARN, kbdev, "Failed to turn the GPU on\n");
+		dev_warn(kbdev->dev, "Failed to turn the GPU on\n");
 		goto done;
 	}
 
@@ -88,7 +87,7 @@ static int gpu_power_off(struct kbase_device *kbdev, bool state_lost)
 	ret = exynos_pd_power_off(pc->pm.domain);
 
 	if (WARN_ON(ret < 0)) {
-		GPU_LOG(LOG_WARN, kbdev, "Failed to turn the GPU off\n");
+		dev_warn(kbdev->dev, "Failed to turn the GPU off\n");
 		goto done;
 	}
 
@@ -126,7 +125,7 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	int ret = (pc->pm.state_lost ? 1 : 0);
 
-	GPU_LOG(LOG_DEBUG, kbdev, "%s\n", __func__);
+	dev_dbg(kbdev->dev, "%s\n", __func__);
 
 	error = pm_runtime_get_sync(kbdev->dev);
 
@@ -154,7 +153,7 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
  */
 static void pm_callback_power_off(struct kbase_device *kbdev)
 {
-	GPU_LOG(LOG_DEBUG, kbdev, "%s\n", __func__);
+	dev_dbg(kbdev->dev, "%s\n", __func__);
 
 	if (gpu_power_off(kbdev, false)) {
 		/* If the GPU was just powered off, we update the run-time power management
@@ -195,7 +194,7 @@ static void pm_callback_power_off(struct kbase_device *kbdev)
  */
 static void pm_callback_power_suspend(struct kbase_device *kbdev)
 {
-	GPU_LOG(LOG_DEBUG, kbdev, "%s\n", __func__);
+	dev_dbg(kbdev->dev, "%s\n", __func__);
 
 	if (gpu_power_off(kbdev, true)) {
 		/* If the GPU was just powered off, we update the run-time power management
@@ -224,7 +223,7 @@ static int pm_callback_power_runtime_init(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
-	GPU_LOG(LOG_DEBUG, kbdev, "%s\n", __func__);
+	dev_dbg(kbdev->dev, "%s\n", __func__);
 
 	pm_runtime_set_autosuspend_delay(kbdev->dev, pc->pm.autosuspend_delay);
 	pm_runtime_use_autosuspend(kbdev->dev);
@@ -233,7 +232,7 @@ static int pm_callback_power_runtime_init(struct kbase_device *kbdev)
 	pm_runtime_enable(kbdev->dev);
 
 	if (!pm_runtime_enabled(kbdev->dev)) {
-		GPU_LOG(LOG_WARN, kbdev, "pm_runtime not enabled\n");
+		dev_warn(kbdev->dev, "pm_runtime not enabled\n");
 		return -ENOSYS;
 	}
 
@@ -252,7 +251,7 @@ static int pm_callback_power_runtime_init(struct kbase_device *kbdev)
  */
 static void pm_callback_power_runtime_term(struct kbase_device *kbdev)
 {
-	GPU_LOG(LOG_DEBUG, kbdev, "%s\n", __func__);
+	dev_dbg(kbdev->dev, "%s\n", __func__);
 	pm_runtime_disable(kbdev->dev);
 }
 
@@ -376,23 +375,23 @@ int gpu_power_init(struct kbase_device *kbdev)
 
 	if (of_property_read_u32(np, "gpu_pm_autosuspend_delay", &pc->pm.autosuspend_delay)) {
 		pc->pm.autosuspend_delay = AUTO_SUSPEND_DELAY;
-		GPU_LOG(LOG_INFO, kbdev, "autosuspend delay not set in DT, using default of %dms\n",
+		dev_info(kbdev->dev, "autosuspend delay not set in DT, using default of %dms\n",
 			AUTO_SUSPEND_DELAY);
 	}
 
 	if (of_property_read_u32(np, "gpu_pmu_status_reg_offset", &pc->pm.status_reg_offset)) {
-		GPU_LOG(LOG_ERROR, kbdev, "PMU status register offset not set in DT\n");
+		dev_err(kbdev->dev, "PMU status register offset not set in DT\n");
 		return -EINVAL;
 	}
 
 	if (of_property_read_u32(np, "gpu_pmu_status_local_pwr_mask",
 		&pc->pm.status_local_power_mask)) {
-		GPU_LOG(LOG_ERROR, kbdev, "PMU status register power mask not set in DT\n");
+		dev_err(kbdev->dev, "PMU status register power mask not set in DT\n");
 		return -EINVAL;
 	}
 
 	if (of_property_read_string(np, "g3d_genpd_name", &g3d_power_domain_name)) {
-		GPU_LOG(LOG_ERROR, kbdev, "GPU power domain name not set in DT\n");
+		dev_err(kbdev->dev, "GPU power domain name not set in DT\n");
 		return -EINVAL;
 	}
 

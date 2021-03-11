@@ -18,7 +18,6 @@
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
-#include "pixel_gpu_debug.h"
 #include "pixel_gpu_dvfs.h"
 
 /**
@@ -192,27 +191,27 @@ static int gpu_tmu_notifier(struct notifier_block *notifier, unsigned long event
 
 	switch (event) {
 	case GPU_COLD:
-		GPU_LOG(LOG_DEBUG, kbdev, "%s: GPU_COLD event received\n", __func__);
+		dev_dbg(kbdev->dev, "%s: GPU_COLD event received\n", __func__);
 		level = pc->dvfs.level_max;
 		break;
 	case GPU_NORMAL:
-		GPU_LOG(LOG_DEBUG, kbdev, "%s: GPU_NORMAL event received\n", __func__);
+		dev_dbg(kbdev->dev, "%s: GPU_NORMAL event received\n", __func__);
 		level = pc->dvfs.level_max;
 		break;
 	case GPU_THROTTLING:
 		level = get_level_from_tmu_data(kbdev, nd->data);
 		if (level < 0) {
-			GPU_LOG(LOG_WARN, kbdev,
+			dev_warn(kbdev->dev,
 				"%s: GPU_THROTTLING event received with invalid level: %d\n",
 				__func__, nd->data);
 			return NOTIFY_BAD;
 		}
-		GPU_LOG(LOG_INFO, kbdev,
+		dev_info(kbdev->dev,
 			"%s: GPU_THROTTLING event received limiting GPU clock to %d kHz\n",
 			__func__, pc->dvfs.table[level].clk1);
 		break;
 	default:
-		GPU_LOG(LOG_WARN, kbdev, "%s: Unexpected TMU event received\n", __func__);
+		dev_warn(kbdev->dev, "%s: Unexpected TMU event received\n", __func__);
 		goto done;
 	}
 
@@ -246,7 +245,7 @@ int gpu_tmu_init(struct kbase_device *kbdev)
 	dev = gpufreq_cooling_register(np, kbdev, &tmu_query_fns);
 
 	if (IS_ERR(dev)) {
-		GPU_LOG(LOG_ERROR, kbdev,
+		dev_err(kbdev->dev,
 			"%s: Error when registering gpu as a cooling device\n", __func__);
 		return PTR_ERR(dev);
 	}

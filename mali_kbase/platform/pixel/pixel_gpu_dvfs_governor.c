@@ -11,7 +11,6 @@
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
-#include "pixel_gpu_debug.h"
 #include "pixel_gpu_dvfs.h"
 
 /**
@@ -103,12 +102,12 @@ static int gpu_dvfs_governor_quickstep(struct kbase_device *kbdev,
 	if ((level > level_max) && (util > tbl[level].util_max)) {
 		/* We need to clock up. */
 		if (level >= 2 && (util > (100 + tbl[level].util_max) / 2)) {
-			GPU_LOG(LOG_DEBUG, kbdev, "DVFS +2: %d -> %d (u: %d / %d)\n",
+			dev_dbg(kbdev->dev, "DVFS +2: %d -> %d (u: %d / %d)\n",
 				level, level - 2, util, tbl[level].util_max);
 			level -= 2;
 			pc->dvfs.governor.delay = tbl[level].hysteresis / 2;
 		} else {
-			GPU_LOG(LOG_DEBUG, kbdev, "DVFS +1: %d -> %d (u: %d / %d)\n",
+			dev_dbg(kbdev->dev, "DVFS +1: %d -> %d (u: %d / %d)\n",
 				level, level - 1, util, tbl[level].util_max);
 			level -= 1;
 			pc->dvfs.governor.delay = tbl[level].hysteresis;
@@ -120,7 +119,7 @@ static int gpu_dvfs_governor_quickstep(struct kbase_device *kbdev,
 
 		/* Check if we've resisted downclocking long enough */
 		if (pc->dvfs.governor.delay <= 0) {
-			GPU_LOG(LOG_DEBUG, kbdev, "DVFS -1: %d -> %d (u: %d / %d)\n",
+			dev_dbg(kbdev->dev, "DVFS -1: %d -> %d (u: %d / %d)\n",
 				level, level + 1, util, tbl[level].util_min);
 
 			/* Time to clock down */
@@ -189,7 +188,7 @@ int gpu_dvfs_governor_set_governor(struct kbase_device *kbdev, enum gpu_dvfs_gov
 	lockdep_assert_held(&pc->dvfs.lock);
 
 	if (gov < 0 || gov >= GPU_DVFS_GOVERNOR_COUNT) {
-		GPU_LOG(LOG_WARN, kbdev, "Attempted to set invalid DVFS governor\n");
+		dev_warn(kbdev->dev, "Attempted to set invalid DVFS governor\n");
 		return -EINVAL;
 	}
 
@@ -270,14 +269,14 @@ int gpu_dvfs_governor_init(struct kbase_device *kbdev)
 	struct device_node *np = kbdev->dev->of_node;
 
 	if (of_property_read_string(np, "gpu_dvfs_governor", &governor_name)) {
-		GPU_LOG(LOG_WARN, kbdev, "GPU DVFS governor not specified in DT, using default\n");
+		dev_warn(kbdev->dev, "GPU DVFS governor not specified in DT, using default\n");
 		pc->dvfs.governor.curr = GPU_DVFS_GOVERNOR_BASIC;
 		goto done;
 	}
 
 	pc->dvfs.governor.curr = gpu_dvfs_governor_get_id(governor_name);
 	if (pc->dvfs.governor.curr == GPU_DVFS_GOVERNOR_INVALID) {
-		GPU_LOG(LOG_WARN, kbdev, "GPU DVFS governor \"%s\" doesn't exist, using default\n",
+		dev_warn(kbdev->dev, "GPU DVFS governor \"%s\" doesn't exist, using default\n",
 			governor_name);
 		pc->dvfs.governor.curr = GPU_DVFS_GOVERNOR_BASIC;
 		goto done;

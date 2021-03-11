@@ -11,7 +11,6 @@
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
-#include "pixel_gpu_debug.h"
 #include "pixel_gpu_dvfs.h"
 
 static const char *gpu_dvfs_level_lock_names[GPU_DVFS_LEVEL_LOCK_COUNT] = {
@@ -55,62 +54,6 @@ static ssize_t utilization_show(struct device *dev, struct device_attribute *att
 		return -ENODEV;
 
 	return scnprintf(buf, PAGE_SIZE, "%d\n", atomic_read(&pc->dvfs.util));
-}
-
-static ssize_t gpu_log_level_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct kbase_device *kbdev = dev->driver_data;
-	struct pixel_context *pc = kbdev->platform_context;
-
-	int ret = 0;
-
-	if (!pc)
-		return -ENODEV;
-
-	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-			 "LOG_DISABLED %s\n"
-			 "LOG_DEBUG %s\n"
-			 "LOG_INFO  %s\n"
-			 "LOG_WARN  %s\n"
-			 "LOG_ERROR %s\n",
-			 (pc->gpu_log_level == LOG_DISABLED ? "<" : ""),
-			 (pc->gpu_log_level == LOG_DEBUG ? "<" : ""),
-			 (pc->gpu_log_level == LOG_INFO ? "<" : ""),
-			 (pc->gpu_log_level == LOG_WARN ? "<" : ""),
-			 (pc->gpu_log_level == LOG_ERROR ? "<" : ""));
-
-	return ret;
-
-}
-
-static ssize_t gpu_log_level_store(struct device *dev, struct device_attribute *attr,
-	const char *buf, size_t count)
-{
-	struct kbase_device *kbdev = dev->driver_data;
-	struct pixel_context *pc = kbdev->platform_context;
-	enum gpu_log_level log_level;
-
-	if (!pc)
-		return -ENODEV;
-
-	if (sysfs_streq(buf, "LOG_DISABLED"))
-		log_level = LOG_DISABLED;
-	else if (sysfs_streq(buf, "LOG_DEBUG"))
-		log_level = LOG_DEBUG;
-	else if (sysfs_streq(buf, "LOG_INFO"))
-		log_level = LOG_INFO;
-	else if (sysfs_streq(buf, "LOG_WARN"))
-		log_level = LOG_WARN;
-	else if (sysfs_streq(buf, "LOG_ERROR"))
-		log_level = LOG_ERROR;
-	else
-		return -EINVAL;
-
-	pc->gpu_log_level = log_level;
-
-	return count;
-
 }
 
 static ssize_t clock_info_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -371,7 +314,6 @@ static ssize_t uid_time_in_state_h_show(struct device *dev, struct device_attrib
 	return ret;
 }
 
-DEVICE_ATTR_RW(gpu_log_level);
 DEVICE_ATTR_RO(utilization);
 DEVICE_ATTR_RO(clock_info);
 DEVICE_ATTR_RO(dvfs_table);
@@ -661,7 +603,6 @@ static struct {
 	const struct device_attribute *attr;
 } attribs[] = {
 	{ "utilization", &dev_attr_utilization },
-	{ "gpu_log_level", &dev_attr_gpu_log_level },
 	{ "clock_info", &dev_attr_clock_info },
 	{ "dvfs_table", &dev_attr_dvfs_table },
 	{ "power_stats", &dev_attr_power_stats },
@@ -694,7 +635,7 @@ int gpu_sysfs_init(struct kbase_device *kbdev)
 
 	for (i = 0; i < ARRAY_SIZE(attribs); i++) {
 		if (device_create_file(dev, attribs[i].attr)) {
-			GPU_LOG(LOG_ERROR, kbdev, "failed to create sysfs file %s\n",
+			dev_err(kbdev->dev, "failed to create sysfs file %s\n",
 				attribs[i].name);
 			return -ENOENT;
 		}

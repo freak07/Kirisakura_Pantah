@@ -23,7 +23,6 @@
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
-#include "pixel_gpu_debug.h"
 #include "pixel_gpu_dvfs.h"
 #include "pixel_gpu_trace.h"
 
@@ -315,7 +314,7 @@ void gpu_dvfs_select_level(struct kbase_device *kbdev)
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
 		if (pc->dvfs.level_target != pc->dvfs.level) {
-			GPU_LOG(LOG_DEBUG, kbdev, "util=%d results in level change (%d->%d)\n",
+			dev_dbg(kbdev->dev, "util=%d results in level change (%d->%d)\n",
 				util_stats.util, pc->dvfs.level, pc->dvfs.level_target);
 			gpu_dvfs_set_new_level(kbdev, pc->dvfs.level_target);
 		}
@@ -433,12 +432,12 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 	gpu1_level_count = cal_dfs_get_lv_num(pc->dvfs.gpu1_cal_id);
 
 	if (!cal_dfs_get_rate_asv_table(pc->dvfs.gpu0_cal_id, gpu0_vf_map)) {
-		GPU_LOG(LOG_ERROR, kbdev, "failed to get gpu0 ASV table\n");
+		dev_err(kbdev->dev, "failed to get gpu0 ASV table\n");
 		goto err;
 	}
 
 	if (!cal_dfs_get_rate_asv_table(pc->dvfs.gpu1_cal_id, gpu1_vf_map)) {
-		GPU_LOG(LOG_ERROR, kbdev, "failed to get gpu1 ASV table\n");
+		dev_err(kbdev->dev, "failed to get gpu1 ASV table\n");
 		goto err;
 	}
 
@@ -465,14 +464,14 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 	dvfs_table_size = dvfs_table_row_num * dvfs_table_col_num;
 
 	if (dvfs_table_row_num > DVFS_TABLE_ROW_MAX) {
-		GPU_LOG(LOG_ERROR, kbdev,
+		dev_err(kbdev->dev,
 			"DVFS table has %d rows but only up to %d are supported\n",
 			dvfs_table_row_num, DVFS_TABLE_ROW_MAX);
 		goto err;
 	}
 
 	if (dvfs_table_size > OF_DATA_NUM_MAX) {
-		GPU_LOG(LOG_ERROR, kbdev, "DVFS table is too big\n");
+		dev_err(kbdev->dev, "DVFS table is too big\n");
 		goto err;
 	}
 
@@ -513,7 +512,7 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk0,
 				&(gpu_dvfs_table[i].vol0),
 				gpu0_vf_map, gpu0_level_count)) {
-			GPU_LOG(LOG_ERROR, kbdev,
+			dev_err(kbdev->dev,
 				"Failed to find G3DL2 voltage for clock %u\n",
 				gpu_dvfs_table[i].clk0);
 			goto err;
@@ -522,7 +521,7 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk1,
 				&(gpu_dvfs_table[i].vol1),
 				gpu1_vf_map, gpu1_level_count)) {
-			GPU_LOG(LOG_ERROR, kbdev,
+			dev_err(kbdev->dev,
 				"Failed to find G3DL2 voltage for clock %u\n",
 				gpu_dvfs_table[i].clk1);
 			goto err;
@@ -532,7 +531,7 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 	return dvfs_table_row_num;
 
 err:
-	GPU_LOG(LOG_ERROR, kbdev, "failed to set GPU ASV table\n");
+	dev_err(kbdev->dev, "failed to set GPU ASV table\n");
 	return -EINVAL;
 }
 
@@ -553,7 +552,7 @@ static int gpu_dvfs_set_initial_level(struct kbase_device *kbdev)
 
 	level = pc->dvfs.level_min;
 
-	GPU_LOG(LOG_DEBUG, kbdev,
+	dev_dbg(kbdev->dev,
 		"Attempting to set GPU boot clocks to (gpu0: %d, gpu1: %d)\n",
 		pc->dvfs.table[level].clk0, pc->dvfs.table[level].clk1);
 
@@ -561,7 +560,7 @@ static int gpu_dvfs_set_initial_level(struct kbase_device *kbdev)
 
 	ret = cal_dfs_set_rate(pc->dvfs.gpu0_cal_id, pc->dvfs.table[level].clk0);
 	if (ret) {
-		GPU_LOG(LOG_ERROR, kbdev,
+		dev_err(kbdev->dev,
 			"Failed to set boot G3DL2 clock to %d (err: %d)\n",
 			pc->dvfs.table[level].clk0, ret);
 		goto done;
@@ -569,7 +568,7 @@ static int gpu_dvfs_set_initial_level(struct kbase_device *kbdev)
 
 	ret = cal_dfs_set_rate(pc->dvfs.gpu1_cal_id, pc->dvfs.table[level].clk1);
 	if (ret) {
-		GPU_LOG(LOG_ERROR, kbdev,
+		dev_err(kbdev->dev,
 			"Failed to set boot G3D clock to %d\n (err: %d)",
 			pc->dvfs.table[level].clk1, ret);
 		goto done;
@@ -636,7 +635,7 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	/* Initialize power down hysteresis */
 	if (of_property_read_u32(np, "gpu_dvfs_clockdown_hysteresis",
 		&pc->dvfs.clockdown_hysteresis)) {
-		GPU_LOG(LOG_ERROR, kbdev, "DVFS clock down hysteresis not set in DT\n");
+		dev_err(kbdev->dev, "DVFS clock down hysteresis not set in DT\n");
 		ret = -EINVAL;
 		goto done;
 	}
@@ -645,14 +644,14 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	/* Initialize DVFS governors */
 	ret = gpu_dvfs_governor_init(kbdev);
 	if (ret) {
-		GPU_LOG(LOG_ERROR, kbdev, "DVFS governor init failed\n");
+		dev_err(kbdev->dev, "DVFS governor init failed\n");
 		goto done;
 	}
 
 	/* Initialize DVFS metrics */
 	ret = gpu_dvfs_metrics_init(kbdev);
 	if (ret) {
-		GPU_LOG(LOG_ERROR, kbdev, "DVFS metrics init failed\n");
+		dev_err(kbdev->dev, "DVFS metrics init failed\n");
 		goto fail_metrics_init;
 	}
 
@@ -660,7 +659,7 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	/* Initialize QOS framework */
 	ret = gpu_dvfs_qos_init(kbdev);
 	if (ret) {
-		GPU_LOG(LOG_ERROR, kbdev, "DVFS QOS init failed\n");
+		dev_err(kbdev->dev, "DVFS QOS init failed\n");
 		goto fail_qos_init;
 	}
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
@@ -669,7 +668,7 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	/* Initialize thermal framework */
 	ret = gpu_tmu_init(kbdev);
 	if (ret) {
-		GPU_LOG(LOG_ERROR, kbdev, "DVFS thermal init failed\n");
+		dev_err(kbdev->dev, "DVFS thermal init failed\n");
 		goto fail_tmu_init;
 	}
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */

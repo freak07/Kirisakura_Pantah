@@ -24,7 +24,6 @@
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
-#include "pixel_gpu_debug.h"
 #include "pixel_gpu_dvfs.h"
 
 

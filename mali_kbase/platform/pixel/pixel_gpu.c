@@ -24,7 +24,6 @@
 
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
-#include "pixel_gpu_debug.h"
 #include "pixel_gpu_control.h"
 
 #define CREATE_TRACE_POINTS
@@ -67,7 +66,7 @@ static int pixel_gpu_secure_mode_enable(struct protected_mode_device *pdev)
 		if (ret == GPU_SMC_TZPC_OK)
 			pc->tz_protection_enabled = true;
 		else
-			GPU_LOG(LOG_ERROR, kbdev,
+			dev_err(kbdev->dev,
 				"%s: SMC_PROTECTION_SET (ENABLE) failed: %d\n",
 				__func__, ret);
 	}
@@ -104,7 +103,7 @@ static int pixel_gpu_secure_mode_disable(struct protected_mode_device *pdev)
 		if (ret == GPU_SMC_TZPC_OK)
 			pc->tz_protection_enabled = false;
 		else
-			GPU_LOG(LOG_ERROR, kbdev,
+			dev_err(kbdev->dev,
 				"%s: SMC_PROTECTION_SET (DISABLE) failed: %d\n",
 				__func__, ret);
 	}
@@ -131,7 +130,6 @@ static int gpu_pixel_init(struct kbase_device *kbdev)
 	int ret;
 
 	struct pixel_context *pc;
-	enum gpu_log_level level;
 
 	pc = kzalloc(sizeof(struct pixel_context), GFP_KERNEL);
 	if (pc == NULL) {
@@ -143,35 +141,23 @@ static int gpu_pixel_init(struct kbase_device *kbdev)
 	kbdev->platform_context = pc;
 	pc->kbdev = kbdev;
 
-	/* gpu log init */
-
-	pc->gpu_log_level = LOG_INFO;
-
-	if (of_property_read_u32(kbdev->dev->of_node, "gpu_log_level", &level)) {
-		GPU_LOG(LOG_INFO, kbdev, "reading GPU log level from device tree failed\n");
-	} else if (level >= LOG_DISABLED && level < LOG_END) {
-		pc->gpu_log_level = level;
-	} else {
-		GPU_LOG(LOG_WARN, kbdev, "invalid GPU log level input from device tree\n");
-	}
-
 	ret = gpu_power_init(kbdev);
 	if (ret) {
-		GPU_LOG(LOG_ERROR, kbdev, "power init failed\n");
+		dev_err(kbdev->dev, "power init failed\n");
 		goto done;
 	}
 
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 	ret = gpu_dvfs_init(kbdev);
 	if (ret) {
-		GPU_LOG(LOG_ERROR, kbdev, "DVFS init failed\n");
+		dev_err(kbdev->dev, "DVFS init failed\n");
 		goto done;
 	}
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 
 	ret = gpu_sysfs_init(kbdev);
 	if (ret) {
-		GPU_LOG(LOG_ERROR, kbdev, "sysfs init failed\n");
+		dev_err(kbdev->dev, "sysfs init failed\n");
 		goto done;
 	}
 	ret = 0;
