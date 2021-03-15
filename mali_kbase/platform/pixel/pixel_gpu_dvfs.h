@@ -8,13 +8,30 @@
 #ifndef _PIXEL_GPU_DVFS_H_
 #define _PIXEL_GPU_DVFS_H_
 
+/* Utilization */
+
+/**
+ * struct gpu_dvfs_utlization - Stores utilization statistics
+ *
+ * @util:    Overall utilization of the GPU
+ * @util_gl: The share of utilization due to non-OpenCL work
+ * @util_cl: The share of utilization due ot OpenCL work
+ */
+struct gpu_dvfs_utlization {
+	int util;
+	int util_gl;
+	int util_cl;
+};
+
 /* Governor */
 
 /**
  * typedef gpu_dvfs_governor_logic_fn - Determines the next level based on utilization.
  *
- * @kbdev: The &struct kbase_device of the GPU.
- * @util:  The integer utilization percentage the GPU is running at.
+ * @kbdev:     The &struct kbase_device of the GPU.
+ * @util:      The integer utilization percentage the GPU is running at.
+ * @util_gl:   Percentage of utilization from a GL context.
+ * @util_cl:   Percentage of utilization from a CL context.
  *
  * This function is not expected to take any clock limits into consideration when
  * recommending the next level.
@@ -23,7 +40,8 @@
  *
  * Return: The index of the next recommended level.
  */
-typedef int (*gpu_dvfs_governor_logic_fn)(struct kbase_device *kbdev, int util);
+typedef int (*gpu_dvfs_governor_logic_fn)(struct kbase_device *kbdev,
+	struct gpu_dvfs_utlization *util_stats);
 
 /**
  * enum gpu_dvfs_governor_type - Pixel GPU DVFS governor.
@@ -55,30 +73,17 @@ enum gpu_dvfs_governor_type {
 /**
  * struct gpu_dvfs_governor_info - Data for a Pixel GPU DVFS governor.
  *
- * @id:       A unique, numerical identifier for the governor.
  * @name:     A human readable name for the governor.
  * @evaluate: A function pointer to the governor's evaluate function. See
  *            &gpu_dvfs_governor_logic_fn.
  */
 struct gpu_dvfs_governor_info {
-	enum gpu_dvfs_governor_type id;
 	const char *name;
 	gpu_dvfs_governor_logic_fn evaluate;
 };
 
-/**
- * struct gpu_dvfs_qos_vote - Data for a QOS vote
- *
- * @enabled: A boolean tracking whether this vote has been enabled or not.
- * @req:     The underlying &struct exynos_pm_qos_request that implements this
- *           vote.
- */
-struct gpu_dvfs_qos_vote {
-	bool enabled;
-	struct exynos_pm_qos_request req;
-};
-
-int gpu_dvfs_governor_get_next_level(struct kbase_device *kbdev, int util);
+int gpu_dvfs_governor_get_next_level(struct kbase_device *kbdev,
+	struct gpu_dvfs_utlization *util_stats);
 int gpu_dvfs_governor_set_governor(struct kbase_device *kbdev, enum gpu_dvfs_governor_type gov);
 enum gpu_dvfs_governor_type gpu_dvfs_governor_get_id(const char *name);
 ssize_t gpu_dvfs_governor_print_available(char *buf, ssize_t size);
@@ -119,13 +124,48 @@ void gpu_dvfs_metrics_job_end(struct kbase_jd_atom *atom);
 int gpu_dvfs_metrics_init(struct kbase_device *kbdev);
 void gpu_dvfs_metrics_term(struct kbase_device *kbdev);
 
+/**
+ * gpu_dvfs_metrics_transtab_size - Get the size of the transtab table
+ *
+ * @pc: Pointer to the Pixel Context
+ *
+ * Return: The size (in number of elements) of the transtab table
+ */
+#define gpu_dvfs_metrics_transtab_size(pc) ((pc)->dvfs.table_size * (pc)->dvfs.table_size)
+
+/**
+ * gpu_dvfs_metrics_transtab_entry - Macro to return array entry in transtab
+ *
+ * @pc: Pointer to the Pixel Context
+ * @i:  The 'From' offset in the transtab table
+ * @j:  The 'To' offset in the transtab table
+ *
+ * Return: Translates into code referring to the relevant array element in the transtab
+ */
+#define gpu_dvfs_metrics_transtab_entry(pc, i, j) \
+	((pc)->dvfs.metrics.transtab[(i) * (pc)->dvfs.table_size + (j)])
+
 /* QOS */
 
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS
+
+/**
+ * struct gpu_dvfs_qos_vote - Data for a QOS vote
+ *
+ * @enabled: A boolean tracking whether this vote has been enabled or not.
+ * @req:     The underlying &struct exynos_pm_qos_request that implements this
+ *           vote.
+ */
+struct gpu_dvfs_qos_vote {
+	bool enabled;
+	struct exynos_pm_qos_request req;
+};
+
 void gpu_dvfs_qos_set(struct kbase_device *kbdev, int level);
 void gpu_dvfs_qos_reset(struct kbase_device *kbdev);
 int gpu_dvfs_qos_init(struct kbase_device *kbdev);
 void gpu_dvfs_qos_term(struct kbase_device *kbdev);
+
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
 /* Thermal */
@@ -137,7 +177,74 @@ void gpu_tmu_term(struct kbase_device *kbdev);
 
 /* Common */
 
-void gpu_dvfs_update_level_locks(struct kbase_device *kbdev);
+/**
+ * enum gpu_dvfs_level_lock_type - Pixel GPU level lock sources.
+ *
+ * This enum stores the list of sources that can impose operating point limitations on the DVFS
+ * subsystem. They are listed in increasing priority order in that if a later lock is more
+ * restrictive than an earlier one, the value from the later lock is selected.
+ */
+enum gpu_dvfs_level_lock_type {
+	/**
+	 * &GPU_DVFS_LEVEL_LOCK_COMPUTE: Compute lock
+	 *
+	 * This lock is used to enforce level requests for when compute-heavy work is presently
+	 * running on the GPU.
+	 */
+	GPU_DVFS_LEVEL_LOCK_COMPUTE = 0,
+#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
+	/**
+	 * &GPU_DVFS_LEVEL_LOCK_THERMAL: Thermal mitigation lock
+	 *
+	 * This lock is set when the system is in a thermal situation where the GPU frequency needs
+	 * to be controlled to stay in control of device temperature.
+	 */
+	GPU_DVFS_LEVEL_LOCK_THERMAL,
+#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
+	/**
+	 * &GPU_DVFS_LEVEL_LOCK_SYSFS: Locks set by the user via sysfs
+	 *
+	 * This lock is manipulated by the user updating the scaling frequencies in the GPU's sysfs
+	 * node.
+	 */
+	GPU_DVFS_LEVEL_LOCK_SYSFS,
+	/* Insert new level locks here */
+	GPU_DVFS_LEVEL_LOCK_COUNT,
+};
+
+/**
+ * struct gpu_dvfs_level_lock - A level lock on DVFS
+ *
+ * @level_max: The maximum throughput level allowed by this level lock. This will either be a valid
+ *             level from the DVFS table, or -1 to indicate no restrictions on the maximum
+ *             frequency.
+ * @level_min: The minimum throughput level imposed by this level lock. This will either be a valid
+ *             level from the DVFS table, or -1 to indicate no restrictions on the minimum
+ *             frequency.
+ */
+struct gpu_dvfs_level_lock {
+	int level_min;
+	int level_max;
+};
+
 void gpu_dvfs_select_level(struct kbase_device *kbdev);
+void gpu_dvfs_update_level_lock(struct kbase_device *kbdev,
+	enum gpu_dvfs_level_lock_type lock_type, int level_min, int level_max);
+
+/**
+ * gpu_dvfs_reset_level_lock() - Resets a level lock on DVFS
+ *
+ * @kbdev:     The &struct kbase_device for the GPU.
+ * @lock_type: The type of level lock to be reset
+ *
+ * This macro is a helper that resets the given level lock and ensures that DVFS lock state is
+ * updated.
+ *
+ * Context: Process context. Expects the caller to hold the DVFS lock.
+ */
+#define gpu_dvfs_reset_level_lock(kbdev, lock_type) \
+		gpu_dvfs_update_level_lock((kbdev), (lock_type), \
+			((struct pixel_context *)((kbdev)->platform_context))->dvfs.level_min, \
+			((struct pixel_context *)((kbdev)->platform_context))->dvfs.level_max)
 
 #endif /* _PIXEL_GPU_DVFS_H_ */

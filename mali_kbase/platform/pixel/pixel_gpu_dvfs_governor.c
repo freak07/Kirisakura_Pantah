@@ -11,26 +11,27 @@
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
-#include "pixel_gpu_debug.h"
 #include "pixel_gpu_dvfs.h"
 
 /**
  * gpu_dvfs_governor_basic() - The evaluation function for &GPU_DVFS_GOVERNOR_BASIC.
  *
- * @kbdev: The &struct kbase_device for the GPU.
- * @util:  The current GPU utilization percentage.
+ * @kbdev:      The &struct kbase_device for the GPU.
+ * @util_stats: The current GPU utilization statistics.
  *
  * Return: The level that the GPU should run at next.
  *
  * Context: Process context. Expects the caller to hold the DVFS lock.
  */
-static int gpu_dvfs_governor_basic(struct kbase_device *kbdev, int util)
+static int gpu_dvfs_governor_basic(struct kbase_device *kbdev,
+	struct gpu_dvfs_utlization *util_stats)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 	struct gpu_dvfs_opp *tbl = pc->dvfs.table;
 	int level = pc->dvfs.level;
 	int level_max = pc->dvfs.level_max;
 	int level_min = pc->dvfs.level_min;
+	int util = util_stats->util;
 
 	lockdep_assert_held(&pc->dvfs.lock);
 
@@ -58,14 +59,14 @@ static int gpu_dvfs_governor_basic(struct kbase_device *kbdev, int util)
 		pc->dvfs.governor.delay = tbl[level].hysteresis;
 	}
 
-	return clamp(level, level_max, level_min);
+	return level;
 }
 
 /**
  * gpu_dvfs_governor_quickstep() - The evaluation function for &GPU_DVFS_GOVERNOR_QUICKSTEP.
  *
- * @kbdev: The &struct kbase_device for the GPU.
- * @util:  The current GPU utilization percentage.
+ * @kbdev:      The &struct kbase_device for the GPU.
+ * @util_stats: The current GPU utilization statistics.
  *
  * Algorithm:
  *   * If we are within the utilization bounds of the current level then
@@ -86,25 +87,27 @@ static int gpu_dvfs_governor_basic(struct kbase_device *kbdev, int util)
  *
  * Context: Process context. Expects the caller to hold the DVFS lock.
  */
-static int gpu_dvfs_governor_quickstep(struct kbase_device *kbdev, int util)
+static int gpu_dvfs_governor_quickstep(struct kbase_device *kbdev,
+	struct gpu_dvfs_utlization *util_stats)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 	struct gpu_dvfs_opp *tbl = pc->dvfs.table;
 	int level = pc->dvfs.level;
 	int level_max = pc->dvfs.level_max;
 	int level_min = pc->dvfs.level_min;
+	int util = util_stats->util;
 
 	lockdep_assert_held(&pc->dvfs.lock);
 
 	if ((level > level_max) && (util > tbl[level].util_max)) {
 		/* We need to clock up. */
 		if (level >= 2 && (util > (100 + tbl[level].util_max) / 2)) {
-			GPU_LOG(LOG_DEBUG, kbdev, "DVFS +2: %d -> %d (u: %d / %d)\n",
+			dev_dbg(kbdev->dev, "DVFS +2: %d -> %d (u: %d / %d)\n",
 				level, level - 2, util, tbl[level].util_max);
 			level -= 2;
 			pc->dvfs.governor.delay = tbl[level].hysteresis / 2;
 		} else {
-			GPU_LOG(LOG_DEBUG, kbdev, "DVFS +1: %d -> %d (u: %d / %d)\n",
+			dev_dbg(kbdev->dev, "DVFS +1: %d -> %d (u: %d / %d)\n",
 				level, level - 1, util, tbl[level].util_max);
 			level -= 1;
 			pc->dvfs.governor.delay = tbl[level].hysteresis;
@@ -116,7 +119,7 @@ static int gpu_dvfs_governor_quickstep(struct kbase_device *kbdev, int util)
 
 		/* Check if we've resisted downclocking long enough */
 		if (pc->dvfs.governor.delay <= 0) {
-			GPU_LOG(LOG_DEBUG, kbdev, "DVFS -1: %d -> %d (u: %d / %d)\n",
+			dev_dbg(kbdev->dev, "DVFS -1: %d -> %d (u: %d / %d)\n",
 				level, level + 1, util, tbl[level].util_min);
 
 			/* Time to clock down */
@@ -130,17 +133,15 @@ static int gpu_dvfs_governor_quickstep(struct kbase_device *kbdev, int util)
 		pc->dvfs.governor.delay = tbl[level].hysteresis;
 	}
 
-	return clamp(level, level_max, level_min);
+	return level;
 }
 
 static struct gpu_dvfs_governor_info governors[GPU_DVFS_GOVERNOR_COUNT] = {
 	{
-		GPU_DVFS_GOVERNOR_BASIC,
 		"basic",
 		gpu_dvfs_governor_basic,
 	},
 	{
-		GPU_DVFS_GOVERNOR_QUICKSTEP,
 		"quickstep",
 		gpu_dvfs_governor_quickstep,
 	}
@@ -149,39 +150,25 @@ static struct gpu_dvfs_governor_info governors[GPU_DVFS_GOVERNOR_COUNT] = {
 /**
  * gpu_dvfs_governor_get_next_level() - Requests the current governor to suggest the next level.
  *
- * @kbdev: The &struct kbase_device for the GPU.
- * @util:   The utilization percentage on the GPU.
+ * @kbdev:      The &struct kbase_device for the GPU.
+ * @util_stats: Pointer to a &struct gpu_dvfs_utlization storing current GPU utilization statistics.
  *
- * This function ensures that the recommended level conforms to any extant
- * clock limits.
+ * This function calls into the currently enabled DVFS governor to determine the next GPU operating
+ * point. It also ensures that the recommended level conforms to any extant level locks.
  *
  * Return: Returns the level the GPU should run at.
  *
  * Context: Process context. Expects the caller to hold the DVFS lock.
  */
-int gpu_dvfs_governor_get_next_level(struct kbase_device *kbdev, int util)
+int gpu_dvfs_governor_get_next_level(struct kbase_device *kbdev,
+	struct gpu_dvfs_utlization *util_stats)
 {
 	struct pixel_context *pc = kbdev->platform_context;
-	int level, level_min, level_max;
+	int level;
 
 	lockdep_assert_held(&pc->dvfs.lock);
-
-	level_min = pc->dvfs.level_scaling_min;
-	level_max = pc->dvfs.level_scaling_max;
-
-#ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
-	/*
-	 * If we have a TMU limit enforced, we restrict what the recommended
-	 * level will be. However, we do allow overriding the TMU limit by
-	 * setting scaling_min_level. Therefore thre is no adjustment to
-	 * level_min below.
-	 */
-	level_max = max(level_max, pc->dvfs.tmu.level_limit);
-#endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
-
-	level = governors[pc->dvfs.governor.curr].evaluate(kbdev, util);
-
-	return clamp(level, level_max, level_min);
+	level = governors[pc->dvfs.governor.curr].evaluate(kbdev, util_stats);
+	return clamp(level, pc->dvfs.level_scaling_max, pc->dvfs.level_scaling_min);
 }
 
 /**
@@ -201,7 +188,7 @@ int gpu_dvfs_governor_set_governor(struct kbase_device *kbdev, enum gpu_dvfs_gov
 	lockdep_assert_held(&pc->dvfs.lock);
 
 	if (gov < 0 || gov >= GPU_DVFS_GOVERNOR_COUNT) {
-		GPU_LOG(LOG_WARN, kbdev, "Attempted to set invalid DVFS governor\n");
+		dev_warn(kbdev->dev, "Attempted to set invalid DVFS governor\n");
 		return -EINVAL;
 	}
 
@@ -225,7 +212,7 @@ enum gpu_dvfs_governor_type gpu_dvfs_governor_get_id(const char *name)
 	/* We use sysfs_streq here as name may be a sysfs input string */
 	for (i = 0; i < GPU_DVFS_GOVERNOR_COUNT; i++)
 		if (sysfs_streq(name, governors[i].name))
-			return governors[i].id;
+			return i;
 
 	return GPU_DVFS_GOVERNOR_INVALID;
 }
@@ -282,14 +269,14 @@ int gpu_dvfs_governor_init(struct kbase_device *kbdev)
 	struct device_node *np = kbdev->dev->of_node;
 
 	if (of_property_read_string(np, "gpu_dvfs_governor", &governor_name)) {
-		GPU_LOG(LOG_WARN, kbdev, "GPU DVFS governor not specified in DT, using default\n");
+		dev_warn(kbdev->dev, "GPU DVFS governor not specified in DT, using default\n");
 		pc->dvfs.governor.curr = GPU_DVFS_GOVERNOR_BASIC;
 		goto done;
 	}
 
 	pc->dvfs.governor.curr = gpu_dvfs_governor_get_id(governor_name);
 	if (pc->dvfs.governor.curr == GPU_DVFS_GOVERNOR_INVALID) {
-		GPU_LOG(LOG_WARN, kbdev, "GPU DVFS governor \"%s\" doesn't exist, using default\n",
+		dev_warn(kbdev->dev, "GPU DVFS governor \"%s\" doesn't exist, using default\n",
 			governor_name);
 		pc->dvfs.governor.curr = GPU_DVFS_GOVERNOR_BASIC;
 		goto done;
