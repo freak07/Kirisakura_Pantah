@@ -232,6 +232,21 @@ void gpu_dvfs_update_level_lock(struct kbase_device *kbdev,
 	enum gpu_dvfs_level_lock_type lock_type, int level_min, int level_max);
 
 /**
+ * gpu_dvfs_level_lock_is_set() - Checks if a lock level is set or valid
+ *
+ * @value: The lock level to evaluate.
+ *
+ * This macro checks whether the &value indicates either a lock level that has been set and will be
+ * used when evaluating the DVFS scaling range. When passed in a value passed to
+ * &gpu_dvfs_update_level_lock it returns whether the caller intended the level lock associated with
+ * &value to be set or not.
+ *
+ * Return: True if @value corresponds to a set lock level.
+ */
+#define gpu_dvfs_level_lock_is_set(value) \
+	((value) >= 0)
+
+/**
  * gpu_dvfs_reset_level_lock() - Resets a level lock on DVFS
  *
  * @kbdev:     The &struct kbase_device for the GPU.
