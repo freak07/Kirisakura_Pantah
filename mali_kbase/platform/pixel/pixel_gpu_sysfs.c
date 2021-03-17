@@ -15,10 +15,10 @@
 
 static const char *gpu_dvfs_level_lock_names[GPU_DVFS_LEVEL_LOCK_COUNT] = {
 	"compute",
+	"sysfs",
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
 	"thermal",
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
-	"sysfs",
 };
 
 /* Helper functions */

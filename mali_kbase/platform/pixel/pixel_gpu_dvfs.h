@@ -192,6 +192,13 @@ enum gpu_dvfs_level_lock_type {
 	 * running on the GPU.
 	 */
 	GPU_DVFS_LEVEL_LOCK_COMPUTE = 0,
+	/**
+	 * &GPU_DVFS_LEVEL_LOCK_SYSFS: Locks set by the user via sysfs
+	 *
+	 * This lock is manipulated by the user updating the scaling frequencies in the GPU's sysfs
+	 * node.
+	 */
+	GPU_DVFS_LEVEL_LOCK_SYSFS,
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
 	/**
 	 * &GPU_DVFS_LEVEL_LOCK_THERMAL: Thermal mitigation lock
@@ -201,13 +208,6 @@ enum gpu_dvfs_level_lock_type {
 	 */
 	GPU_DVFS_LEVEL_LOCK_THERMAL,
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
-	/**
-	 * &GPU_DVFS_LEVEL_LOCK_SYSFS: Locks set by the user via sysfs
-	 *
-	 * This lock is manipulated by the user updating the scaling frequencies in the GPU's sysfs
-	 * node.
-	 */
-	GPU_DVFS_LEVEL_LOCK_SYSFS,
 	/* Insert new level locks here */
 	GPU_DVFS_LEVEL_LOCK_COUNT,
 };
