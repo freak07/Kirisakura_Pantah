@@ -192,6 +192,13 @@ enum gpu_dvfs_level_lock_type {
 	 * running on the GPU.
 	 */
 	GPU_DVFS_LEVEL_LOCK_COMPUTE = 0,
+	/**
+	 * &GPU_DVFS_LEVEL_LOCK_SYSFS: Locks set by the user via sysfs
+	 *
+	 * This lock is manipulated by the user updating the scaling frequencies in the GPU's sysfs
+	 * node.
+	 */
+	GPU_DVFS_LEVEL_LOCK_SYSFS,
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
 	/**
 	 * &GPU_DVFS_LEVEL_LOCK_THERMAL: Thermal mitigation lock
@@ -201,13 +208,6 @@ enum gpu_dvfs_level_lock_type {
 	 */
 	GPU_DVFS_LEVEL_LOCK_THERMAL,
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
-	/**
-	 * &GPU_DVFS_LEVEL_LOCK_SYSFS: Locks set by the user via sysfs
-	 *
-	 * This lock is manipulated by the user updating the scaling frequencies in the GPU's sysfs
-	 * node.
-	 */
-	GPU_DVFS_LEVEL_LOCK_SYSFS,
 	/* Insert new level locks here */
 	GPU_DVFS_LEVEL_LOCK_COUNT,
 };
@@ -230,6 +230,21 @@ struct gpu_dvfs_level_lock {
 void gpu_dvfs_select_level(struct kbase_device *kbdev);
 void gpu_dvfs_update_level_lock(struct kbase_device *kbdev,
 	enum gpu_dvfs_level_lock_type lock_type, int level_min, int level_max);
+
+/**
+ * gpu_dvfs_level_lock_is_set() - Checks if a lock level is set or valid
+ *
+ * @value: The lock level to evaluate.
+ *
+ * This macro checks whether the &value indicates either a lock level that has been set and will be
+ * used when evaluating the DVFS scaling range. When passed in a value passed to
+ * &gpu_dvfs_update_level_lock it returns whether the caller intended the level lock associated with
+ * &value to be set or not.
+ *
+ * Return: True if @value corresponds to a set lock level.
+ */
+#define gpu_dvfs_level_lock_is_set(value) \
+	((value) >= 0)
 
 /**
  * gpu_dvfs_reset_level_lock() - Resets a level lock on DVFS

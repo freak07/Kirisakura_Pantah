@@ -73,12 +73,27 @@ struct priority_control_manager_ops {
 	 * Return: The priority that would actually be given, could be lower than requested_priority
 	 */
 	int (*pcm_scheduler_priority_check)(
-		struct priority_control_manager_device *mgm_dev,
+		struct priority_control_manager_device *pcm_dev,
 		struct task_struct *task, int requested_priority);
 };
 
+/**
+ * struct priority_control_manager_device - Device structure for a priority
+ *                                          control manager
+ *
+ * @ops  - Callbacks associated with this device
+ * @data - Pointer to device private data
+ *
+ * In order for a systems integrator to implement custom restrictions on which
+ * processes can use certain GPU scheduling priorities, they must provide a
+ * platform-specific driver module which implements this interface.
+ *
+ * This structure should be registered with the platform device using
+ * platform_set_drvdata().
+ */
 struct priority_control_manager_device {
 	struct priority_control_manager_ops ops;
+	void *data;
 };
 
 #endif /* _PRIORITY_CONTROL_MANAGER_H_ */

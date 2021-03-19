@@ -123,10 +123,10 @@ static void gpu_dvfs_process_level_locks(struct kbase_device *kbdev)
 /**
  * gpu_dvfs_update_level_lock() - Validates and sets a new level lock parameter.
  *
- * @kbdev:     The &struct kbase_device for the GPU.
- * @lock_type: The type of level lock that is being updated.
- * @level_min: The minimum level to enforce, or -1 to indicate no change.
- * @level_max: The maximum level to enforce, or -1 to indicate no change.
+ * @kbdev:         The &struct kbase_device for the GPU.
+ * @lock_type:     The type of level lock that is being updated.
+ * @new_level_min: The new minimum level to enforce, or -1 to indicate no change.
+ * @new_level_max: The new maximum level to enforce, or -1 to indicate no change.
  *
  * This function is called to update the levels imposed by a level lock. It validates the request
  * parameters, ensures that the lock type's min and max locks are in the correct order and then
@@ -135,38 +135,39 @@ static void gpu_dvfs_process_level_locks(struct kbase_device *kbdev)
  * Context: Process context. Expects the caller to hold the DVFS lock.
  */
 void gpu_dvfs_update_level_lock(struct kbase_device *kbdev,
-	enum gpu_dvfs_level_lock_type lock_type, int level_min, int level_max)
+	enum gpu_dvfs_level_lock_type lock_type, int new_level_min, int new_level_max)
 {
 	struct pixel_context *pc = kbdev->platform_context;
+	struct gpu_dvfs_level_lock *curr = &pc->dvfs.level_locks[lock_type];
 
 	lockdep_assert_held(&pc->dvfs.lock);
 
-	/* Validate input */
-	if (unlikely(level_min < 0 && level_max < 0))
-		return;
-
-	if (unlikely(level_min >= 0 && level_max >= 0))
-		if (level_min < level_max)
+	/* If both locks are set, ensure they are in the right order */
+	if (unlikely(gpu_dvfs_level_lock_is_set(new_level_min) &&
+		gpu_dvfs_level_lock_is_set(new_level_max)))
+		if (new_level_min < new_level_max)
 			return;
 
 	/* Update the limits for the relevant level lock while ensuring correct ordering */
-	if (level_min >= 0) {
-		pc->dvfs.level_locks[lock_type].level_min = min(level_min, pc->dvfs.level_min);
-		pc->dvfs.level_locks[lock_type].level_max = min(level_min,
-			pc->dvfs.level_locks[lock_type].level_max);
+	if (gpu_dvfs_level_lock_is_set(new_level_min)) {
+		curr->level_min = min(new_level_min, pc->dvfs.level_min);
+		if (gpu_dvfs_level_lock_is_set(curr->level_max))
+			curr->level_max = min(new_level_min,
+				curr->level_max);
 	}
 
-	if (level_max >= 0) {
-		pc->dvfs.level_locks[lock_type].level_max = max(level_max, pc->dvfs.level_max);
-		pc->dvfs.level_locks[lock_type].level_min = max(level_max,
-			pc->dvfs.level_locks[lock_type].level_min);
+	if (gpu_dvfs_level_lock_is_set(new_level_max)) {
+		curr->level_max = max(new_level_max, pc->dvfs.level_max);
+		if (gpu_dvfs_level_lock_is_set(curr->level_min))
+			curr->level_min = max(new_level_max,
+				curr->level_min);
 	}
 
 	/* Identify when a limit is not really being set */
-	if (level_min == pc->dvfs.level_min)
-		pc->dvfs.level_locks[lock_type].level_min = -1;
-	if (level_max == pc->dvfs.level_max)
-		pc->dvfs.level_locks[lock_type].level_max = -1;
+	if (curr->level_min == pc->dvfs.level_min)
+		curr->level_min = -1;
+	if (curr->level_max == pc->dvfs.level_max)
+		curr->level_max = -1;
 
 	/* Re-evaluate the effective level lock */
 	gpu_dvfs_process_level_locks(kbdev);

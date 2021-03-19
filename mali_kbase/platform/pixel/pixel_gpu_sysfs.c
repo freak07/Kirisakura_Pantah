@@ -15,10 +15,10 @@
 
 static const char *gpu_dvfs_level_lock_names[GPU_DVFS_LEVEL_LOCK_COUNT] = {
 	"compute",
+	"sysfs",
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
 	"thermal",
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
-	"sysfs",
 };
 
 /* Helper functions */
@@ -89,7 +89,7 @@ static ssize_t clock_info_show(struct device *dev, struct device_attribute *attr
 
 		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
 			"  min clock              : ");
-		if (pc->dvfs.level_locks[i].level_min > 0)
+		if (gpu_dvfs_level_lock_is_set(pc->dvfs.level_locks[i].level_min))
 			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d kHz\n",
 				pc->dvfs.table[pc->dvfs.level_locks[i].level_min].clk1);
 		else
@@ -97,7 +97,7 @@ static ssize_t clock_info_show(struct device *dev, struct device_attribute *attr
 
 		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
 			"  max clock              : ");
-		if (pc->dvfs.level_locks[i].level_max > 0)
+		if (gpu_dvfs_level_lock_is_set(pc->dvfs.level_locks[i].level_max))
 			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d kHz\n",
 				pc->dvfs.table[pc->dvfs.level_locks[i].level_max].clk1);
 		else
