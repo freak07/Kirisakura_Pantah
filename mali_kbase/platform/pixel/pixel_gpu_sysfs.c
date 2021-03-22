@@ -14,6 +14,7 @@
 #include "pixel_gpu_dvfs.h"
 
 static const char *gpu_dvfs_level_lock_names[GPU_DVFS_LEVEL_LOCK_COUNT] = {
+	"devicetree",
 	"compute",
 	"sysfs",
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL

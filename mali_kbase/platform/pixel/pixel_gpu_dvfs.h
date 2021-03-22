@@ -186,12 +186,18 @@ void gpu_tmu_term(struct kbase_device *kbdev);
  */
 enum gpu_dvfs_level_lock_type {
 	/**
+	 * &GPU_DVFS_LEVEL_LOCK_DEVICETREE: Devicetree lock
+	 *
+	 * This lock is used to enforce scaling limits set as part of the GPU device tree entry.
+	 */
+	GPU_DVFS_LEVEL_LOCK_DEVICETREE = 0,
+	/**
 	 * &GPU_DVFS_LEVEL_LOCK_COMPUTE: Compute lock
 	 *
 	 * This lock is used to enforce level requests for when compute-heavy work is presently
 	 * running on the GPU.
 	 */
-	GPU_DVFS_LEVEL_LOCK_COMPUTE = 0,
+	GPU_DVFS_LEVEL_LOCK_COMPUTE,
 	/**
 	 * &GPU_DVFS_LEVEL_LOCK_SYSFS: Locks set by the user via sysfs
 	 *
