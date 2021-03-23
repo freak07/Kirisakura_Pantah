@@ -3,11 +3,10 @@
 # Copyright 2021 Google LLC
 #
 
-# linux build system bootstrap for out-of-tree module
-
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 M ?= $(shell pwd)
 
+KBUILD_OPTIONS += CONFIG_MALI_MEMORY_GROUP_MANAGER=m
 KBUILD_OPTIONS += CONFIG_MALI_PRIORITY_CONTROL_MANAGER=m
 
 KBUILD_OPTIONS += $(KBUILD_EXTRA) # Extra config if any

@@ -22,8 +22,26 @@
 # make $(src) as absolute path if it isn't already, by prefixing $(srctree)
 src:=$(if $(patsubst /%,,$(src)),$(srctree)/$(src),$(src))
 
-# Add include path for related GPU modules
-ccflags-y += -I$(src)/../common/include
+CONFIG_MALI_MEMORY_GROUP_MANAGER ?= m
+CONFIG_MALI_PRIORITY_CONTROL_MANAGER ?= m
 
-obj-$(CONFIG_MALI_MEMORY_GROUP_MANAGER) := mali_mgm.o
-mali_mgm-objs := memory_group_manager.o
+DEFINES += \
+	-DCONFIG_MALI_MEMORY_GROUP_MANAGER=$(CONFIG_MALI_MEMORY_GROUP_MANAGER) \
+	-DCONFIG_MALI_PRIORITY_CONTROL_MANAGER=$(CONFIG_MALI_PRIORITY_CONTROL_MANAGER)
+
+# Use our defines when compiling, and include mali platform module headers
+ccflags-y += $(DEFINES) -I$(src)/../common/include
+
+mali_pixel-objs :=
+ifeq ($(CONFIG_MALI_MEMORY_GROUP_MANAGER),m)
+	mali_pixel-objs += memory_group_manager.o
+endif
+ifeq ($(CONFIG_MALI_PRIORITY_CONTROL_MANAGER),m)
+	mali_pixel-objs += priority_control_manager.o
+endif
+
+# Add kernel module target if any of our config options is enabled
+ifneq ($(mali_pixel-objs),)
+	obj-m += mali_pixel.o
+	mali_pixel-objs += mali_pixel_mod.o
+endif

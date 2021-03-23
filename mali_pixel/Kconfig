@@ -19,20 +19,15 @@
 #
 #
 
-# linux build system bootstrap for out-of-tree module
+config MALI_MEMORY_GROUP_MANAGER
+	tristate "MALI_MEMORY_GROUP_MANAGER"
+	help
+	  This option enables an example implementation of a memory group manager
+	  for allocation and release of pages for memory pools managed by Mali GPU
+	  device drivers.
 
-KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
-M ?= $(shell pwd)
-
-KBUILD_OPTIONS += CONFIG_MALI_MEMORY_GROUP_MANAGER=m
-
-KBUILD_OPTIONS += $(KBUILD_EXTRA) # Extra config if any
-
-modules:
-	$(MAKE) -C $(KERNEL_SRC) M=$(M) W=1 EXTRA_CFLAGS="-I$(M) -I$(M)/../common/include" modules $(KBUILD_OPTIONS) $(@)
-
-modules_install:
-	$(MAKE) -C $(KERNEL_SRC) M=$(M) modules_install
-
-clean:
-	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
+config MALI_PRIORITY_CONTROL_MANAGER
+	tristate "MALI_PRIORITY_CONTROL_MANAGER"
+	help
+	  This option enables an implementation of a priority control manager
+	  for determining the target GPU scheduling priority of a process.

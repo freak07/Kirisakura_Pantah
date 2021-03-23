@@ -643,7 +643,7 @@ static const struct of_device_id memory_group_manager_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, memory_group_manager_dt_ids);
 
-static struct platform_driver memory_group_manager_driver = {
+struct platform_driver memory_group_manager_driver = {
 	.probe = memory_group_manager_probe,
 	.remove = memory_group_manager_remove,
 	.driver = {
@@ -658,10 +658,3 @@ static struct platform_driver memory_group_manager_driver = {
 		.suppress_bind_attrs = true,
 	}
 };
-
-module_platform_driver(memory_group_manager_driver);
-
-MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("SLC Memory Manager for GPU");
-MODULE_AUTHOR("<sidaths@google.com>");
-MODULE_VERSION("1.0");
