@@ -145,7 +145,7 @@ static const struct of_device_id priority_control_manager_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, priority_control_manager_dt_ids);
 
-static struct platform_driver priority_control_manager_driver = {
+struct platform_driver priority_control_manager_driver = {
 	.probe = priority_control_manager_probe,
 	.remove = priority_control_manager_remove,
 	.driver = {
@@ -155,10 +155,3 @@ static struct platform_driver priority_control_manager_driver = {
 		.suppress_bind_attrs = true,
 	}
 };
-
-module_platform_driver(priority_control_manager_driver);
-
-MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Priority Control Manager for GPU");
-MODULE_AUTHOR("<sidaths@google.com>");
-MODULE_VERSION("1.0");

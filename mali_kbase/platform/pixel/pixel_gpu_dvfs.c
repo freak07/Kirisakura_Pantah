@@ -81,8 +81,7 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
  * taking into account the priority levels of each level lock. It ensures that votes on minimum and
  * maximum levels originating from different level lock types are supported.
  *
- * Note that, other than initialization functions, this is the only function that should write to
- * &level_scaling_max and &level_scaling_min.
+ * Note: This is the only function that should write to &level_scaling_max or &level_scaling_min.
  */
 static void gpu_dvfs_process_level_locks(struct kbase_device *kbdev)
 {
@@ -405,6 +404,8 @@ static int find_voltage_for_freq(struct kbase_device *kbdev, unsigned int clock,
  *
  * This function reads data out of the GPU's device tree entry and uses it to populate
  * &gpu_dvfs_table. For each entry in the DVFS table, it makes calls to determine voltages from ECT.
+ * It also checks for any level locks specified in the devicetree and ensures that the effective
+ * scaling range is set up.
  *
  * This function will fail if the required data is not present in the GPU's device tree entry.
  *
@@ -424,7 +425,11 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 	struct dvfs_rate_volt gpu0_vf_map[16];
 	struct dvfs_rate_volt gpu1_vf_map[16];
 	int gpu0_level_count, gpu1_level_count;
-	int scaling_compute_freq_min = 0;
+
+	int scaling_level_max = -1, scaling_level_min = -1;
+	int scaling_freq_max_devicetree = INT_MAX;
+	int scaling_freq_min_devicetree = 0;
+	int scaling_freq_min_compute = 0;
 
 	bool use_asv_v1;
 
@@ -483,8 +488,9 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		of_property_read_u32_array(np, "gpu_dvfs_table_v2",
 			of_data_int_array, dvfs_table_size);
 
-	of_property_read_u32(np, "gpu_dvfs_compute_min",
-		&scaling_compute_freq_min);
+	of_property_read_u32(np, "gpu_dvfs_max_freq", &scaling_freq_max_devicetree);
+	of_property_read_u32(np, "gpu_dvfs_min_freq", &scaling_freq_min_devicetree);
+	of_property_read_u32(np, "gpu_dvfs_min_freq_compute", &scaling_freq_min_compute);
 
 	/* Process DVFS table data from device tree and store it in OPP table */
 	for (i = 0; i < dvfs_table_row_num; i++) {
@@ -506,7 +512,15 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		if (!gpu_dvfs_table[i].qos.cpu2_max)
 			gpu_dvfs_table[i].qos.cpu2_max = CPU_FREQ_MAX;
 
-		if (gpu_dvfs_table[i].clk1 >= scaling_compute_freq_min)
+		/* Update level locks */
+		if (gpu_dvfs_table[i].clk1 <= scaling_freq_max_devicetree)
+			if (scaling_level_max == -1)
+				scaling_level_max = i;
+
+		if (gpu_dvfs_table[i].clk1 >= scaling_freq_min_devicetree)
+			scaling_level_min = i;
+
+		if (gpu_dvfs_table[i].clk1 >= scaling_freq_min_compute)
 			pc->dvfs.level_scaling_compute_min = i;
 
 		/* Get and validate voltages from cal-if */
@@ -528,6 +542,11 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 			goto err;
 		}
 	}
+
+	pc->dvfs.level_max = 0;
+	pc->dvfs.level_min = dvfs_table_row_num - 1;
+	gpu_dvfs_update_level_lock(kbdev, GPU_DVFS_LEVEL_LOCK_DEVICETREE,
+		scaling_level_min, scaling_level_max);
 
 	return dvfs_table_row_num;
 
@@ -599,6 +618,12 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	/* Initialize lock */
 	mutex_init(&pc->dvfs.lock);
 
+	/* Initialize DVFS fields that are non-zero */
+	for (i = 0; i < GPU_DVFS_LEVEL_LOCK_COUNT; i++) {
+		pc->dvfs.level_locks[i].level_min = -1;
+		pc->dvfs.level_locks[i].level_max = -1;
+	}
+
 	/* Get data from DT */
 	if (of_property_read_u32(np, "gpu0_cmu_cal_id", &pc->dvfs.gpu0_cal_id) ||
 		of_property_read_u32(np, "gpu1_cmu_cal_id", &pc->dvfs.gpu1_cal_id)) {
@@ -614,16 +639,6 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	}
 
 	pc->dvfs.table = gpu_dvfs_table;
-	pc->dvfs.level_max = 0;
-	pc->dvfs.level_min = pc->dvfs.table_size - 1;
-
-	/* Initialize level locks */
-	pc->dvfs.level_scaling_max = pc->dvfs.level_max;
-	pc->dvfs.level_scaling_min = pc->dvfs.level_min;
-	for (i = 0; i < GPU_DVFS_LEVEL_LOCK_COUNT; i++) {
-		pc->dvfs.level_locks[i].level_min = -1;
-		pc->dvfs.level_locks[i].level_max = -1;
-	}
 
 	/* Set up initial level state */
 	pc->dvfs.level = pc->dvfs.level_min;
