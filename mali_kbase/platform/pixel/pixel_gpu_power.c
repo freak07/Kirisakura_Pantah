@@ -61,6 +61,8 @@ done:
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 		gpu_dvfs_event_power_on(kbdev);
 #endif
+		if (pc->pm.bcl_dev)
+			gs101_init_gpu_ratio(pc->pm.bcl_dev);
 	}
 
 	return ret;
@@ -398,6 +400,8 @@ int gpu_power_init(struct kbase_device *kbdev)
 	pc->pm.domain = gpu_get_pm_domain(g3d_power_domain_name);
 	if (pc->pm.domain == NULL)
 		return -ENODEV;
+
+	pc->pm.bcl_dev = gs101_retrieve_bcl_handle();
 
 	return 0;
 }

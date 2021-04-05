@@ -78,6 +78,7 @@ extern struct protected_mode_ops pixel_protected_ops;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 
 /* SOC level includes */
+#include <soc/google/bcl.h>
 #if IS_ENABLED(CONFIG_EXYNOS_PD)
 #include <soc/google/exynos-pd.h>
 #endif
@@ -184,6 +185,7 @@ struct gpu_dvfs_metrics_uid_stats;
  * @pm.status_reg_offset:       Register offset to the G3D status in the PMU. Set via DT.
  * @pm.status_local_power_mask: Mask to extract power status of the GPU. Set via DT.
  * @pm.autosuspend_delay:       Delay (in ms) before PM runtime should trigger auto suspend.
+ * @pm.bcl_dev:                 Pointer to the Battery Current Limiter device.
  *
  * @tz_protection_enabled:      Storing the secure rendering state of the GPU. Access to this is
  *                              controlled by the HW access lock for the GPU associated with @kbdev.
@@ -259,6 +261,7 @@ struct pixel_context {
 		struct gpu_dvfs_opp_metrics power_off_metrics;
 		struct gpu_dvfs_opp_metrics power_on_metrics;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
+		struct gs101_bcl_dev *bcl_dev;
 	} pm;
 
 #ifdef CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING
