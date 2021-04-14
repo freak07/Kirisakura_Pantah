@@ -94,7 +94,7 @@ static int pcm_scheduler_priority_check(struct priority_control_manager_device *
 	case PRIORITY_RT:
 		if (PERMISSIVE_MODE) {
 			ret = requested_priority;
-			dev_info(dev, "UID %d request for %s priority was granted\n",
+			dev_dbg(dev, "UID %d request for %s priority was granted\n",
 				__kuid_val(uid), priority_name[requested_priority]);
 		} else {
 			ret = PRIORITY_DEFAULT;
