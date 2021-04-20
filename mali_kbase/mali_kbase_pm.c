@@ -290,6 +290,7 @@ void kbase_pm_resume(struct kbase_device *kbdev)
 
 /**
  * kbase_pm_apc_power_off_worker - Power off worker running on mali_apc_thread
+ *
  * @data: A &struct kthread_work
  *
  * This worker runs kbase_pm_context_idle on mali_apc_thread.
@@ -304,7 +305,8 @@ static void kbase_pm_apc_power_off_worker(struct kthread_work *data)
 
 /**
  * kbase_pm_apc_timer_callback - Timer callback for powering off the GPU
- * @data: A &struct kthread_work
+ *
+ * @timer: Timer structure.
  *
  * This hrtimer callback queues the power off work to mali_apc_thread.
  *
