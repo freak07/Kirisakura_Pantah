@@ -53,8 +53,8 @@ CONFIG_MALI_KUTF=n
 MALI_INCREMENTAL_RENDERING ?= 0
 
 # Cloudripper specific
-MALI_USE_CSF=1
-MALI_JIT_PRESSURE_LIMIT_BASE=0
+# MALI_USE_CSF=1
+# MALI_JIT_PRESSURE_LIMIT_BASE=0
 
 # Set up our defines, which will be passed to gcc
 DEFINES = \
