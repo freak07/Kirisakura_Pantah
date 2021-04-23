@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  *
- * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
  * Foundation, and any use by you of this program is subject to the terms
- * of such GNU licence.
+ * of such GNU license.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -17,13 +17,10 @@
  * along with this program; if not, you can access it online at
  * http://www.gnu.org/licenses/gpl-2.0.html.
  *
- * SPDX-License-Identifier: GPL-2.0
- *
  */
 
 /**
- * @file mali_kbase_pm.c
- * Base kernel power management APIs
+ * DOC: Base kernel power management APIs
  */
 
 #include <mali_kbase.h>
@@ -293,6 +290,7 @@ void kbase_pm_resume(struct kbase_device *kbdev)
 
 /**
  * kbase_pm_apc_power_off_worker - Power off worker running on mali_apc_thread
+ *
  * @data: A &struct kthread_work
  *
  * This worker runs kbase_pm_context_idle on mali_apc_thread.
@@ -307,7 +305,8 @@ static void kbase_pm_apc_power_off_worker(struct kthread_work *data)
 
 /**
  * kbase_pm_apc_timer_callback - Timer callback for powering off the GPU
- * @data: A &struct kthread_work
+ *
+ * @timer: Timer structure.
  *
  * This hrtimer callback queues the power off work to mali_apc_thread.
  *
