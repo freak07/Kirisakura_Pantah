@@ -156,8 +156,8 @@ struct gpu_dvfs_metrics_uid_stats {
 	struct gpu_dvfs_opp_metrics *tis_stats;
 };
 
-void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, bool power_on);
-void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool power_state);
+void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_level,
+	bool power_state);
 void gpu_dvfs_metrics_job_start(struct kbase_jd_atom *atom);
 void gpu_dvfs_metrics_job_end(struct kbase_jd_atom *atom);
 int gpu_dvfs_metrics_init(struct kbase_device *kbdev);

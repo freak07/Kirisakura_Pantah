@@ -30,10 +30,13 @@
 /**
  * gpu_dvfs_metrics_trace_clock() - Emits trace events corresponding to a change in GPU clocks.
  *
- * @kbdev:    The &struct kbase_device for the GPU.
- * @power_on: Whether the GPU is currently powered on or not.
+ * @kbdev:       The &struct kbase_device for the GPU.
+ * @old_level:   The level the GPU has just been moved from.
+ * @new_level:   The level the GPU has just been moved to.
+ * @power_state: The current GPU power state.
  */
-void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, bool power_on)
+static void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, int old_level, int new_level,
+	bool power_state)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 	int c;
@@ -41,9 +44,7 @@ void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, bool power_on)
 	int clks[GPU_DVFS_CLK_COUNT];
 
 	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
-		clks[c] = 0;
-		if (power_on)
-			clks[c] = cal_dfs_get_rate(pc->dvfs.clks[c].cal_id);
+		clks[c] = (power_state) ? pc->dvfs.table[new_level].clk[c] : 0;
 		trace_gpu_frequency(clks[c], c);
 	}
 
@@ -94,20 +95,21 @@ static void gpu_dvfs_metrics_uid_level_change(struct kbase_device *kbdev, u64 ev
  * gpu_dvfs_metrics_update() - Updates GPU metrics on level or power change.
  *
  * @kbdev:       The &struct kbase_device for the GPU.
- * @next_level:  The level that the GPU is about to move to. Can be the same as the current level.
+ * @old_level:   The level that the GPU has just moved from. Can be the same as &new_level.
+ * @new_level:   The level that the GPU has just moved to. Can be the same as &old_level. This
+ *               parameter is ignored if &power_state is false.
  * @power_state: The current power state of the GPU. Can be the same as the current power state.
  *
  * This function should be called (1) right after a change in power state of the GPU, or (2) just
- * prior to changing the level of a powered on GPU. It will update the metrics for each of the GPU
+ * after changing the level of a powered on GPU. It will update the metrics for each of the GPU
  * DVFS level metrics and the power metrics as appropriate.
  *
  * Context: Expects the caller to hold the DVFS lock.
  */
-void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool power_state)
+void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_level,
+	bool power_state)
 {
 	struct pixel_context *pc = kbdev->platform_context;
-	int level = pc->dvfs.level;
-
 	const u64 prev = pc->dvfs.metrics.last_time;
 	u64 curr = ktime_get_ns();
 
@@ -116,10 +118,10 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
 	if (pc->dvfs.metrics.last_power_state) {
 		if (power_state) {
 			/* Power state was ON and is not changing */
-			if (level != next_level) {
-				pc->dvfs.table[next_level].metrics.entry_count++;
-				pc->dvfs.table[next_level].metrics.time_last_entry = curr;
-				gpu_dvfs_metrics_transtab_entry(pc, level, next_level)++;
+			if (old_level != new_level) {
+				pc->dvfs.table[new_level].metrics.entry_count++;
+				pc->dvfs.table[new_level].metrics.time_last_entry = curr;
+				gpu_dvfs_metrics_transtab_entry(pc, old_level, new_level)++;
 				gpu_dvfs_metrics_uid_level_change(kbdev, curr);
 			}
 		} else {
@@ -128,7 +130,7 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
 			pc->pm.power_off_metrics.time_last_entry = curr;
 		}
 
-		pc->dvfs.table[level].metrics.time_total += (curr - prev);
+		pc->dvfs.table[old_level].metrics.time_total += (curr - prev);
 		pc->pm.power_on_metrics.time_total += (curr - prev);
 
 	} else {
@@ -137,13 +139,13 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
 			pc->pm.power_on_metrics.entry_count++;
 			pc->pm.power_on_metrics.time_last_entry = curr;
 
-			if (pc->dvfs.metrics.last_level != next_level) {
+			if (pc->dvfs.metrics.last_level != new_level) {
 				/* Level was changed while the GPU was powered off, and that change
 				 * is being reflected now.
 				 */
-				pc->dvfs.table[next_level].metrics.entry_count++;
-				pc->dvfs.table[next_level].metrics.time_last_entry = curr;
-				gpu_dvfs_metrics_transtab_entry(pc, level, next_level)++;
+				pc->dvfs.table[new_level].metrics.entry_count++;
+				pc->dvfs.table[new_level].metrics.time_last_entry = curr;
+				gpu_dvfs_metrics_transtab_entry(pc, old_level, new_level)++;
 			}
 		}
 
@@ -152,7 +154,9 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
 
 	pc->dvfs.metrics.last_power_state = power_state;
 	pc->dvfs.metrics.last_time = curr;
-	pc->dvfs.metrics.last_level = next_level;
+	pc->dvfs.metrics.last_level = new_level;
+
+	gpu_dvfs_metrics_trace_clock(kbdev, old_level, new_level, power_state);
 }
 
 /**

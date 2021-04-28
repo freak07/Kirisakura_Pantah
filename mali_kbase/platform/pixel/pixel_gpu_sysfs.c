@@ -203,7 +203,7 @@ static ssize_t power_stats_show(struct device *dev, struct device_attribute *att
 
 	/* First trigger an update */
 	mutex_lock(&pc->dvfs.lock);
-	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, gpu_power_status(kbdev));
+	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, pc->dvfs.level, gpu_power_status(kbdev));
 	mutex_unlock(&pc->dvfs.lock);
 
 	ret = scnprintf(buf + ret, PAGE_SIZE - ret, "DVFS stats: (times in ms)\n");
@@ -497,7 +497,7 @@ static ssize_t time_in_state_show(struct device *dev, struct device_attribute *a
 
 	/* First trigger an update */
 	mutex_lock(&pc->dvfs.lock);
-	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, gpu_power_status(kbdev));
+	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, pc->dvfs.level, gpu_power_status(kbdev));
 	mutex_unlock(&pc->dvfs.lock);
 
 	for (i = pc->dvfs.level_max; i <= pc->dvfs.level_min; i++)
@@ -520,7 +520,7 @@ static ssize_t trans_stat_show(struct device *dev, struct device_attribute *attr
 
 	/* First trigger an update */
 	mutex_lock(&pc->dvfs.lock);
-	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, gpu_power_status(kbdev));
+	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, pc->dvfs.level, gpu_power_status(kbdev));
 	mutex_unlock(&pc->dvfs.lock);
 
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%9s  :   %s\n", "From", "To");

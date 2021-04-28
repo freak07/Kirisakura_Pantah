@@ -53,14 +53,14 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 		gpu_dvfs_qos_set(kbdev, next_level);
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
-	gpu_dvfs_metrics_update(kbdev, next_level, true);
-
 	mutex_lock(&pc->pm.domain->access_lock);
 
 	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++)
 		cal_dfs_set_rate(pc->dvfs.clks[c].cal_id, pc->dvfs.table[next_level].clk[c]);
 
 	mutex_unlock(&pc->pm.domain->access_lock);
+
+	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, next_level, true);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS
 	/* If we are clocking down, update QOS frequencies after GPU frequencies */
@@ -69,8 +69,6 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
 	pc->dvfs.level = next_level;
-
-	gpu_dvfs_metrics_trace_clock(kbdev, true);
 
 	return 0;
 }
@@ -193,12 +191,12 @@ void gpu_dvfs_event_power_on(struct kbase_device *kbdev)
 	if (pc->dvfs.level_target != pc->dvfs.level)
 		gpu_dvfs_select_level(kbdev);
 	else
-		gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, true);
+		gpu_dvfs_metrics_update(kbdev, pc->dvfs.level,
+			pc->dvfs.level_target, true);
+
 	mutex_unlock(&pc->dvfs.lock);
 
 	cancel_delayed_work(&pc->dvfs.clockdown_work);
-
-	gpu_dvfs_metrics_trace_clock(kbdev, true);
 }
 
 /**
@@ -215,13 +213,11 @@ void gpu_dvfs_event_power_off(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 
 	mutex_lock(&pc->dvfs.lock);
-	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, false);
+	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, 0, false);
 	mutex_unlock(&pc->dvfs.lock);
 
 	queue_delayed_work(pc->dvfs.clockdown_wq, &pc->dvfs.clockdown_work,
 		pc->dvfs.clockdown_hysteresis);
-
-	gpu_dvfs_metrics_trace_clock(kbdev, false);
 }
 
 /**
