@@ -23,7 +23,7 @@
  */
 
 /*
- * Copyright 2020 Google LLC.
+ * Copyright 2020-2021 Google LLC.
  *
  * Author: Sidath Senanayake <sidaths@google.com>
  */
@@ -115,11 +115,8 @@ struct gpu_dvfs_opp_metrics {
 /**
  * struct gpu_dvfs_opp - Data for a GPU operating point.
  *
- * @clk0:         The frequency (in kHz) of GPU Top Level clock.
- * @clk1:         The frequency (in kHz) of GPU shader cores.
- *
- * @vol0:         The voltage (in mV) of the GPU Top Level power domain. Obtained via ECT.
- * @vol1:         The voltage (in mV) of the GPU shader cores domain. Obtained via ECT.
+ * @clk:          The frequencies (in kHz) of the GPU clocks.
+ * @vol:          The voltages (in mV) of each GPU power domain. Obtained via ECT.
  *
  * @util_min:     The minimum threshold of utilization before the governor should consider a lower
  *                operating point.
@@ -142,12 +139,10 @@ struct gpu_dvfs_opp_metrics {
  */
 struct gpu_dvfs_opp {
 	/* Clocks */
-	unsigned int clk0;
-	unsigned int clk1;
+	unsigned int clk[GPU_DVFS_CLK_COUNT];
 
 	/* Voltages */
-	unsigned int vol0;
-	unsigned int vol1;
+	unsigned int vol[GPU_DVFS_CLK_COUNT];
 
 	int util_min;
 	int util_max;
@@ -206,8 +201,7 @@ struct gpu_dvfs_metrics_uid_stats;
  * @dvfs.clockdown_hysteresis:  The time (in ms) the GPU can remained powered off before being set
  *                              to the minimum throughput level. Set via DT.
  *
- * @dvfs.gpu0_cal_id:           ID for the GPU Top Level clock domain. Set via DT.
- * @dvfs.gpu1_cal_id:           ID for the GPU shader stack clock domain. Set via DT.
+ * @dvfs.clks:                  Array of clock data per GPU clock.
  *
  * @dvfs.table:                 Pointer to the DVFS table which is an array of &struct gpu_dvfs_opp
  * @dvfs.table_size:            Number of levels in in @dvfs.table.
@@ -282,8 +276,7 @@ struct pixel_context {
 		struct delayed_work clockdown_work;
 		unsigned int clockdown_hysteresis;
 
-		int gpu0_cal_id;
-		int gpu1_cal_id;
+		struct gpu_dvfs_clk clks[GPU_DVFS_CLK_COUNT];
 
 		struct gpu_dvfs_opp *table;
 		int table_size;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright 2020 Google LLC.
+ * Copyright 2020-2021 Google LLC.
  *
  * Author: Sidath Senanayake <sidaths@google.com>
  */
@@ -82,7 +82,8 @@ void gpu_dvfs_qos_set(struct kbase_device *kbdev, int level)
 		qos_set(&pc->dvfs.qos.cpu2_max, opp.qos.cpu2_max);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_BTS
-		if (opp.clk1 >= pc->dvfs.qos.bts.threshold && !pc->dvfs.qos.bts.enabled) {
+		if (opp.clk[GPU_DVFS_CLK_SHADERS] >= pc->dvfs.qos.bts.threshold &&
+			!pc->dvfs.qos.bts.enabled) {
 			bts_add_scenario(pc->dvfs.qos.bts.scenario);
 			pc->dvfs.qos.bts.enabled = true;
 		} else if (pc->dvfs.qos.bts.enabled) {

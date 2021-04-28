@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright 2020 Google LLC.
+ * Copyright 2020-2021 Google LLC.
  *
  * Author: Sidath Senanayake <sidaths@google.com>
  */
@@ -36,20 +36,20 @@
 void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, bool power_on)
 {
 	struct pixel_context *pc = kbdev->platform_context;
+	int c;
 	int proc = raw_smp_processor_id();
-	int gpu0 = 0;
-	int gpu1 = 0;
+	int clks[GPU_DVFS_CLK_COUNT];
 
-	if (power_on) {
-		gpu0 = cal_dfs_get_rate(pc->dvfs.gpu0_cal_id);
-		gpu1 = cal_dfs_get_rate(pc->dvfs.gpu1_cal_id);
+	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
+		clks[c] = 0;
+		if (power_on)
+			clks[c] = cal_dfs_get_rate(pc->dvfs.clks[c].cal_id);
+		trace_gpu_frequency(clks[c], c);
 	}
 
-	trace_clock_set_rate("gpu0", gpu0, proc);
-	trace_clock_set_rate("gpu1", gpu1, proc);
-
-	trace_gpu_frequency(gpu0, 0);
-	trace_gpu_frequency(gpu1, 1);
+	/* TODO: Remove reporting clocks this way when we transition to Perfetto */
+	trace_clock_set_rate("gpu0", clks[GPU_DVFS_CLK_TOP_LEVEL], proc);
+	trace_clock_set_rate("gpu1", clks[GPU_DVFS_CLK_SHADERS], proc);
 }
 
 /**

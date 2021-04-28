@@ -1,12 +1,51 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2020 Google LLC.
+ * Copyright 2020-2021 Google LLC.
  *
  * Author: Sidath Senanayake <sidaths@google.com>
  */
 
 #ifndef _PIXEL_GPU_DVFS_H_
 #define _PIXEL_GPU_DVFS_H_
+
+/* Clocks & domains */
+
+/**
+ * enum gpu_dvfs_clk_index - GPU clock & power domains
+ *
+ * Stores the list of clocks on the GPU.
+ */
+enum gpu_dvfs_clk_index {
+	/**
+	 * &GPU_DVFS_CLK_TOP_LEVEL: Top level domain
+	 *
+	 * Corresponds to the domain which comprises the Job Manager, L2 cache
+	 * and Tiler.
+	 */
+	GPU_DVFS_CLK_TOP_LEVEL = 0,
+
+	/**
+	 * &GPU_DVFS_CLK_SHADERS: Shader stack domain
+	 *
+	 * Corresponds to the domain clocking and powering the GPU shader
+	 * cores.
+	 */
+	GPU_DVFS_CLK_SHADERS,
+
+	/* All clock indices should be above this line */
+	GPU_DVFS_CLK_COUNT,
+};
+
+/**
+ * struct gpu_dvfs_clk - Stores data for a GPU clock
+ *
+ * @index:   &gpu_dvfs_clk_index for this clock
+ * @cal_id:  ID for this clock domain. Set via DT.
+ */
+struct gpu_dvfs_clk {
+	enum gpu_dvfs_clk_index index;
+	int cal_id;
+};
 
 /* Utilization */
 

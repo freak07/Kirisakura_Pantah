@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright 2020 Google LLC.
+ * Copyright 2020-2021 Google LLC.
  *
  * Author: Sidath Senanayake <sidaths@google.com>
  */
@@ -57,10 +57,10 @@ static int gpu_tmu_get_freqs_for_level(void *gpu_drv_data, int level, int *clk0,
 		return -1;
 
 	if (clk0)
-		*clk0 = pc->dvfs.table[level].clk0;
+		*clk0 = pc->dvfs.table[level].clk[GPU_DVFS_CLK_TOP_LEVEL];
 
 	if (clk1)
-		*clk1 = pc->dvfs.table[level].clk1;
+		*clk1 = pc->dvfs.table[level].clk[GPU_DVFS_CLK_SHADERS];
 
 	return 0;
 }
@@ -86,10 +86,10 @@ static int gpu_tmu_get_vols_for_level(void *gpu_drv_data, int level, int *vol0, 
 		return -1;
 
 	if (vol0)
-		*vol0 = pc->dvfs.table[level].vol0;
+		*vol0 = pc->dvfs.table[level].vol[GPU_DVFS_CLK_TOP_LEVEL];
 
 	if (vol1)
-		*vol1 = pc->dvfs.table[level].vol1;
+		*vol1 = pc->dvfs.table[level].vol[GPU_DVFS_CLK_SHADERS];
 
 	return 0;
 }
@@ -208,7 +208,7 @@ static int gpu_tmu_notifier(struct notifier_block *notifier, unsigned long event
 		}
 		dev_info(kbdev->dev,
 			"%s: GPU_THROTTLING event received limiting GPU clock to %d kHz\n",
-			__func__, pc->dvfs.table[level].clk1);
+			__func__, pc->dvfs.table[level].clk[GPU_DVFS_CLK_SHADERS]);
 		break;
 	default:
 		dev_warn(kbdev->dev, "%s: Unexpected TMU event received\n", __func__);
