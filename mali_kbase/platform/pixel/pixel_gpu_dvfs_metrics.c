@@ -9,6 +9,7 @@
 #ifdef CONFIG_OF
 #include <linux/of.h>
 #endif
+#include <linux/clk.h>
 #include <trace/events/power.h>
 
 /* SOC includes */
@@ -19,13 +20,56 @@
 /* Mali core includes */
 #include <mali_kbase.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
-#include <mali_power_gpu_frequency_trace.h>
 
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
 #include "pixel_gpu_dvfs.h"
 
+static void *enumerate_gpu_clk(struct kbase_device *kbdev, unsigned int index)
+{
+	struct pixel_context *pc = kbdev->platform_context;
+
+	if (index < GPU_DVFS_CLK_COUNT)
+		return &(pc->dvfs.clks[index]);
+	else
+		return NULL;
+}
+
+static unsigned long get_gpu_clk_rate(struct kbase_device *kbdev, void *gpu_clk_handle)
+{
+	struct pixel_context *pc = kbdev->platform_context;
+	struct gpu_dvfs_clk *clk = gpu_clk_handle;
+
+	if (clk->index < GPU_DVFS_CLK_COUNT)
+		return pc->dvfs.table[pc->dvfs.level_target].clk[clk->index] * 1000;
+
+	WARN_ONCE(1, "Clock rate requested for invalid clock index: %u\n", clk->index);
+	return 0;
+}
+
+static int gpu_clk_notifier_register(struct kbase_device *kbdev, void *gpu_clk_handle,
+	struct notifier_block *nb)
+{
+	struct gpu_dvfs_clk *clk = gpu_clk_handle;
+
+	return blocking_notifier_chain_register(&clk->notifier, nb);
+}
+
+static void gpu_clk_notifier_unregister(struct kbase_device *kbdev, void *gpu_clk_handle,
+	struct notifier_block *nb)
+{
+	struct gpu_dvfs_clk *clk = gpu_clk_handle;
+
+	blocking_notifier_chain_unregister(&clk->notifier, nb);
+}
+
+struct kbase_clk_rate_trace_op_conf pixel_clk_rate_trace_ops = {
+	.get_gpu_clk_rate = get_gpu_clk_rate,
+	.enumerate_gpu_clk = enumerate_gpu_clk,
+	.gpu_clk_notifier_register = gpu_clk_notifier_register,
+	.gpu_clk_notifier_unregister = gpu_clk_notifier_unregister,
+};
 
 /**
  * gpu_dvfs_metrics_trace_clock() - Emits trace events corresponding to a change in GPU clocks.
@@ -39,13 +83,24 @@ static void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, int old_lev
 	bool power_state)
 {
 	struct pixel_context *pc = kbdev->platform_context;
+	struct kbase_gpu_clk_notifier_data nd;
 	int c;
 	int proc = raw_smp_processor_id();
 	int clks[GPU_DVFS_CLK_COUNT];
 
 	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
-		clks[c] = (power_state) ? pc->dvfs.table[new_level].clk[c] : 0;
-		trace_gpu_frequency(clks[c], c);
+		clks[c] = 0;
+
+		if (power_state) {
+			clks[c] = pc->dvfs.table[new_level].clk[c];
+
+			nd.gpu_clk_handle = &(pc->dvfs.clks[c]);
+			nd.old_rate = pc->dvfs.table[old_level].clk[c] * 1000;
+			nd.new_rate = pc->dvfs.table[new_level].clk[c] * 1000;
+			blocking_notifier_call_chain(&pc->dvfs.clks[c].notifier,
+				POST_RATE_CHANGE, &nd);
+		}
+
 	}
 
 	/* TODO: Remove reporting clocks this way when we transition to Perfetto */
@@ -381,6 +436,7 @@ void gpu_dvfs_kctx_term(struct kbase_context *kctx)
 int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
+	int c;
 
 	mutex_lock(&pc->dvfs.lock);
 
@@ -397,6 +453,9 @@ int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
 		pc->dvfs.metrics.last_time;
 
 	mutex_unlock(&pc->dvfs.lock);
+
+	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++)
+		BLOCKING_INIT_NOTIFIER_HEAD(&pc->dvfs.clks[c].notifier);
 
 	/* Initialize per-UID metrics */
 	INIT_LIST_HEAD(&pc->dvfs.metrics.uid_stats_list);

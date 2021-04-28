@@ -39,12 +39,14 @@ enum gpu_dvfs_clk_index {
 /**
  * struct gpu_dvfs_clk - Stores data for a GPU clock
  *
- * @index:   &gpu_dvfs_clk_index for this clock
- * @cal_id:  ID for this clock domain. Set via DT.
+ * @index:    &gpu_dvfs_clk_index for this clock
+ * @cal_id:   ID for this clock domain. Set via DT.
+ * @notifier: &blocking_notifier_head for reporting frequency changes on this clock.
  */
 struct gpu_dvfs_clk {
 	enum gpu_dvfs_clk_index index;
 	int cal_id;
+	struct blocking_notifier_head notifier;
 };
 
 /* Utilization */
