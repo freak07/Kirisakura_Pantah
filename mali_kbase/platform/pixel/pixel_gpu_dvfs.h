@@ -1,12 +1,53 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2020 Google LLC.
+ * Copyright 2020-2021 Google LLC.
  *
  * Author: Sidath Senanayake <sidaths@google.com>
  */
 
 #ifndef _PIXEL_GPU_DVFS_H_
 #define _PIXEL_GPU_DVFS_H_
+
+/* Clocks & domains */
+
+/**
+ * enum gpu_dvfs_clk_index - GPU clock & power domains
+ *
+ * Stores the list of clocks on the GPU.
+ */
+enum gpu_dvfs_clk_index {
+	/**
+	 * &GPU_DVFS_CLK_TOP_LEVEL: Top level domain
+	 *
+	 * Corresponds to the domain which comprises the Job Manager, L2 cache
+	 * and Tiler.
+	 */
+	GPU_DVFS_CLK_TOP_LEVEL = 0,
+
+	/**
+	 * &GPU_DVFS_CLK_SHADERS: Shader stack domain
+	 *
+	 * Corresponds to the domain clocking and powering the GPU shader
+	 * cores.
+	 */
+	GPU_DVFS_CLK_SHADERS,
+
+	/* All clock indices should be above this line */
+	GPU_DVFS_CLK_COUNT,
+};
+
+/**
+ * struct gpu_dvfs_clk - Stores data for a GPU clock
+ *
+ * @index:    &gpu_dvfs_clk_index for this clock
+ * @cal_id:   ID for this clock domain. Set via DT.
+ * @notifier: &blocking_notifier_head for reporting frequency changes on this clock.
+ */
+struct gpu_dvfs_clk {
+	enum gpu_dvfs_clk_index index;
+	int cal_id;
+	struct blocking_notifier_head notifier;
+};
 
 /* Utilization */
 
@@ -117,8 +158,8 @@ struct gpu_dvfs_metrics_uid_stats {
 	struct gpu_dvfs_opp_metrics *tis_stats;
 };
 
-void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, bool power_on);
-void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool power_state);
+void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_level,
+	bool power_state);
 void gpu_dvfs_metrics_job_start(struct kbase_jd_atom *atom);
 void gpu_dvfs_metrics_job_end(struct kbase_jd_atom *atom);
 int gpu_dvfs_metrics_init(struct kbase_device *kbdev);

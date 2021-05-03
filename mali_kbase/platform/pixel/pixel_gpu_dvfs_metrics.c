@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright 2020 Google LLC.
+ * Copyright 2020-2021 Google LLC.
  *
  * Author: Sidath Senanayake <sidaths@google.com>
  */
@@ -9,6 +9,7 @@
 #ifdef CONFIG_OF
 #include <linux/of.h>
 #endif
+#include <linux/clk.h>
 #include <trace/events/power.h>
 
 /* SOC includes */
@@ -19,37 +20,92 @@
 /* Mali core includes */
 #include <mali_kbase.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
-#include <mali_power_gpu_frequency_trace.h>
 
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
 #include "pixel_gpu_dvfs.h"
 
+static void *enumerate_gpu_clk(struct kbase_device *kbdev, unsigned int index)
+{
+	struct pixel_context *pc = kbdev->platform_context;
+
+	if (index < GPU_DVFS_CLK_COUNT)
+		return &(pc->dvfs.clks[index]);
+	else
+		return NULL;
+}
+
+static unsigned long get_gpu_clk_rate(struct kbase_device *kbdev, void *gpu_clk_handle)
+{
+	struct pixel_context *pc = kbdev->platform_context;
+	struct gpu_dvfs_clk *clk = gpu_clk_handle;
+
+	if (clk->index < GPU_DVFS_CLK_COUNT)
+		return pc->dvfs.table[pc->dvfs.level_target].clk[clk->index] * 1000;
+
+	WARN_ONCE(1, "Clock rate requested for invalid clock index: %u\n", clk->index);
+	return 0;
+}
+
+static int gpu_clk_notifier_register(struct kbase_device *kbdev, void *gpu_clk_handle,
+	struct notifier_block *nb)
+{
+	struct gpu_dvfs_clk *clk = gpu_clk_handle;
+
+	return blocking_notifier_chain_register(&clk->notifier, nb);
+}
+
+static void gpu_clk_notifier_unregister(struct kbase_device *kbdev, void *gpu_clk_handle,
+	struct notifier_block *nb)
+{
+	struct gpu_dvfs_clk *clk = gpu_clk_handle;
+
+	blocking_notifier_chain_unregister(&clk->notifier, nb);
+}
+
+struct kbase_clk_rate_trace_op_conf pixel_clk_rate_trace_ops = {
+	.get_gpu_clk_rate = get_gpu_clk_rate,
+	.enumerate_gpu_clk = enumerate_gpu_clk,
+	.gpu_clk_notifier_register = gpu_clk_notifier_register,
+	.gpu_clk_notifier_unregister = gpu_clk_notifier_unregister,
+};
 
 /**
  * gpu_dvfs_metrics_trace_clock() - Emits trace events corresponding to a change in GPU clocks.
  *
- * @kbdev:    The &struct kbase_device for the GPU.
- * @power_on: Whether the GPU is currently powered on or not.
+ * @kbdev:       The &struct kbase_device for the GPU.
+ * @old_level:   The level the GPU has just been moved from.
+ * @new_level:   The level the GPU has just been moved to.
+ * @power_state: The current GPU power state.
  */
-void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, bool power_on)
+static void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, int old_level, int new_level,
+	bool power_state)
 {
 	struct pixel_context *pc = kbdev->platform_context;
+	struct kbase_gpu_clk_notifier_data nd;
+	int c;
 	int proc = raw_smp_processor_id();
-	int gpu0 = 0;
-	int gpu1 = 0;
+	int clks[GPU_DVFS_CLK_COUNT];
 
-	if (power_on) {
-		gpu0 = cal_dfs_get_rate(pc->dvfs.gpu0_cal_id);
-		gpu1 = cal_dfs_get_rate(pc->dvfs.gpu1_cal_id);
+	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
+		clks[c] = 0;
+
+		if (power_state) {
+			clks[c] = pc->dvfs.table[new_level].clk[c];
+
+			nd.gpu_clk_handle = &(pc->dvfs.clks[c]);
+			nd.old_rate = pc->dvfs.table[old_level].clk[c] * 1000;
+			nd.new_rate = pc->dvfs.table[new_level].clk[c] * 1000;
+			blocking_notifier_call_chain(&pc->dvfs.clks[c].notifier,
+				POST_RATE_CHANGE, &nd);
+		}
+
 	}
 
-	trace_clock_set_rate("gpu0", gpu0, proc);
-	trace_clock_set_rate("gpu1", gpu1, proc);
-
-	trace_gpu_frequency(gpu0, 0);
-	trace_gpu_frequency(gpu1, 1);
+	/* TODO: Remove reporting clocks this way when we transition to Perfetto */
+	trace_clock_set_rate("gpu0", clks[GPU_DVFS_CLK_TOP_LEVEL], proc);
+	trace_clock_set_rate("gpu1", clks[GPU_DVFS_CLK_SHADERS], proc);
 }
 
 /**
@@ -94,20 +150,21 @@ static void gpu_dvfs_metrics_uid_level_change(struct kbase_device *kbdev, u64 ev
  * gpu_dvfs_metrics_update() - Updates GPU metrics on level or power change.
  *
  * @kbdev:       The &struct kbase_device for the GPU.
- * @next_level:  The level that the GPU is about to move to. Can be the same as the current level.
+ * @old_level:   The level that the GPU has just moved from. Can be the same as &new_level.
+ * @new_level:   The level that the GPU has just moved to. Can be the same as &old_level. This
+ *               parameter is ignored if &power_state is false.
  * @power_state: The current power state of the GPU. Can be the same as the current power state.
  *
  * This function should be called (1) right after a change in power state of the GPU, or (2) just
- * prior to changing the level of a powered on GPU. It will update the metrics for each of the GPU
+ * after changing the level of a powered on GPU. It will update the metrics for each of the GPU
  * DVFS level metrics and the power metrics as appropriate.
  *
  * Context: Expects the caller to hold the DVFS lock.
  */
-void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool power_state)
+void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_level,
+	bool power_state)
 {
 	struct pixel_context *pc = kbdev->platform_context;
-	int level = pc->dvfs.level;
-
 	const u64 prev = pc->dvfs.metrics.last_time;
 	u64 curr = ktime_get_ns();
 
@@ -116,10 +173,10 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
 	if (pc->dvfs.metrics.last_power_state) {
 		if (power_state) {
 			/* Power state was ON and is not changing */
-			if (level != next_level) {
-				pc->dvfs.table[next_level].metrics.entry_count++;
-				pc->dvfs.table[next_level].metrics.time_last_entry = curr;
-				gpu_dvfs_metrics_transtab_entry(pc, level, next_level)++;
+			if (old_level != new_level) {
+				pc->dvfs.table[new_level].metrics.entry_count++;
+				pc->dvfs.table[new_level].metrics.time_last_entry = curr;
+				gpu_dvfs_metrics_transtab_entry(pc, old_level, new_level)++;
 				gpu_dvfs_metrics_uid_level_change(kbdev, curr);
 			}
 		} else {
@@ -128,7 +185,7 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
 			pc->pm.power_off_metrics.time_last_entry = curr;
 		}
 
-		pc->dvfs.table[level].metrics.time_total += (curr - prev);
+		pc->dvfs.table[old_level].metrics.time_total += (curr - prev);
 		pc->pm.power_on_metrics.time_total += (curr - prev);
 
 	} else {
@@ -137,13 +194,13 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
 			pc->pm.power_on_metrics.entry_count++;
 			pc->pm.power_on_metrics.time_last_entry = curr;
 
-			if (pc->dvfs.metrics.last_level != next_level) {
+			if (pc->dvfs.metrics.last_level != new_level) {
 				/* Level was changed while the GPU was powered off, and that change
 				 * is being reflected now.
 				 */
-				pc->dvfs.table[next_level].metrics.entry_count++;
-				pc->dvfs.table[next_level].metrics.time_last_entry = curr;
-				gpu_dvfs_metrics_transtab_entry(pc, level, next_level)++;
+				pc->dvfs.table[new_level].metrics.entry_count++;
+				pc->dvfs.table[new_level].metrics.time_last_entry = curr;
+				gpu_dvfs_metrics_transtab_entry(pc, old_level, new_level)++;
 			}
 		}
 
@@ -152,7 +209,9 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int next_level, bool po
 
 	pc->dvfs.metrics.last_power_state = power_state;
 	pc->dvfs.metrics.last_time = curr;
-	pc->dvfs.metrics.last_level = next_level;
+	pc->dvfs.metrics.last_level = new_level;
+
+	gpu_dvfs_metrics_trace_clock(kbdev, old_level, new_level, power_state);
 }
 
 /**
@@ -377,6 +436,7 @@ void gpu_dvfs_kctx_term(struct kbase_context *kctx)
 int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
+	int c;
 
 	mutex_lock(&pc->dvfs.lock);
 
@@ -393,6 +453,9 @@ int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
 		pc->dvfs.metrics.last_time;
 
 	mutex_unlock(&pc->dvfs.lock);
+
+	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++)
+		BLOCKING_INIT_NOTIFIER_HEAD(&pc->dvfs.clks[c].notifier);
 
 	/* Initialize per-UID metrics */
 	INIT_LIST_HEAD(&pc->dvfs.metrics.uid_stats_list);

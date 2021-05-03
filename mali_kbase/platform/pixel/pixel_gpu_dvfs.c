@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright 2020 Google LLC.
+ * Copyright 2020-2021 Google LLC.
  *
  * Author: Sidath Senanayake <sidaths@google.com>
  */
@@ -43,6 +43,7 @@ static struct gpu_dvfs_opp gpu_dvfs_table[DVFS_TABLE_ROW_MAX];
 static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 {
 	struct pixel_context *pc = kbdev->platform_context;
+	int c;
 
 	lockdep_assert_held(&pc->dvfs.lock);
 
@@ -52,12 +53,14 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 		gpu_dvfs_qos_set(kbdev, next_level);
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
-	gpu_dvfs_metrics_update(kbdev, next_level, true);
-
 	mutex_lock(&pc->pm.domain->access_lock);
-	cal_dfs_set_rate(pc->dvfs.gpu0_cal_id, pc->dvfs.table[next_level].clk0);
-	cal_dfs_set_rate(pc->dvfs.gpu1_cal_id, pc->dvfs.table[next_level].clk1);
+
+	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++)
+		cal_dfs_set_rate(pc->dvfs.clks[c].cal_id, pc->dvfs.table[next_level].clk[c]);
+
 	mutex_unlock(&pc->pm.domain->access_lock);
+
+	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, next_level, true);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_QOS
 	/* If we are clocking down, update QOS frequencies after GPU frequencies */
@@ -66,8 +69,6 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
 	pc->dvfs.level = next_level;
-
-	gpu_dvfs_metrics_trace_clock(kbdev, true);
 
 	return 0;
 }
@@ -190,12 +191,12 @@ void gpu_dvfs_event_power_on(struct kbase_device *kbdev)
 	if (pc->dvfs.level_target != pc->dvfs.level)
 		gpu_dvfs_select_level(kbdev);
 	else
-		gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, true);
+		gpu_dvfs_metrics_update(kbdev, pc->dvfs.level,
+			pc->dvfs.level_target, true);
+
 	mutex_unlock(&pc->dvfs.lock);
 
 	cancel_delayed_work(&pc->dvfs.clockdown_work);
-
-	gpu_dvfs_metrics_trace_clock(kbdev, true);
 }
 
 /**
@@ -212,13 +213,11 @@ void gpu_dvfs_event_power_off(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 
 	mutex_lock(&pc->dvfs.lock);
-	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, false);
+	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, 0, false);
 	mutex_unlock(&pc->dvfs.lock);
 
 	queue_delayed_work(pc->dvfs.clockdown_wq, &pc->dvfs.clockdown_work,
 		pc->dvfs.clockdown_hysteresis);
-
-	gpu_dvfs_metrics_trace_clock(kbdev, false);
 }
 
 /**
@@ -416,45 +415,38 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	struct device_node *np = kbdev->dev->of_node;
 
-	int i, idx;
+	int i, idx, c;
 
 	int of_data_int_array[OF_DATA_NUM_MAX];
 	int dvfs_table_row_num = 0, dvfs_table_col_num = 0;
 	int dvfs_table_size = 0;
 
-	struct dvfs_rate_volt gpu0_vf_map[16];
-	struct dvfs_rate_volt gpu1_vf_map[16];
-	int gpu0_level_count, gpu1_level_count;
+	struct dvfs_rate_volt vf_map[GPU_DVFS_CLK_COUNT][16];
+	int level_count[GPU_DVFS_CLK_COUNT];
 
 	int scaling_level_max = -1, scaling_level_min = -1;
 	int scaling_freq_max_devicetree = INT_MAX;
 	int scaling_freq_min_devicetree = 0;
 	int scaling_freq_min_compute = 0;
 
-	bool use_asv_v1;
+	bool use_asv_v1 = false;
 
 	/* Get frequency -> voltage mapping */
-	gpu0_level_count = cal_dfs_get_lv_num(pc->dvfs.gpu0_cal_id);
-	gpu1_level_count = cal_dfs_get_lv_num(pc->dvfs.gpu1_cal_id);
-
-	if (!cal_dfs_get_rate_asv_table(pc->dvfs.gpu0_cal_id, gpu0_vf_map)) {
-		dev_err(kbdev->dev, "failed to get gpu0 ASV table\n");
-		goto err;
-	}
-
-	if (!cal_dfs_get_rate_asv_table(pc->dvfs.gpu1_cal_id, gpu1_vf_map)) {
-		dev_err(kbdev->dev, "failed to get gpu1 ASV table\n");
-		goto err;
+	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
+		level_count[c] = cal_dfs_get_lv_num(pc->dvfs.clks[c].cal_id);
+		if (!cal_dfs_get_rate_asv_table(pc->dvfs.clks[c].cal_id, vf_map[c])) {
+			dev_err(kbdev->dev, "failed to get gpu%d ASV table\n", c);
+			goto err;
+		}
 	}
 
 	/* We detect which ASV table the GPU is running by checking which
 	 * operating points are available from ECT. We check for 202MHz on the
 	 * GPU shader cores as this is only available in ASV v0.3 and later.
 	 */
-	if (find_voltage_for_freq(kbdev, 202000, NULL, gpu1_vf_map, gpu1_level_count))
+	if (find_voltage_for_freq(kbdev, 202000, NULL, vf_map[GPU_DVFS_CLK_SHADERS],
+		level_count[GPU_DVFS_CLK_SHADERS]))
 		use_asv_v1 = true;
-	else
-		use_asv_v1 = false;
 
 	/* Get size of DVFS table data from device tree */
 	if (use_asv_v1) {
@@ -497,11 +489,13 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 		idx = i * dvfs_table_col_num;
 
 		/* Read raw data from device tree table */
-		gpu_dvfs_table[i].clk0         = of_data_int_array[idx + 0];
-		gpu_dvfs_table[i].clk1         = of_data_int_array[idx + 1];
+		gpu_dvfs_table[i].clk[GPU_DVFS_CLK_TOP_LEVEL] = of_data_int_array[idx + 0];
+		gpu_dvfs_table[i].clk[GPU_DVFS_CLK_SHADERS]   = of_data_int_array[idx + 1];
+
 		gpu_dvfs_table[i].util_min     = of_data_int_array[idx + 2];
 		gpu_dvfs_table[i].util_max     = of_data_int_array[idx + 3];
 		gpu_dvfs_table[i].hysteresis   = of_data_int_array[idx + 4];
+
 		gpu_dvfs_table[i].qos.int_min  = of_data_int_array[idx + 5];
 		gpu_dvfs_table[i].qos.mif_min  = of_data_int_array[idx + 6];
 		gpu_dvfs_table[i].qos.cpu0_min = of_data_int_array[idx + 7];
@@ -513,34 +507,28 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 			gpu_dvfs_table[i].qos.cpu2_max = CPU_FREQ_MAX;
 
 		/* Update level locks */
-		if (gpu_dvfs_table[i].clk1 <= scaling_freq_max_devicetree)
+		if (gpu_dvfs_table[i].clk[GPU_DVFS_CLK_SHADERS] <= scaling_freq_max_devicetree)
 			if (scaling_level_max == -1)
 				scaling_level_max = i;
 
-		if (gpu_dvfs_table[i].clk1 >= scaling_freq_min_devicetree)
+		if (gpu_dvfs_table[i].clk[GPU_DVFS_CLK_SHADERS] >= scaling_freq_min_devicetree)
 			scaling_level_min = i;
 
-		if (gpu_dvfs_table[i].clk1 >= scaling_freq_min_compute)
+		if (gpu_dvfs_table[i].clk[GPU_DVFS_CLK_SHADERS] >= scaling_freq_min_compute)
 			pc->dvfs.level_scaling_compute_min = i;
 
 		/* Get and validate voltages from cal-if */
-		if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk0,
-				&(gpu_dvfs_table[i].vol0),
-				gpu0_vf_map, gpu0_level_count)) {
-			dev_err(kbdev->dev,
-				"Failed to find G3DL2 voltage for clock %u\n",
-				gpu_dvfs_table[i].clk0);
-			goto err;
+		for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
+			if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk[c],
+					&(gpu_dvfs_table[i].vol[c]),
+					vf_map[c], level_count[c])) {
+				dev_err(kbdev->dev,
+					"Failed to find voltage for clock %u frequency %u\n",
+					c, gpu_dvfs_table[i].clk[c]);
+				goto err;
+			}
 		}
 
-		if (find_voltage_for_freq(kbdev, gpu_dvfs_table[i].clk1,
-				&(gpu_dvfs_table[i].vol1),
-				gpu1_vf_map, gpu1_level_count)) {
-			dev_err(kbdev->dev,
-				"Failed to find G3DL2 voltage for clock %u\n",
-				gpu_dvfs_table[i].clk1);
-			goto err;
-		}
 	}
 
 	pc->dvfs.level_max = 0;
@@ -567,31 +555,26 @@ err:
  */
 static int gpu_dvfs_set_initial_level(struct kbase_device *kbdev)
 {
-	int level, ret;
+	int level, ret, c;
 	struct pixel_context *pc = kbdev->platform_context;
 
 	level = pc->dvfs.level_min;
 
 	dev_dbg(kbdev->dev,
 		"Attempting to set GPU boot clocks to (gpu0: %d, gpu1: %d)\n",
-		pc->dvfs.table[level].clk0, pc->dvfs.table[level].clk1);
+		pc->dvfs.table[level].clk[GPU_DVFS_CLK_TOP_LEVEL],
+		pc->dvfs.table[level].clk[GPU_DVFS_CLK_SHADERS]);
 
 	mutex_lock(&pc->pm.domain->access_lock);
 
-	ret = cal_dfs_set_rate(pc->dvfs.gpu0_cal_id, pc->dvfs.table[level].clk0);
-	if (ret) {
-		dev_err(kbdev->dev,
-			"Failed to set boot G3DL2 clock to %d (err: %d)\n",
-			pc->dvfs.table[level].clk0, ret);
-		goto done;
-	}
-
-	ret = cal_dfs_set_rate(pc->dvfs.gpu1_cal_id, pc->dvfs.table[level].clk1);
-	if (ret) {
-		dev_err(kbdev->dev,
-			"Failed to set boot G3D clock to %d\n (err: %d)",
-			pc->dvfs.table[level].clk1, ret);
-		goto done;
+	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
+		ret = cal_dfs_set_rate(pc->dvfs.clks[c].cal_id, pc->dvfs.table[level].clk[c]);
+		if (ret) {
+			dev_err(kbdev->dev,
+				"Failed to set boot frequency %d on clock index %d (err: %d)\n",
+				pc->dvfs.table[level].clk[c], c, ret);
+			goto done;
+		}
 	}
 
 done:
@@ -625,8 +608,10 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	}
 
 	/* Get data from DT */
-	if (of_property_read_u32(np, "gpu0_cmu_cal_id", &pc->dvfs.gpu0_cal_id) ||
-		of_property_read_u32(np, "gpu1_cmu_cal_id", &pc->dvfs.gpu1_cal_id)) {
+	if (of_property_read_u32(np, "gpu0_cmu_cal_id",
+		&pc->dvfs.clks[GPU_DVFS_CLK_TOP_LEVEL].cal_id) ||
+	    of_property_read_u32(np, "gpu1_cmu_cal_id",
+		&pc->dvfs.clks[GPU_DVFS_CLK_SHADERS].cal_id)) {
 		ret = -EINVAL;
 		goto done;
 	}
