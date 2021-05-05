@@ -16,6 +16,7 @@
 #endif
 #include <linux/fs.h>
 #include <linux/io.h>
+#include <linux/kobject.h>
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -43,7 +44,6 @@
  * We specify which group we want to use for this here.
  */
 #define MGM_IMPORTED_MEMORY_GROUP_ID (MEMORY_GROUP_MANAGER_NR_GROUPS - 1)
-
 
 #define INVALID_GROUP_ID(group_id) \
 	(WARN_ON((group_id) < 0) || \
@@ -100,6 +100,7 @@ struct mgm_group {
  * @groups: To keep track of the number of allocated pages of all groups
  * @dev: device attached
  * @pt_handle: Link to SLC partition data
+ * @kobj: &sruct kobject used for linking to pixel_stats_sysfs node
  * @mgm_debugfs_root: debugfs root directory of memory group manager
  *
  * This structure allows page allocation information to be displayed via
@@ -109,6 +110,7 @@ struct mgm_groups {
 	struct mgm_group groups[MEMORY_GROUP_MANAGER_NR_GROUPS];
 	struct device *dev;
 	struct pt_handle *pt_handle;
+	struct kobject kobj;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *mgm_debugfs_root;
 #endif
@@ -250,6 +252,93 @@ static int mgm_debugfs_init(struct mgm_groups *mgm_data)
 }
 
 #endif /* CONFIG_DEBUG_FS */
+
+/*
+ * Pixel Stats sysfs
+ */
+extern struct kobject *pixel_stat_gpu_kobj;
+
+#define MGM_ATTR_RO(_name) \
+	static struct kobj_attribute _name##_attr = __ATTR_RO(_name)
+
+static ssize_t total_page_count_show(struct kobject *kobj,
+				struct kobj_attribute *attr, char *buf)
+{
+	struct mgm_groups *data = container_of(kobj, struct mgm_groups, kobj);
+	int i, pages = 0;
+
+	for (i = 0; i < MEMORY_GROUP_MANAGER_NR_GROUPS; i++)
+		pages += atomic_read(&data->groups[i].size) + atomic_read(&data->groups[i].lp_size);
+
+	return sysfs_emit(buf, "%d\n", pages);
+}
+MGM_ATTR_RO(total_page_count);
+
+static ssize_t small_page_count_show(struct kobject *kobj,
+				struct kobj_attribute *attr, char *buf)
+{
+	struct mgm_groups *data = container_of(kobj, struct mgm_groups, kobj);
+	int i, pages = 0;
+
+	for (i = 0; i < MEMORY_GROUP_MANAGER_NR_GROUPS; i++)
+		pages += atomic_read(&data->groups[i].size);
+
+	return sysfs_emit(buf, "%d\n", pages);
+}
+MGM_ATTR_RO(small_page_count);
+
+static ssize_t large_page_count_show(struct kobject *kobj,
+				struct kobj_attribute *attr, char *buf)
+{
+	struct mgm_groups *data = container_of(kobj, struct mgm_groups, kobj);
+	int i, pages = 0;
+
+	for (i = 0; i < MEMORY_GROUP_MANAGER_NR_GROUPS; i++)
+		pages += atomic_read(&data->groups[i].lp_size);
+
+	return sysfs_emit(buf, "%d\n", pages);
+}
+MGM_ATTR_RO(large_page_count);
+
+static struct attribute *mgm_attrs[] = {
+	&total_page_count_attr.attr,
+	&small_page_count_attr.attr,
+	&large_page_count_attr.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(mgm);
+
+static void mgm_kobj_release(struct kobject *kobj)
+{
+	/* Nothing to be done */
+}
+
+static struct kobj_type mgm_ktype = {
+	.release = mgm_kobj_release,
+	.sysfs_ops = &kobj_sysfs_ops,
+	.default_groups = mgm_groups,
+};
+
+static int mgm_sysfs_init(struct mgm_groups *data)
+{
+	int ret;
+	struct kobject *pixel_gpu_stat = pixel_stat_gpu_kobj;
+
+	WARN_ON(pixel_gpu_stat == NULL);
+
+	ret = kobject_init_and_add(&data->kobj, &mgm_ktype, pixel_gpu_stat, "mem");
+	if (ret) {
+		kobject_put(&data->kobj);
+		return ret;
+	}
+
+	return 0;
+}
+
+static void mgm_sysfs_term(struct mgm_groups *data)
+{
+	kobject_put(&data->kobj);
+}
 
 #define ORDER_SMALL_PAGE 0
 #define ORDER_LARGE_PAGE 9
@@ -528,7 +617,12 @@ static int mgm_initialize_data(struct mgm_groups *mgm_data)
 	mgm_data->groups[MGM_RESERVED_GROUP_ID].state = MGM_GROUP_STATE_ENABLED;
 
 	ret = mgm_debugfs_init(mgm_data);
+	if (ret)
+		goto out;
 
+	ret = mgm_sysfs_init(mgm_data);
+
+out:
 	return ret;
 }
 
@@ -572,6 +666,7 @@ static void mgm_term_data(struct mgm_groups *data)
 	pt_client_unregister(data->pt_handle);
 
 	mgm_debugfs_term(data);
+	mgm_sysfs_term(data);
 }
 
 static void mgm_initialize_g3d_regs()
