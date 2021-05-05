@@ -307,7 +307,7 @@ static u32 get_nr_active_csgs(struct kbase_device *kbdev)
  *
  * Return: the interface is actively engaged flag.
  */
-bool csgs_active(struct kbase_device *kbdev)
+static bool csgs_active(struct kbase_device *kbdev)
 {
 	u32 nr_active_csgs;
 
@@ -3748,7 +3748,7 @@ exit_no_schedule_unlock:
 	kbase_reset_gpu_allow(kbdev);
 }
 
-int wait_csg_slots_suspend(struct kbase_device *kbdev,
+static int wait_csg_slots_suspend(struct kbase_device *kbdev,
 			   const unsigned long *slot_mask,
 			   unsigned int timeout_ms)
 {

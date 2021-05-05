@@ -76,6 +76,7 @@ struct kbase_hwcnt_backend_csf_if_fw_ring_buf {
  * @buf_bytes:	        The size in bytes for each buffer in the ring buffer.
  * @clk_cnt:            The number of clock domains in the system.
  *                      The maximum is 64.
+ * @clk_enable_map:     Bitmask of enabled clocks
  * @rate_listener:      Clock rate listener callback state.
  * @ccswe_shader_cores: Shader cores cycle count software estimator.
  */
@@ -116,8 +117,8 @@ static void kbasep_hwcnt_backend_csf_if_fw_on_freq_change(
 /**
  * kbasep_hwcnt_backend_csf_if_fw_cc_enable() - Enable cycle count tracking
  *
- * @fw_ctx:     Non-NULL pointer to CSF firmware interface context.
- * @enable_map: Non-NULL pointer to enable map specifying enabled counters.
+ * @fw_ctx:         Non-NULL pointer to CSF firmware interface context.
+ * @clk_enable_map: Non-NULL pointer to enable map specifying enabled counters.
  */
 static void kbasep_hwcnt_backend_csf_if_fw_cc_enable(
 	struct kbase_hwcnt_backend_csf_if_fw_ctx *fw_ctx, u64 clk_enable_map)
@@ -667,9 +668,9 @@ static void kbasep_hwcnt_backend_csf_if_fw_get_gpu_cycle_count(
 }
 
 /**
- * @brief Destroy a CSF FW interface context.
+ * kbasep_hwcnt_backedn_csf_if_fw_cts_destroy() - Destroy a CSF FW interface context.
  *
- * @param[in,out] fw_ctx Pointer to context to destroy.
+ * @fw_ctx: Pointer to context to destroy.
  */
 static void kbasep_hwcnt_backend_csf_if_fw_ctx_destroy(
 	struct kbase_hwcnt_backend_csf_if_fw_ctx *fw_ctx)

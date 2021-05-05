@@ -238,7 +238,7 @@ struct kbase_hwcnt_backend_csf {
 	struct work_struct hwc_threshold_work;
 };
 
-bool kbasep_hwcnt_backend_csf_backend_exists(
+static bool kbasep_hwcnt_backend_csf_backend_exists(
 	struct kbase_hwcnt_backend_csf_info *csf_info)
 {
 	WARN_ON(!csf_info);

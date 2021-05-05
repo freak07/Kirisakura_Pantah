@@ -168,7 +168,7 @@ static int kbase_ts_converter_init(
  *
  * Return: The CPU timestamp.
  */
-void kbase_ts_converter_convert(
+static void kbase_ts_converter_convert(
 	const struct kbase_ts_converter *self,
 	u64 *gpu_ts)
 {
