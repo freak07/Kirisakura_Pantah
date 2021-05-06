@@ -2163,7 +2163,7 @@ void kbase_event_wakeup(struct kbase_context *kctx)
 	KBASE_DEBUG_ASSERT(kctx);
 	dev_dbg(kctx->kbdev->dev, "Waking event queue for context %p\n",
 		(void *)kctx);
-	wake_up_interruptible_sync(&kctx->event_queue);
+	wake_up_interruptible(&kctx->event_queue);
 }
 
 KBASE_EXPORT_TEST_API(kbase_event_wakeup);
