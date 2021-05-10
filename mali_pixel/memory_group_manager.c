@@ -10,12 +10,13 @@
 /* Turn this on for more debug */
 //#define DEBUG
 
+
 #include <linux/atomic.h>
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
 #endif
 #include <linux/fs.h>
-#include <linux/io.h>
+#include <linux/kobject.h>
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -43,7 +44,6 @@
  * We specify which group we want to use for this here.
  */
 #define MGM_IMPORTED_MEMORY_GROUP_ID (MEMORY_GROUP_MANAGER_NR_GROUPS - 1)
-
 
 #define INVALID_GROUP_ID(group_id) \
 	(WARN_ON((group_id) < 0) || \
@@ -100,6 +100,7 @@ struct mgm_group {
  * @groups: To keep track of the number of allocated pages of all groups
  * @dev: device attached
  * @pt_handle: Link to SLC partition data
+ * @kobj: &sruct kobject used for linking to pixel_stats_sysfs node
  * @mgm_debugfs_root: debugfs root directory of memory group manager
  *
  * This structure allows page allocation information to be displayed via
@@ -109,10 +110,15 @@ struct mgm_groups {
 	struct mgm_group groups[MEMORY_GROUP_MANAGER_NR_GROUPS];
 	struct device *dev;
 	struct pt_handle *pt_handle;
+	struct kobject kobj;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *mgm_debugfs_root;
 #endif
 };
+
+/*
+ * DebugFS
+ */
 
 #ifdef CONFIG_DEBUG_FS
 
@@ -168,9 +174,24 @@ static void mgm_debugfs_term(struct mgm_groups *data)
 }
 
 #define MGM_DEBUGFS_GROUP_NAME_MAX 10
+
+/*
+ * attribs - An array of the debug fs files present for each group
+ */
+static struct {
+	const char *name;
+	const struct file_operations *fops;
+} attribs[] = {
+	{ "state", &fops_mgm_state},
+	{ "size", &fops_mgm_size},
+	{ "lp_size", &fops_mgm_lp_size},
+	{ "insert_pfn", &fops_mgm_insert_pfn},
+	{ "update_gpu_pte", &fops_mgm_update_gpu_pte},
+};
+
 static int mgm_debugfs_init(struct mgm_groups *mgm_data)
 {
-	int i;
+	int i, j;
 	struct dentry *e, *g;
 	char debugfs_group_name[MGM_DEBUGFS_GROUP_NAME_MAX];
 
@@ -199,46 +220,16 @@ static int mgm_debugfs_init(struct mgm_groups *mgm_data)
 			goto remove_debugfs;
 		}
 
-		e = debugfs_create_file("state", 0444, g, &mgm_data->groups[i],
-				&fops_mgm_state);
-		if (IS_ERR(e)) {
-			dev_err(mgm_data->dev,
-				"debugfs: Couldn't create state[%d]\n", i);
-			goto remove_debugfs;
-		}
+		for (j=0; j < ARRAY_SIZE(attribs); j++) {
+			e = debugfs_create_file(attribs[j].name, 0444, g,
+				&mgm_data->groups[i], attribs[j].fops);
 
-
-		e = debugfs_create_file("size", 0444, g, &mgm_data->groups[i],
-				&fops_mgm_size);
-		if (IS_ERR(e)) {
-			dev_err(mgm_data->dev,
-				"debugfs: Couldn't create size[%d]\n", i);
-			goto remove_debugfs;
-		}
-
-		e = debugfs_create_file("lp_size", 0444, g,
-				&mgm_data->groups[i], &fops_mgm_lp_size);
-		if (IS_ERR(e)) {
-			dev_err(mgm_data->dev,
-				"debugfs: Couldn't create lp_size[%d]\n", i);
-			goto remove_debugfs;
-		}
-
-		e = debugfs_create_file("insert_pfn", 0444, g,
-				&mgm_data->groups[i], &fops_mgm_insert_pfn);
-		if (IS_ERR(e)) {
-			dev_err(mgm_data->dev,
-				"debugfs: Couldn't create insert_pfn[%d]\n", i);
-			goto remove_debugfs;
-		}
-
-		e = debugfs_create_file("update_gpu_pte", 0444, g,
-				&mgm_data->groups[i], &fops_mgm_update_gpu_pte);
-		if (IS_ERR(e)) {
-			dev_err(mgm_data->dev,
-				"debugfs: Couldn't create update_gpu_pte[%d]\n",
-				i);
-			goto remove_debugfs;
+			if (IS_ERR(e)) {
+				dev_err(mgm_data->dev,
+					"debugfs: Couldn't create %s[%d]\n",
+					attribs[j].name, i);
+				goto remove_debugfs;
+			}
 		}
 	}
 
@@ -261,6 +252,93 @@ static int mgm_debugfs_init(struct mgm_groups *mgm_data)
 }
 
 #endif /* CONFIG_DEBUG_FS */
+
+/*
+ * Pixel Stats sysfs
+ */
+extern struct kobject *pixel_stat_gpu_kobj;
+
+#define MGM_ATTR_RO(_name) \
+	static struct kobj_attribute _name##_attr = __ATTR_RO(_name)
+
+static ssize_t total_page_count_show(struct kobject *kobj,
+				struct kobj_attribute *attr, char *buf)
+{
+	struct mgm_groups *data = container_of(kobj, struct mgm_groups, kobj);
+	int i, pages = 0;
+
+	for (i = 0; i < MEMORY_GROUP_MANAGER_NR_GROUPS; i++)
+		pages += atomic_read(&data->groups[i].size) + atomic_read(&data->groups[i].lp_size);
+
+	return sysfs_emit(buf, "%d\n", pages);
+}
+MGM_ATTR_RO(total_page_count);
+
+static ssize_t small_page_count_show(struct kobject *kobj,
+				struct kobj_attribute *attr, char *buf)
+{
+	struct mgm_groups *data = container_of(kobj, struct mgm_groups, kobj);
+	int i, pages = 0;
+
+	for (i = 0; i < MEMORY_GROUP_MANAGER_NR_GROUPS; i++)
+		pages += atomic_read(&data->groups[i].size);
+
+	return sysfs_emit(buf, "%d\n", pages);
+}
+MGM_ATTR_RO(small_page_count);
+
+static ssize_t large_page_count_show(struct kobject *kobj,
+				struct kobj_attribute *attr, char *buf)
+{
+	struct mgm_groups *data = container_of(kobj, struct mgm_groups, kobj);
+	int i, pages = 0;
+
+	for (i = 0; i < MEMORY_GROUP_MANAGER_NR_GROUPS; i++)
+		pages += atomic_read(&data->groups[i].lp_size);
+
+	return sysfs_emit(buf, "%d\n", pages);
+}
+MGM_ATTR_RO(large_page_count);
+
+static struct attribute *mgm_attrs[] = {
+	&total_page_count_attr.attr,
+	&small_page_count_attr.attr,
+	&large_page_count_attr.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(mgm);
+
+static void mgm_kobj_release(struct kobject *kobj)
+{
+	/* Nothing to be done */
+}
+
+static struct kobj_type mgm_ktype = {
+	.release = mgm_kobj_release,
+	.sysfs_ops = &kobj_sysfs_ops,
+	.default_groups = mgm_groups,
+};
+
+static int mgm_sysfs_init(struct mgm_groups *data)
+{
+	int ret;
+	struct kobject *pixel_gpu_stat = pixel_stat_gpu_kobj;
+
+	WARN_ON(pixel_gpu_stat == NULL);
+
+	ret = kobject_init_and_add(&data->kobj, &mgm_ktype, pixel_gpu_stat, "mem");
+	if (ret) {
+		kobject_put(&data->kobj);
+		return ret;
+	}
+
+	return 0;
+}
+
+static void mgm_sysfs_term(struct mgm_groups *data)
+{
+	kobject_put(&data->kobj);
+}
 
 #define ORDER_SMALL_PAGE 0
 #define ORDER_LARGE_PAGE 9
@@ -539,7 +617,12 @@ static int mgm_initialize_data(struct mgm_groups *mgm_data)
 	mgm_data->groups[MGM_RESERVED_GROUP_ID].state = MGM_GROUP_STATE_ENABLED;
 
 	ret = mgm_debugfs_init(mgm_data);
+	if (ret)
+		goto out;
 
+	ret = mgm_sysfs_init(mgm_data);
+
+out:
 	return ret;
 }
 
@@ -583,24 +666,14 @@ static void mgm_term_data(struct mgm_groups *data)
 	pt_client_unregister(data->pt_handle);
 
 	mgm_debugfs_term(data);
-}
-
-static void mgm_initialize_g3d_regs()
-{
-	/* In order to advertise the availability of ACE Lite (IO coherency) to
-	 * the GPU, we need to write a register in G3D. We write the value 1 to
-	 * indicate that ACE Lite is available.
-	 */
-	#define G3D_COHERENCY_FEATURES_REG (0x1c420400)
-	void __iomem *g3d_coherency_features;
-	g3d_coherency_features = ioremap(G3D_COHERENCY_FEATURES_REG, 4);
-	__raw_writel(0x1, g3d_coherency_features);
+	mgm_sysfs_term(data);
 }
 
 static int memory_group_manager_probe(struct platform_device *pdev)
 {
 	struct memory_group_manager_device *mgm_dev;
 	struct mgm_groups *mgm_data;
+	int ret;
 
 	mgm_dev = kzalloc(sizeof(*mgm_dev), GFP_KERNEL);
 	if (!mgm_dev)
@@ -623,13 +696,12 @@ static int memory_group_manager_probe(struct platform_device *pdev)
 	mgm_dev->data = mgm_data;
 	mgm_data->dev = &pdev->dev;
 
-	if (mgm_initialize_data(mgm_data)) {
+	ret = mgm_initialize_data(mgm_data);
+	if (ret) {
 		kfree(mgm_data);
 		kfree(mgm_dev);
-		return -ENOENT;
+		return ret;
 	}
-
-	mgm_initialize_g3d_regs();
 
 	platform_set_drvdata(pdev, mgm_dev);
 	dev_info(&pdev->dev, "Memory group manager probed successfully\n");

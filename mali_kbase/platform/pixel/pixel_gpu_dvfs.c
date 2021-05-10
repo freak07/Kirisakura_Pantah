@@ -355,9 +355,12 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation,
 	u32 util_gl_share, u32 util_cl_share[2])
 {
 	struct pixel_context *pc = kbdev->platform_context;
-	GPU_ATRACE_INT("GPU Utilization", utilisation);
-	GPU_ATRACE_INT("GPU Util % GL", util_gl_share);
-	GPU_ATRACE_INT("GPU Util % CL", util_cl_share[0] + util_cl_share[1]);
+	int proc = raw_smp_processor_id();
+
+	/* TODO (b/187175695): Report this data via a custom ftrace event instead */
+	trace_clock_set_rate("gpu_util", utilisation, proc);
+	trace_clock_set_rate("gpu_util_gl", util_gl_share, proc);
+	trace_clock_set_rate("gpu_util_cl", util_cl_share[0] + util_cl_share[1], proc);
 
 	atomic_set(&pc->dvfs.util, utilisation);
 	atomic_set(&pc->dvfs.util_gl, util_gl_share);

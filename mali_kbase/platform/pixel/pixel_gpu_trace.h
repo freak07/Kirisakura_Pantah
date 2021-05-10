@@ -61,27 +61,6 @@ TRACE_EVENT(gpu_power_state,
 	)
 );
 
-TRACE_EVENT(tracing_mark_write,
-	TP_PROTO(char type, int pid, const char *name, int value),
-	TP_ARGS(type, pid, name, value),
-	TP_STRUCT__entry(
-		__field(char, type)
-		__field(int, pid)
-		__string(name, name)
-		__field(int, value)
-	),
-	TP_fast_assign(
-		__entry->type = type;
-		__entry->pid = pid;
-		__assign_str(name, name);
-		__entry->value = value;
-	),
-	TP_printk("%c|%d|%s|%d",
-		__entry->type, __entry->pid, __get_str(name), __entry->value)
-);
-
-#define GPU_ATRACE_INT(name, value) trace_tracing_mark_write('C', current->tgid, name, value)
-
 #endif /* _TRACE_PIXEL_GPU_H */
 
 /* This part must be outside protection */
