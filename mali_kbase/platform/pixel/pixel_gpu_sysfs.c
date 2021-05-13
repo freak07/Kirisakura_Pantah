@@ -81,34 +81,30 @@ static ssize_t clock_info_show(struct device *dev, struct device_attribute *attr
 	/* Level lock status */
 
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-		"\nLEVEL LOCK STATUS\n");
+		"\nLEVEL LOCK STATUS\n"
+		" Type            | Min (kHz) | Max (kHz)\n"
+		" ----------------+-----------+-----------\n");
 
 	for (i = 0; i < GPU_DVFS_LEVEL_LOCK_COUNT; i++) {
 		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-			" Lock type %s\n",
+			" %-15s |",
 			gpu_dvfs_level_lock_names[i]);
 
-		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-			"  min clock              : ");
 		if (gpu_dvfs_level_lock_is_set(pc->dvfs.level_locks[i].level_min))
-			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d kHz\n",
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, " %-10d|",
 				pc->dvfs.table[pc->dvfs.level_locks[i].level_min].clk[GPU_DVFS_CLK_SHADERS]);
 		else
-			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "none set\n");
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, " -         |");
 
-		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-			"  max clock              : ");
 		if (gpu_dvfs_level_lock_is_set(pc->dvfs.level_locks[i].level_max))
-			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d kHz\n",
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, " %d\n",
 				pc->dvfs.table[pc->dvfs.level_locks[i].level_max].clk[GPU_DVFS_CLK_SHADERS]);
 		else
-			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "none set\n");
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, " -\n");
 	}
 
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-		" Effective scaling range\n"
-		"  min clock              : %d kHz\n"
-		"  max clock              : %d kHz\n",
+		" Effective Range | %-10d| %d\n",
 		pc->dvfs.table[pc->dvfs.level_scaling_min].clk[GPU_DVFS_CLK_SHADERS],
 		pc->dvfs.table[pc->dvfs.level_scaling_max].clk[GPU_DVFS_CLK_SHADERS]);
 
