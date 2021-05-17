@@ -240,6 +240,13 @@ enum gpu_dvfs_level_lock_type {
 	 */
 	GPU_DVFS_LEVEL_LOCK_COMPUTE,
 	/**
+	 * &GPU_DVFS_LEVEL_LOCK_HINT: Locks set by the usermode hints
+	 *
+	 * This lock is intended to be updated by usermode processes that want to influence the
+	 * GPU DVFS scaling range. For manual updates use &GPU_DVFS_LEVEL_LOCK_SYSFS instead.
+	 */
+	GPU_DVFS_LEVEL_LOCK_HINT,
+	/**
 	 * &GPU_DVFS_LEVEL_LOCK_SYSFS: Locks set by the user via sysfs
 	 *
 	 * This lock is manipulated by the user updating the scaling frequencies in the GPU's sysfs

@@ -129,8 +129,13 @@ static void gpu_dvfs_process_level_locks(struct kbase_device *kbdev)
  * @new_level_max: The new maximum level to enforce, or -1 to indicate no change.
  *
  * This function is called to update the levels imposed by a level lock. It validates the request
- * parameters, ensures that the lock type's min and max locks are in the correct order and then
- * calls &gpu_dvfs_process_level_locks to re-evaluate the effective scaling limits on the GPU.
+ * parameters, ensures that the lock type's min and max locks are in the correct order if both are
+ * specified and then calls &gpu_dvfs_process_level_locks to re-evaluate the effective scaling
+ * limits on the GPU.
+ *
+ * If the new limit results in locks being in the wrong order, the lock that is not being set will
+ * be reset. For example, if the existing max lock is 100MHz and this function is called to set the
+ * min lock to be 200Mhz, the max lock is reset.
  *
  * Context: Process context. Expects the caller to hold the DVFS lock.
  */
@@ -148,19 +153,19 @@ void gpu_dvfs_update_level_lock(struct kbase_device *kbdev,
 		if (new_level_min < new_level_max)
 			return;
 
-	/* Update the limits for the relevant level lock while ensuring correct ordering */
+	/* Update the limits for the relevant level lock. If the limits end up being in the wrong
+	 * order, invalidate the lock that is not being set.
+	 */
 	if (gpu_dvfs_level_lock_is_set(new_level_min)) {
 		curr->level_min = min(new_level_min, pc->dvfs.level_min);
-		if (gpu_dvfs_level_lock_is_set(curr->level_max))
-			curr->level_max = min(new_level_min,
-				curr->level_max);
+		if (curr->level_max > new_level_min)
+			curr->level_max = -1;
 	}
 
 	if (gpu_dvfs_level_lock_is_set(new_level_max)) {
 		curr->level_max = max(new_level_max, pc->dvfs.level_max);
-		if (gpu_dvfs_level_lock_is_set(curr->level_min))
-			curr->level_min = max(new_level_max,
-				curr->level_min);
+		if (curr->level_min < new_level_max)
+			curr->level_min = -1;
 	}
 
 	/* Identify when a limit is not really being set */

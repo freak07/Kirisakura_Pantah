@@ -16,6 +16,7 @@
 static const char *gpu_dvfs_level_lock_names[GPU_DVFS_LEVEL_LOCK_COUNT] = {
 	"devicetree",
 	"compute",
+	"hint",
 	"sysfs",
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
 	"thermal",
@@ -81,34 +82,30 @@ static ssize_t clock_info_show(struct device *dev, struct device_attribute *attr
 	/* Level lock status */
 
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-		"\nLEVEL LOCK STATUS\n");
+		"\nLEVEL LOCK STATUS\n"
+		" Type            | Min (kHz) | Max (kHz)\n"
+		" ----------------+-----------+-----------\n");
 
 	for (i = 0; i < GPU_DVFS_LEVEL_LOCK_COUNT; i++) {
 		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-			" Lock type %s\n",
+			" %-15s |",
 			gpu_dvfs_level_lock_names[i]);
 
-		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-			"  min clock              : ");
 		if (gpu_dvfs_level_lock_is_set(pc->dvfs.level_locks[i].level_min))
-			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d kHz\n",
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, " %-10d|",
 				pc->dvfs.table[pc->dvfs.level_locks[i].level_min].clk[GPU_DVFS_CLK_SHADERS]);
 		else
-			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "none set\n");
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, " -         |");
 
-		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-			"  max clock              : ");
 		if (gpu_dvfs_level_lock_is_set(pc->dvfs.level_locks[i].level_max))
-			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d kHz\n",
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, " %d\n",
 				pc->dvfs.table[pc->dvfs.level_locks[i].level_max].clk[GPU_DVFS_CLK_SHADERS]);
 		else
-			ret += scnprintf(buf + ret, PAGE_SIZE - ret, "none set\n");
+			ret += scnprintf(buf + ret, PAGE_SIZE - ret, " -\n");
 	}
 
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret,
-		" Effective scaling range\n"
-		"  min clock              : %d kHz\n"
-		"  max clock              : %d kHz\n",
+		" Effective Range | %-10d| %d\n",
 		pc->dvfs.table[pc->dvfs.level_scaling_min].clk[GPU_DVFS_CLK_SHADERS],
 		pc->dvfs.table[pc->dvfs.level_scaling_max].clk[GPU_DVFS_CLK_SHADERS]);
 
@@ -397,6 +394,94 @@ static ssize_t scaling_min_compute_freq_show(struct device *dev,
 		pc->dvfs.table[pc->dvfs.level_scaling_compute_min].clk[GPU_DVFS_CLK_SHADERS]);
 }
 
+static ssize_t hint_max_freq_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+	int sysfs_lock_level;
+
+	if (!pc)
+		return -ENODEV;
+
+	sysfs_lock_level = pc->dvfs.level_locks[GPU_DVFS_LEVEL_LOCK_HINT].level_max;
+	if (sysfs_lock_level < 0)
+		sysfs_lock_level = pc->dvfs.level_max;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+		pc->dvfs.table[sysfs_lock_level].clk[GPU_DVFS_CLK_SHADERS]);
+}
+
+static ssize_t hint_max_freq_store(struct device *dev, struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	int level, ret;
+	unsigned int clock;
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+
+	if (!pc)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &clock);
+	if (ret)
+		return -EINVAL;
+
+	level = get_level_from_clock(kbdev, clock);
+	if (level < 0)
+		return -EINVAL;
+
+	mutex_lock(&pc->dvfs.lock);
+	gpu_dvfs_update_level_lock(kbdev, GPU_DVFS_LEVEL_LOCK_HINT, -1, level);
+	gpu_dvfs_select_level(kbdev);
+	mutex_unlock(&pc->dvfs.lock);
+
+	return count;
+}
+
+static ssize_t hint_min_freq_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+	int sysfs_lock_level;
+
+	if (!pc)
+		return -ENODEV;
+
+	sysfs_lock_level = pc->dvfs.level_locks[GPU_DVFS_LEVEL_LOCK_HINT].level_min;
+	if (sysfs_lock_level < 0)
+		sysfs_lock_level = pc->dvfs.level_min;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+		pc->dvfs.table[sysfs_lock_level].clk[GPU_DVFS_CLK_SHADERS]);
+}
+
+static ssize_t hint_min_freq_store(struct device *dev, struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	int ret, level;
+	unsigned int clock;
+	struct kbase_device *kbdev = dev->driver_data;
+	struct pixel_context *pc = kbdev->platform_context;
+
+	if (!pc)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &clock);
+	if (ret)
+		return -EINVAL;
+
+	level = get_level_from_clock(kbdev, clock);
+	if (level < 0)
+		return -EINVAL;
+
+	mutex_lock(&pc->dvfs.lock);
+	gpu_dvfs_update_level_lock(kbdev, GPU_DVFS_LEVEL_LOCK_HINT, level, -1);
+	gpu_dvfs_select_level(kbdev);
+	mutex_unlock(&pc->dvfs.lock);
+
+	return count;
+}
+
 static ssize_t scaling_max_freq_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct kbase_device *kbdev = dev->driver_data;
@@ -595,6 +680,8 @@ DEVICE_ATTR_RO(cur_freq);
 DEVICE_ATTR_RO(max_freq);
 DEVICE_ATTR_RO(min_freq);
 DEVICE_ATTR_RO(scaling_min_compute_freq);
+DEVICE_ATTR_RW(hint_max_freq);
+DEVICE_ATTR_RW(hint_min_freq);
 DEVICE_ATTR_RW(scaling_max_freq);
 DEVICE_ATTR_RW(scaling_min_freq);
 DEVICE_ATTR_RO(time_in_state);
@@ -625,6 +712,8 @@ static struct {
 	{ "max_freq", &dev_attr_max_freq },
 	{ "min_freq", &dev_attr_min_freq },
 	{ "min_compute_freq", &dev_attr_scaling_min_compute_freq },
+	{ "hint_max_freq", &dev_attr_hint_max_freq },
+	{ "hint_min_freq", &dev_attr_hint_min_freq },
 	{ "scaling_max_freq", &dev_attr_scaling_max_freq },
 	{ "scaling_min_freq", &dev_attr_scaling_min_freq },
 	{ "time_in_state", &dev_attr_time_in_state },
