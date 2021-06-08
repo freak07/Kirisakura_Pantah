@@ -256,6 +256,8 @@ static int mgm_debugfs_init(struct mgm_groups *mgm_data)
 /*
  * Pixel Stats sysfs
  */
+#ifdef CONFIG_MALI_PIXEL_STATS
+
 extern struct kobject *pixel_stat_gpu_kobj;
 
 #define MGM_ATTR_RO(_name) \
@@ -339,6 +341,18 @@ static void mgm_sysfs_term(struct mgm_groups *data)
 {
 	kobject_put(&data->kobj);
 }
+
+#else
+static int mgm_sysfs_init(struct mgm_groups *data)
+{
+	return 0;
+}
+
+static void mgm_sysfs_term(struct mgm_groups *data)
+{}
+
+#endif /* CONFIG_MALI_PIXEL_STATS */
+
 
 #define ORDER_SMALL_PAGE 0
 #define ORDER_LARGE_PAGE 9

@@ -9,3 +9,7 @@ extern struct platform_driver memory_group_manager_driver;
 #ifdef CONFIG_MALI_PRIORITY_CONTROL_MANAGER
 extern struct platform_driver priority_control_manager_driver;
 #endif
+
+#ifdef CONFIG_MALI_PIXEL_STATS
+extern int mali_pixel_init_pixel_stats(void);
+#endif
