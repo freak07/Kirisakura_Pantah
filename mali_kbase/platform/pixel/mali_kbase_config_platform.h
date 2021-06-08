@@ -45,7 +45,10 @@
  * Attached value: pointer to @ref kbase_clk_rate_trace_op_conf
  * Default value: See @ref kbase_clk_rate_trace_op_conf
  */
+#ifdef CONFIG_MALI_MIDGARD_DVFS
 #define CLK_RATE_TRACE_OPS (&pixel_clk_rate_trace_ops)
+extern struct kbase_clk_rate_trace_op_conf pixel_clk_rate_trace_ops;
+#endif
 
 /**
  * Platform specific configuration functions
@@ -56,7 +59,6 @@
 #define PLATFORM_FUNCS (&platform_funcs)
 
 extern struct kbase_pm_callback_conf pm_callbacks;
-extern struct kbase_clk_rate_trace_op_conf pixel_clk_rate_trace_ops;
 extern struct kbase_platform_funcs_conf platform_funcs;
 
 #ifdef CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING

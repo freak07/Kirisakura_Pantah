@@ -13,12 +13,8 @@
 #include <linux/pm_domain.h>
 
 /* SOC includes */
-#if IS_ENABLED(CONFIG_EXYNOS_PMU_IF)
 #include <soc/google/exynos-pmu-if.h>
-#endif
-#if IS_ENABLED(CONFIG_CAL_IF)
 #include <soc/google/cal-if.h>
-#endif
 
 /* Mali core includes */
 #include <mali_kbase.h>
