@@ -142,10 +142,8 @@ static int gpu_pixel_init(struct kbase_device *kbdev)
 	pc->kbdev = kbdev;
 
 	ret = gpu_power_init(kbdev);
-	if (ret) {
-		dev_err(kbdev->dev, "power init failed\n");
+	if (ret)
 		goto done;
-	}
 
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 	ret = gpu_dvfs_init(kbdev);

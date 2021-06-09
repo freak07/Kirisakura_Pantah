@@ -41,11 +41,12 @@
  */
 static int gpu_power_on(struct kbase_device *kbdev)
 {
-	int ret = -1;
+	int ret = 0;
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
-	ret = exynos_pd_power_on(pc->pm.domain);
+	if (pc->pm.domain)
+		ret = exynos_pd_power_on(pc->pm.domain);
 
 	if (WARN_ON(ret < 0)) {
 		dev_warn(kbdev->dev, "Failed to turn the GPU on\n");
@@ -82,11 +83,12 @@ done:
  */
 static int gpu_power_off(struct kbase_device *kbdev, bool state_lost)
 {
-	int ret = -1;
+	int ret = 0;
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
-	ret = exynos_pd_power_off(pc->pm.domain);
+	if (pc->pm.domain)
+		ret = exynos_pd_power_off(pc->pm.domain);
 
 	if (WARN_ON(ret < 0)) {
 		dev_warn(kbdev->dev, "Failed to turn the GPU off\n");
@@ -350,14 +352,16 @@ static struct exynos_pm_domain *gpu_get_pm_domain(const char *g3d_genpd_name)
  */
 bool gpu_power_status(struct kbase_device *kbdev)
 {
-	bool ret;
+	bool ret = true;
 	unsigned int val = 0;
 	struct pixel_context *pc = kbdev->platform_context;
 
-	mutex_lock(&pc->pm.domain->access_lock);
-	exynos_pmu_read(pc->pm.status_reg_offset, &val);
-	ret = ((val & pc->pm.status_local_power_mask) == pc->pm.status_local_power_mask);
-	mutex_unlock(&pc->pm.domain->access_lock);
+	if (pc->pm.domain) {
+		mutex_lock(&pc->pm.domain->access_lock);
+		exynos_pmu_read(pc->pm.status_reg_offset, &val);
+		ret = ((val & pc->pm.status_local_power_mask) == pc->pm.status_local_power_mask);
+		mutex_unlock(&pc->pm.domain->access_lock);
+	}
 
 	return ret;
 }
@@ -399,7 +403,7 @@ int gpu_power_init(struct kbase_device *kbdev)
 
 	pc->pm.domain = gpu_get_pm_domain(g3d_power_domain_name);
 	if (pc->pm.domain == NULL)
-		return -ENODEV;
+		dev_warn(kbdev->dev, "Failed to find GPU power domain '%s'\n", g3d_power_domain_name);
 
 	pc->pm.bcl_dev = gs101_retrieve_bcl_handle();
 
