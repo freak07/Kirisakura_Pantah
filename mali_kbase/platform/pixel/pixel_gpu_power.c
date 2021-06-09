@@ -62,8 +62,10 @@ done:
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 		gpu_dvfs_event_power_on(kbdev);
 #endif
+#ifdef CONFIG_GOOGLE_BCL
 		if (pc->pm.bcl_dev)
 			gs101_init_gpu_ratio(pc->pm.bcl_dev);
+#endif
 	}
 
 	return ret;
@@ -405,7 +407,9 @@ int gpu_power_init(struct kbase_device *kbdev)
 	if (pc->pm.domain == NULL)
 		dev_warn(kbdev->dev, "Failed to find GPU power domain '%s'\n", g3d_power_domain_name);
 
+#ifdef CONFIG_GOOGLE_BCL
 	pc->pm.bcl_dev = gs101_retrieve_bcl_handle();
+#endif
 
 	return 0;
 }

@@ -87,7 +87,9 @@ extern struct protected_mode_ops pixel_protected_ops;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 
 /* SOC level includes */
+#ifdef CONFIG_GOOGLE_BCL
 #include <soc/google/bcl.h>
+#endif
 #if IS_ENABLED(CONFIG_EXYNOS_PD)
 #include <soc/google/exynos-pd.h>
 #endif
@@ -264,7 +266,9 @@ struct pixel_context {
 		struct gpu_dvfs_opp_metrics power_off_metrics;
 		struct gpu_dvfs_opp_metrics power_on_metrics;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
+#ifdef CONFIG_GOOGLE_BCL
 		struct gs101_bcl_dev *bcl_dev;
+#endif
 	} pm;
 
 #ifdef CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING
