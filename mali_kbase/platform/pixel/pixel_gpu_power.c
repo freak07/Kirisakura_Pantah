@@ -143,7 +143,7 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 }
 
 /**
- * pm_callback_power_off() - Called when the GPU needs to be powered off.
+ * pm_callback_power_off() - Called when the GPU is idle and may be powered off
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
@@ -151,10 +151,17 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
  * GPU is idle and may be powered off.
  *
  * We take this opportunity to power down the GPU to allow for intra-frame
- * power downs that save power.
+ * power downs that save power, as long as the GPU is not in protected mode.
  */
 static void pm_callback_power_off(struct kbase_device *kbdev)
 {
+#ifdef CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING
+	struct pixel_context *pc = kbdev->platform_context;
+
+	if (pc->tz_protection_enabled)
+		return;
+#endif /* CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING */
+
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
 	if (gpu_power_off(kbdev, false)) {
