@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  *
- * (C) COPYRIGHT 2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2020-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -34,8 +34,8 @@
  *    8. Close the file descriptor
  */
 
-#ifndef _KBASE_KINSTR_JM_READER_H_
-#define _KBASE_KINSTR_JM_READER_H_
+#ifndef _UAPI_KBASE_KINSTR_JM_READER_H_
+#define _UAPI_KBASE_KINSTR_JM_READER_H_
 
 /**
  * enum kbase_kinstr_jm_reader_atom_state - Determines the work state of an atom
@@ -66,4 +66,4 @@ enum kbase_kinstr_jm_reader_atom_state {
 	KBASE_KINSTR_JM_READER_ATOM_STATE_COUNT
 };
 
-#endif /* _KBASE_KINSTR_JM_READER_H_ */
+#endif /* _UAPI_KBASE_KINSTR_JM_READER_H_ */

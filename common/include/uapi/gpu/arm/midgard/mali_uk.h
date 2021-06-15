@@ -24,12 +24,12 @@
  * and kernel side of the User-Kernel interface.
  */
 
-#ifndef _UK_H_
-#define _UK_H_
+#ifndef _UAPI_UK_H_
+#define _UAPI_UK_H_
 
 #ifdef __cplusplus
 extern "C" {
-#endif				/* __cplusplus */
+#endif /* __cplusplus */
 
 /**
  * DOC: uk_api User-Kernel Interface API
@@ -66,5 +66,5 @@ enum uk_client_id {
 
 #ifdef __cplusplus
 }
-#endif				/* __cplusplus */
-#endif				/* _UK_H_ */
+#endif /* __cplusplus */
+#endif /* _UAPI_UK_H_ */

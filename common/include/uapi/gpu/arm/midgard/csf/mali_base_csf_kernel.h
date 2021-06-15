@@ -19,8 +19,10 @@
  *
  */
 
-#ifndef _BASE_CSF_KERNEL_H_
-#define _BASE_CSF_KERNEL_H_
+#ifndef _UAPI_BASE_CSF_KERNEL_H_
+#define _UAPI_BASE_CSF_KERNEL_H_
+
+#include <linux/types.h>
 
 /* Memory allocation, access/hint flags.
  *
@@ -203,7 +205,7 @@
 /**
  * Valid set of just-in-time memory allocation flags
  */
-#define BASE_JIT_ALLOC_VALID_FLAGS ((u8)0)
+#define BASE_JIT_ALLOC_VALID_FLAGS ((__u8)0)
 
 /* Flags to pass to ::base_context_init.
  * Flags can be ORed together to enable multiple things.
@@ -211,7 +213,7 @@
  * These share the same space as BASEP_CONTEXT_FLAG_*, and so must
  * not collide with them.
  */
-typedef u32 base_context_create_flags;
+typedef __u32 base_context_create_flags;
 
 /* No flags set */
 #define BASE_CONTEXT_CREATE_FLAG_NONE ((base_context_create_flags)0)
@@ -228,11 +230,10 @@ typedef u32 base_context_create_flags;
 #define BASE_CONTEXT_SYSTEM_MONITOR_SUBMIT_DISABLED \
 	((base_context_create_flags)1 << 1)
 
-/* Create CSF event thread.
+/* Base context creates a CSF event notification thread.
  *
- * The creation of a CSF event thread is conditional and only allowed in
- * unit tests for the moment, in order to avoid clashes with the existing
- * Base unit tests.
+ * The creation of a CSF event notification thread is conditional but
+ * mandatory for the handling of CSF events.
  */
 #define BASE_CONTEXT_CSF_EVENT_THREAD ((base_context_create_flags)1 << 2)
 
@@ -289,23 +290,26 @@ typedef u32 base_context_create_flags;
 
 #define BASE_QUEUE_MAX_PRIORITY (15U)
 
-/* CQS Sync object is an array of u32 event_mem[2], error field index is 1 */
+/* CQS Sync object is an array of __u32 event_mem[2], error field index is 1 */
 #define BASEP_EVENT_VAL_INDEX (0U)
 #define BASEP_EVENT_ERR_INDEX (1U)
 
 /* The upper limit for number of objects that could be waited/set per command.
  * This limit is now enforced as internally the error inherit inputs are
- * converted to 32-bit flags in a u32 variable occupying a previously padding
+ * converted to 32-bit flags in a __u32 variable occupying a previously padding
  * field.
  */
 #define BASEP_KCPU_CQS_MAX_NUM_OBJS ((size_t)32)
 
+#if MALI_UNIT_TEST
 /**
  * enum base_kcpu_command_type - Kernel CPU queue command type.
  * @BASE_KCPU_COMMAND_TYPE_FENCE_SIGNAL:       fence_signal,
  * @BASE_KCPU_COMMAND_TYPE_FENCE_WAIT:         fence_wait,
  * @BASE_KCPU_COMMAND_TYPE_CQS_WAIT:           cqs_wait,
  * @BASE_KCPU_COMMAND_TYPE_CQS_SET:            cqs_set,
+ * @BASE_KCPU_COMMAND_TYPE_CQS_WAIT_OPERATION: cqs_wait_operation,
+ * @BASE_KCPU_COMMAND_TYPE_CQS_SET_OPERATION:  cqs_set_operation,
  * @BASE_KCPU_COMMAND_TYPE_MAP_IMPORT:         map_import,
  * @BASE_KCPU_COMMAND_TYPE_UNMAP_IMPORT:       unmap_import,
  * @BASE_KCPU_COMMAND_TYPE_UNMAP_IMPORT_FORCE: unmap_import_force,
@@ -320,6 +324,8 @@ enum base_kcpu_command_type {
 	BASE_KCPU_COMMAND_TYPE_FENCE_WAIT,
 	BASE_KCPU_COMMAND_TYPE_CQS_WAIT,
 	BASE_KCPU_COMMAND_TYPE_CQS_SET,
+	BASE_KCPU_COMMAND_TYPE_CQS_WAIT_OPERATION,
+	BASE_KCPU_COMMAND_TYPE_CQS_SET_OPERATION,
 	BASE_KCPU_COMMAND_TYPE_MAP_IMPORT,
 	BASE_KCPU_COMMAND_TYPE_UNMAP_IMPORT,
 	BASE_KCPU_COMMAND_TYPE_UNMAP_IMPORT_FORCE,
@@ -327,10 +333,41 @@ enum base_kcpu_command_type {
 	BASE_KCPU_COMMAND_TYPE_JIT_FREE,
 	BASE_KCPU_COMMAND_TYPE_GROUP_SUSPEND,
 	BASE_KCPU_COMMAND_TYPE_ERROR_BARRIER,
-#if MALI_UNIT_TEST
 	BASE_KCPU_COMMAND_TYPE_SAMPLE_TIME,
-#endif /* MALI_UNIT_TEST */
 };
+#else
+/**
+ * enum base_kcpu_command_type - Kernel CPU queue command type.
+ * @BASE_KCPU_COMMAND_TYPE_FENCE_SIGNAL:       fence_signal,
+ * @BASE_KCPU_COMMAND_TYPE_FENCE_WAIT:         fence_wait,
+ * @BASE_KCPU_COMMAND_TYPE_CQS_WAIT:           cqs_wait,
+ * @BASE_KCPU_COMMAND_TYPE_CQS_SET:            cqs_set,
+ * @BASE_KCPU_COMMAND_TYPE_CQS_WAIT_OPERATION: cqs_wait_operation,
+ * @BASE_KCPU_COMMAND_TYPE_CQS_SET_OPERATION:  cqs_set_operation,
+ * @BASE_KCPU_COMMAND_TYPE_MAP_IMPORT:         map_import,
+ * @BASE_KCPU_COMMAND_TYPE_UNMAP_IMPORT:       unmap_import,
+ * @BASE_KCPU_COMMAND_TYPE_UNMAP_IMPORT_FORCE: unmap_import_force,
+ * @BASE_KCPU_COMMAND_TYPE_JIT_ALLOC:          jit_alloc,
+ * @BASE_KCPU_COMMAND_TYPE_JIT_FREE:           jit_free,
+ * @BASE_KCPU_COMMAND_TYPE_GROUP_SUSPEND:      group_suspend,
+ * @BASE_KCPU_COMMAND_TYPE_ERROR_BARRIER:      error_barrier,
+ */
+enum base_kcpu_command_type {
+	BASE_KCPU_COMMAND_TYPE_FENCE_SIGNAL,
+	BASE_KCPU_COMMAND_TYPE_FENCE_WAIT,
+	BASE_KCPU_COMMAND_TYPE_CQS_WAIT,
+	BASE_KCPU_COMMAND_TYPE_CQS_SET,
+	BASE_KCPU_COMMAND_TYPE_CQS_WAIT_OPERATION,
+	BASE_KCPU_COMMAND_TYPE_CQS_SET_OPERATION,
+	BASE_KCPU_COMMAND_TYPE_MAP_IMPORT,
+	BASE_KCPU_COMMAND_TYPE_UNMAP_IMPORT,
+	BASE_KCPU_COMMAND_TYPE_UNMAP_IMPORT_FORCE,
+	BASE_KCPU_COMMAND_TYPE_JIT_ALLOC,
+	BASE_KCPU_COMMAND_TYPE_JIT_FREE,
+	BASE_KCPU_COMMAND_TYPE_GROUP_SUSPEND,
+	BASE_KCPU_COMMAND_TYPE_ERROR_BARRIER,
+};
+#endif /* MALI_UNIT_TEST */
 
 /**
  * enum base_queue_group_priority - Priority of a GPU Command Queue Group.
@@ -363,29 +400,118 @@ enum base_queue_group_priority {
 };
 
 struct base_kcpu_command_fence_info {
-	u64 fence;
+	__u64 fence;
 };
 
 struct base_cqs_wait_info {
-	u64 addr;
-	u32 val;
-	u32 padding;
+	__u64 addr;
+	__u32 val;
+	__u32 padding;
 };
 
 struct base_kcpu_command_cqs_wait_info {
-	u64 objs;
-	u32 nr_objs;
-	u32 inherit_err_flags;
+	__u64 objs;
+	__u32 nr_objs;
+	__u32 inherit_err_flags;
 };
 
 struct base_cqs_set {
-	u64 addr;
+	__u64 addr;
 };
 
 struct base_kcpu_command_cqs_set_info {
-	u64 objs;
-	u32 nr_objs;
-	u32 propagate_flags;
+	__u64 objs;
+	__u32 nr_objs;
+	__u32 padding;
+};
+
+/**
+ * basep_cqs_data_type - Enumeration of CQS Data Types
+ *
+ * @BASEP_CQS_DATA_TYPE_U32: The Data Type of a CQS Object's value
+ *                           is an unsigned 32-bit integer
+ * @BASEP_CQS_DATA_TYPE_U64: The Data Type of a CQS Object's value
+ *                           is an unsigned 64-bit integer
+ */
+typedef enum PACKED {
+	BASEP_CQS_DATA_TYPE_U32 = 0,
+	BASEP_CQS_DATA_TYPE_U64 = 1,
+} basep_cqs_data_type;
+
+/**
+ * basep_cqs_wait_operation_op - Enumeration of CQS Object Wait
+ *                                Operation conditions
+ *
+ * @BASEP_CQS_WAIT_OPERATION_LE: CQS Wait Operation indicating that a
+ *                                wait will be satisfied when a CQS Object's
+ *                                value is Less than or Equal to
+ *                                the Wait Operation value
+ * @BASEP_CQS_WAIT_OPERATION_GT: CQS Wait Operation indicating that a
+ *                                wait will be satisfied when a CQS Object's
+ *                                value is Greater than the Wait Operation value
+ */
+typedef enum {
+	BASEP_CQS_WAIT_OPERATION_LE = 0,
+	BASEP_CQS_WAIT_OPERATION_GT = 1,
+} basep_cqs_wait_operation_op;
+
+struct base_cqs_wait_operation_info {
+	__u64 addr;
+	__u64 val;
+	__u8 operation;
+	__u8 data_type;
+	__u8 padding[6];
+};
+
+/**
+ * struct base_kcpu_command_cqs_wait_operation_info - structure which contains information
+ *		about the Timeline CQS wait objects
+ *
+ * @objs:              An array of Timeline CQS waits.
+ * @nr_objs:           Number of Timeline CQS waits in the array.
+ * @inherit_err_flags: Bit-pattern for the CQSs in the array who's error field
+ *                     to be served as the source for importing into the
+ *                     queue's error-state.
+ */
+struct base_kcpu_command_cqs_wait_operation_info {
+	__u64 objs;
+	__u32 nr_objs;
+	__u32 inherit_err_flags;
+};
+
+/**
+ * basep_cqs_set_operation_op - Enumeration of CQS Set Operations
+ *
+ * @BASEP_CQS_SET_OPERATION_ADD: CQS Set operation for adding a value
+ *                                to a synchronization object
+ * @BASEP_CQS_SET_OPERATION_SET: CQS Set operation for setting the value
+ *                                of a synchronization object
+ */
+typedef enum {
+	BASEP_CQS_SET_OPERATION_ADD = 0,
+	BASEP_CQS_SET_OPERATION_SET = 1,
+} basep_cqs_set_operation_op;
+
+struct base_cqs_set_operation_info {
+	__u64 addr;
+	__u64 val;
+	__u8 operation;
+	__u8 data_type;
+	__u8 padding[6];
+};
+
+/**
+ * struct base_kcpu_command_cqs_set_operation_info - structure which contains information
+ *		about the Timeline CQS set objects
+ *
+ * @objs:    An array of Timeline CQS sets.
+ * @nr_objs: Number of Timeline CQS sets in the array.
+ * @padding: Structure padding, unused bytes.
+ */
+struct base_kcpu_command_cqs_set_operation_info {
+	__u64 objs;
+	__u32 nr_objs;
+	__u32 padding;
 };
 
 /**
@@ -395,7 +521,7 @@ struct base_kcpu_command_cqs_set_info {
  * @handle:	Address of imported user buffer.
  */
 struct base_kcpu_command_import_info {
-	u64 handle;
+	__u64 handle;
 };
 
 /**
@@ -408,9 +534,9 @@ struct base_kcpu_command_import_info {
  * @padding:	Padding to a multiple of 64 bits.
  */
 struct base_kcpu_command_jit_alloc_info {
-	u64 info;
-	u8 count;
-	u8 padding[7];
+	__u64 info;
+	__u8 count;
+	__u8 padding[7];
 };
 
 /**
@@ -422,9 +548,9 @@ struct base_kcpu_command_jit_alloc_info {
  * @padding:	Padding to a multiple of 64 bits.
  */
 struct base_kcpu_command_jit_free_info {
-	u64 ids;
-	u8 count;
-	u8 padding[7];
+	__u64 ids;
+	__u8 count;
+	__u8 padding[7];
 };
 
 /**
@@ -437,15 +563,15 @@ struct base_kcpu_command_jit_free_info {
  * @padding:		padding to a multiple of 64 bits.
  */
 struct base_kcpu_command_group_suspend_info {
-	u64 buffer;
-	u32 size;
-	u8 group_handle;
-	u8 padding[3];
+	__u64 buffer;
+	__u32 size;
+	__u8 group_handle;
+	__u8 padding[3];
 };
 
 #if MALI_UNIT_TEST
 struct base_kcpu_command_sample_time_info {
-	u64 time;
+	__u64 time;
 };
 #endif /* MALI_UNIT_TEST */
 
@@ -466,12 +592,14 @@ struct base_kcpu_command_sample_time_info {
  * @info.padding:          padding
  */
 struct base_kcpu_command {
-	u8 type;
-	u8 padding[sizeof(u64) - sizeof(u8)];
+	__u8 type;
+	__u8 padding[sizeof(__u64) - sizeof(__u8)];
 	union {
 		struct base_kcpu_command_fence_info fence;
 		struct base_kcpu_command_cqs_wait_info cqs_wait;
 		struct base_kcpu_command_cqs_set_info cqs_set;
+		struct base_kcpu_command_cqs_wait_operation_info cqs_wait_operation;
+		struct base_kcpu_command_cqs_set_operation_info cqs_set_operation;
 		struct base_kcpu_command_import_info import;
 		struct base_kcpu_command_jit_alloc_info jit_alloc;
 		struct base_kcpu_command_jit_free_info jit_free;
@@ -479,7 +607,7 @@ struct base_kcpu_command {
 #if MALI_UNIT_TEST
 		struct base_kcpu_command_sample_time_info sample_time;
 #endif /* MALI_UNIT_TEST */
-		u64 padding[2]; /* No sub-struct should be larger */
+		__u64 padding[2]; /* No sub-struct should be larger */
 	} info;
 };
 
@@ -490,8 +618,8 @@ struct base_kcpu_command {
  * @padding:  Padding to a multiple of 64 bits.
  */
 struct basep_cs_stream_control {
-	u32 features;
-	u32 padding;
+	__u32 features;
+	__u32 padding;
 };
 
 /**
@@ -503,10 +631,10 @@ struct basep_cs_stream_control {
  * @padding:      Padding to a multiple of 64 bits.
  */
 struct basep_cs_group_control {
-	u32 features;
-	u32 stream_num;
-	u32 suspend_size;
-	u32 padding;
+	__u32 features;
+	__u32 stream_num;
+	__u32 suspend_size;
+	__u32 padding;
 };
 
 /**
@@ -521,9 +649,9 @@ struct basep_cs_group_control {
  * @padding:      Padding to make multiple of 64bits
  */
 struct base_gpu_queue_group_error_fatal_payload {
-	u64 sideband;
-	u32 status;
-	u32 padding;
+	__u64 sideband;
+	__u32 status;
+	__u32 padding;
 };
 
 /**
@@ -539,10 +667,10 @@ struct base_gpu_queue_group_error_fatal_payload {
  * @padding:      Padding to make multiple of 64bits
  */
 struct base_gpu_queue_error_fatal_payload {
-	u64 sideband;
-	u32 status;
-	u8 csi_index;
-	u8 padding[3];
+	__u64 sideband;
+	__u32 status;
+	__u8 csi_index;
+	__u8 padding[3];
 };
 
 /**
@@ -579,8 +707,8 @@ enum base_gpu_queue_group_error_type {
  * @payload.fatal_queue: Unrecoverable fault error associated with command queue
  */
 struct base_gpu_queue_group_error {
-	u8 error_type;
-	u8 padding[7];
+	__u8 error_type;
+	__u8 padding[7];
 	union {
 		struct base_gpu_queue_group_error_fatal_payload fatal_group;
 		struct base_gpu_queue_error_fatal_payload fatal_queue;
@@ -621,17 +749,17 @@ enum base_csf_notification_type {
  *
  */
 struct base_csf_notification {
-	u8 type;
-	u8 padding[7];
+	__u8 type;
+	__u8 padding[7];
 	union {
 		struct {
-			u8 handle;
-			u8 padding[7];
+			__u8 handle;
+			__u8 padding[7];
 			struct base_gpu_queue_group_error error;
 		} csg_error;
 
-		u8 align[56];
+		__u8 align[56];
 	} payload;
 };
 
-#endif /* _BASE_CSF_KERNEL_H_ */
+#endif /* _UAPI_BASE_CSF_KERNEL_H_ */
