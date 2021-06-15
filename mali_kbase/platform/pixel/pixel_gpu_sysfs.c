@@ -75,7 +75,7 @@ static ssize_t clock_info_show(struct device *dev, struct device_attribute *attr
 		" Power status            : %s\n"
 		" gpu0 clock (top level)  : %d kHz\n"
 		" gpu1 clock (shaders)    : %d kHz\n",
-		(gpu_power_status(kbdev) ? "on" : "off"),
+		(gpu_pm_get_power_state(kbdev) ? "on" : "off"),
 		pc->dvfs.table[pc->dvfs.level_target].clk[GPU_DVFS_CLK_TOP_LEVEL],
 		pc->dvfs.table[pc->dvfs.level_target].clk[GPU_DVFS_CLK_SHADERS]);
 
@@ -200,7 +200,8 @@ static ssize_t power_stats_show(struct device *dev, struct device_attribute *att
 
 	/* First trigger an update */
 	mutex_lock(&pc->dvfs.lock);
-	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, pc->dvfs.level, gpu_power_status(kbdev));
+	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, pc->dvfs.level,
+		gpu_pm_get_power_state(kbdev));
 	mutex_unlock(&pc->dvfs.lock);
 
 	ret = scnprintf(buf + ret, PAGE_SIZE - ret, "DVFS stats: (times in ms)\n");
@@ -582,7 +583,8 @@ static ssize_t time_in_state_show(struct device *dev, struct device_attribute *a
 
 	/* First trigger an update */
 	mutex_lock(&pc->dvfs.lock);
-	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, pc->dvfs.level, gpu_power_status(kbdev));
+	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, pc->dvfs.level,
+		gpu_pm_get_power_state(kbdev));
 	mutex_unlock(&pc->dvfs.lock);
 
 	for (i = pc->dvfs.level_max; i <= pc->dvfs.level_min; i++)
@@ -605,7 +607,8 @@ static ssize_t trans_stat_show(struct device *dev, struct device_attribute *attr
 
 	/* First trigger an update */
 	mutex_lock(&pc->dvfs.lock);
-	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, pc->dvfs.level, gpu_power_status(kbdev));
+	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, pc->dvfs.level,
+		gpu_pm_get_power_state(kbdev));
 	mutex_unlock(&pc->dvfs.lock);
 
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%9s  :   %s\n", "From", "To");
