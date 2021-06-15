@@ -106,6 +106,24 @@ extern struct protected_mode_ops pixel_protected_ops;
 #define OF_DATA_NUM_MAX 128
 #define CPU_FREQ_MAX INT_MAX
 
+/**
+ * enum gpu_pm_domain - Power domains on the GPU.
+ *
+ * This enum lists the different power domains present on the Mali GPU.
+ */
+enum gpu_pm_domain {
+	/**
+	 * &GPU_PM_DOMAIN_TOP: GPU Top Level power domain
+	 */
+	GPU_PM_DOMAIN_TOP = 0,
+	/**
+	 * &GPU_PM_DOMAIN_CORES: GPU shader stacks power domain
+	 */
+	GPU_PM_DOMAIN_CORES,
+	/* Insert new power domains here. */
+	GPU_PM_DOMAIN_COUNT,
+};
+
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 /**
  * struct gpu_dvfs_opp_metrics - Metrics data for an operating point.
@@ -184,7 +202,9 @@ struct gpu_dvfs_metrics_uid_stats;
  *
  * @kbdev:                      The &struct kbase_device for the GPU.
  *
- * @pm.state_lost:              Stores whether GPU state has been lost or not.
+ * @pm.domain_devs              Virtual pm domain devices.
+ * @pm.domain_links             Links from pm domain devices to the real device.
+ * @pm.suspended:               Stores whether the TOP domain is suspended and state lost.
  * @pm.domain:                  The power domain the GPU is in.
  * @pm.status_reg_offset:       Register offset to the G3D status in the PMU. Set via DT.
  * @pm.status_local_power_mask: Mask to extract power status of the GPU. Set via DT.
@@ -255,7 +275,10 @@ struct pixel_context {
 	struct kbase_device *kbdev;
 
 	struct {
-		bool state_lost;
+		struct device *domain_devs[GPU_PM_DOMAIN_COUNT];
+		struct device_link *domain_links[GPU_PM_DOMAIN_COUNT];
+
+		bool suspended;
 		struct exynos_pm_domain *domain;
 		unsigned int status_reg_offset;
 		unsigned int status_local_power_mask;
