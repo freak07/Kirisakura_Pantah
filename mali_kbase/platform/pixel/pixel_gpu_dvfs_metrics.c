@@ -441,7 +441,7 @@ int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
 	mutex_lock(&pc->dvfs.lock);
 
 	pc->dvfs.metrics.last_time = ktime_get_ns();
-	pc->dvfs.metrics.last_power_state = gpu_power_status(kbdev);
+	pc->dvfs.metrics.last_power_state = gpu_pm_get_power_state(kbdev);
 
 	pc->dvfs.metrics.transtab = kzalloc(sizeof(int) * gpu_dvfs_metrics_transtab_size(pc),
 		GFP_KERNEL);
