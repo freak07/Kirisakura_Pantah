@@ -37,7 +37,7 @@ UMP_PATH = $(src)/../../../base
 MALI_CUSTOMER_RELEASE ?= 1
 MALI_UNIT_TEST ?= 0
 MALI_COVERAGE ?= 0
-CONFIG_MALI_PLATFORM_NAME ?= "devicetree"
+CONFIG_MALI_PLATFORM_NAME ?= "pixel"
 CONFIG_MALI_KUTF=n
 
 # Experimental features (corresponding -D definition should be appended to

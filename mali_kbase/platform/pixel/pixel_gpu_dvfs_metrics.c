@@ -214,6 +214,8 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_
 	gpu_dvfs_metrics_trace_clock(kbdev, old_level, new_level, power_state);
 }
 
+#if !MALI_USE_CSF
+
 /**
  * gpu_dvfs_metrics_job_start() - Notification of when an atom starts on the GPU
  *
@@ -279,6 +281,8 @@ void gpu_dvfs_metrics_job_end(struct kbase_jd_atom *atom)
 
 	pc->dvfs.metrics.js_uid_stats[js] = NULL;
 }
+
+#endif /* !MALI_USE_CSF */
 
 /**
  * gpu_dvfs_create_uid_stats() - Allocates and initializes a per-UID stats block

@@ -97,6 +97,7 @@ struct kbase_platform_funcs_conf {
 	 * context termination.
 	 */
 	void (*platform_handler_context_term_func)(struct kbase_context *kctx);
+#if !MALI_USE_CSF
 	/**
 	 * platform_handler_atom_submit_func - platform specific handler for
 	 * when a kbase_jd_atom is submitted.
@@ -123,6 +124,7 @@ struct kbase_platform_funcs_conf {
 	 *          runnable in an interrupt context.
 	 */
 	void (*platform_handler_atom_complete_func)(struct kbase_jd_atom *katom);
+#endif /* !MALI_USE_CSF */
 };
 
 /*
@@ -426,6 +428,8 @@ int kbasep_platform_context_init(struct kbase_context *kctx);
  */
 void kbasep_platform_context_term(struct kbase_context *kctx);
 
+#if !MALI_USE_CSF
+
 /**
  * kbasep_platform_event_atom_submit - Platform specific callback when an atom is
  * submitted to the GPU
@@ -448,6 +452,8 @@ void kbasep_platform_event_atom_submit(struct kbase_jd_atom *katom);
  *
  */
 void kbasep_platform_event_atom_complete(struct kbase_jd_atom *katom);
+
+#endif /* !MALI_USE_CSF */
 
 #ifndef CONFIG_OF
 /**

@@ -187,7 +187,9 @@ struct kbase_platform_funcs_conf platform_funcs = {
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 	.platform_handler_context_init_func = &gpu_dvfs_kctx_init,
 	.platform_handler_context_term_func = &gpu_dvfs_kctx_term,
+#if !MALI_USE_CSF
 	.platform_handler_atom_submit_func = &gpu_dvfs_metrics_job_start,
 	.platform_handler_atom_complete_func = &gpu_dvfs_metrics_job_end,
-#endif
+#endif /* !MALI_USE_CSF */
+#endif /* CONFIG_MALI_MIDGARD_DVFS */
 };

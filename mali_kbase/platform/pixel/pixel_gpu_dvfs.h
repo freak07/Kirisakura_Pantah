@@ -160,8 +160,10 @@ struct gpu_dvfs_metrics_uid_stats {
 
 void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_level,
 	bool power_state);
+#if !MALI_USE_CSF
 void gpu_dvfs_metrics_job_start(struct kbase_jd_atom *atom);
 void gpu_dvfs_metrics_job_end(struct kbase_jd_atom *atom);
+#endif
 int gpu_dvfs_metrics_init(struct kbase_device *kbdev);
 void gpu_dvfs_metrics_term(struct kbase_device *kbdev);
 

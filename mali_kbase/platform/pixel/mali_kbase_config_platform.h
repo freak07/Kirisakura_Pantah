@@ -307,8 +307,10 @@ struct pixel_context {
 		struct workqueue_struct *control_wq;
 		struct work_struct control_work;
 		atomic_t util;
+#if !MALI_USE_CSF
 		atomic_t util_gl;
 		atomic_t util_cl;
+#endif
 
 		struct workqueue_struct *clockdown_wq;
 		struct delayed_work clockdown_work;
