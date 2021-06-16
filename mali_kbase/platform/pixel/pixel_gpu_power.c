@@ -47,12 +47,11 @@ static const char * const GPU_PM_DOMAIN_NAMES[GPU_PM_DOMAIN_COUNT] = {
  */
 static int gpu_pm_power_on_cores(struct kbase_device *kbdev)
 {
-	int ret = 0;
+	int ret;
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
-	if (pc->pm.domain)
-		ret = exynos_pd_power_on(pc->pm.domain);
+	ret = exynos_pd_power_on(pc->pm.domain);
 
 	WARN(ret < 0, "Failed to turn the GPU cores on!");
 
@@ -83,12 +82,11 @@ static int gpu_pm_power_on_cores(struct kbase_device *kbdev)
  */
 static int gpu_pm_power_off_cores(struct kbase_device *kbdev)
 {
-	int ret = 0;
+	int ret;
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
-	if (pc->pm.domain)
-		ret = exynos_pd_power_off(pc->pm.domain);
+	ret = exynos_pd_power_off(pc->pm.domain);
 
 	WARN(ret < 0, "Failed to turn the GPU cores off!");
 
@@ -350,16 +348,14 @@ static struct exynos_pm_domain *gpu_pm_get_pm_cores_domain(const char *g3d_genpd
  */
 bool gpu_pm_get_power_state(struct kbase_device *kbdev)
 {
-	bool ret = true;
+	bool ret;
 	unsigned int val = 0;
 	struct pixel_context *pc = kbdev->platform_context;
 
-	if (pc->pm.domain) {
-		mutex_lock(&pc->pm.domain->access_lock);
-		exynos_pmu_read(pc->pm.status_reg_offset, &val);
-		ret = ((val & pc->pm.status_local_power_mask) == pc->pm.status_local_power_mask);
-		mutex_unlock(&pc->pm.domain->access_lock);
-	}
+	mutex_lock(&pc->pm.domain->access_lock);
+	exynos_pmu_read(pc->pm.status_reg_offset, &val);
+	ret = ((val & pc->pm.status_local_power_mask) == pc->pm.status_local_power_mask);
+	mutex_unlock(&pc->pm.domain->access_lock);
 
 	return ret;
 }
@@ -439,8 +435,11 @@ int gpu_pm_init(struct kbase_device *kbdev)
 	}
 
 	pc->pm.domain = gpu_pm_get_pm_cores_domain(g3d_power_domain_name);
-	if (pc->pm.domain == NULL)
-		dev_warn(kbdev->dev, "Failed to find GPU power domain '%s'\n", g3d_power_domain_name);
+	if (pc->pm.domain == NULL) {
+		dev_err(kbdev->dev, "Failed to find GPU cores power domain '%s'\n",
+			g3d_power_domain_name);
+		return -ENODEV;
+	}
 
 #ifdef CONFIG_GOOGLE_BCL
 	pc->pm.bcl_dev = gs101_retrieve_bcl_handle();

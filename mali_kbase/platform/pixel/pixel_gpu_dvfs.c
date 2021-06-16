@@ -53,15 +53,12 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 		gpu_dvfs_qos_set(kbdev, next_level);
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
-	WARN_ONCE(!pc->pm.domain, "unable to set dvfs level without a pm domain\n");
-	if (pc->pm.domain) {
-		mutex_lock(&pc->pm.domain->access_lock);
+	mutex_lock(&pc->pm.domain->access_lock);
 
-		for (c = 0; c < GPU_DVFS_CLK_COUNT; c++)
-			cal_dfs_set_rate(pc->dvfs.clks[c].cal_id, pc->dvfs.table[next_level].clk[c]);
+	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++)
+		cal_dfs_set_rate(pc->dvfs.clks[c].cal_id, pc->dvfs.table[next_level].clk[c]);
 
-		mutex_unlock(&pc->pm.domain->access_lock);
-	}
+	mutex_unlock(&pc->pm.domain->access_lock);
 
 	gpu_dvfs_metrics_update(kbdev, pc->dvfs.level, next_level, true);
 
@@ -576,22 +573,19 @@ static int gpu_dvfs_set_initial_level(struct kbase_device *kbdev)
 		pc->dvfs.table[level].clk[GPU_DVFS_CLK_TOP_LEVEL],
 		pc->dvfs.table[level].clk[GPU_DVFS_CLK_SHADERS]);
 
-	WARN_ONCE(!pc->pm.domain, "unable to set initial dvfs level without pm domain\n");
-	if (pc->pm.domain) {
-		mutex_lock(&pc->pm.domain->access_lock);
+	mutex_lock(&pc->pm.domain->access_lock);
 
-		for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
-			ret = cal_dfs_set_rate(pc->dvfs.clks[c].cal_id, pc->dvfs.table[level].clk[c]);
-			if (ret) {
-				dev_err(kbdev->dev,
-					"Failed to set boot frequency %d on clock index %d (err: %d)\n",
-					pc->dvfs.table[level].clk[c], c, ret);
-				break;
-			}
+	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
+		ret = cal_dfs_set_rate(pc->dvfs.clks[c].cal_id, pc->dvfs.table[level].clk[c]);
+		if (ret) {
+			dev_err(kbdev->dev,
+				"Failed to set boot frequency %d on clock index %d (err: %d)\n",
+				pc->dvfs.table[level].clk[c], c, ret);
+			break;
 		}
-
-		mutex_unlock(&pc->pm.domain->access_lock);
 	}
+
+	mutex_unlock(&pc->pm.domain->access_lock);
 
 	return ret;
 }
