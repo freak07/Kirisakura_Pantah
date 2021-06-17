@@ -29,13 +29,13 @@
 #include <mali_kbase_hwcnt_context.h>
 
 #include <mali_kbase_pm.h>
-#include <mali_kbase_pm_internal.h>
+#include <backend/gpu/mali_kbase_pm_internal.h>
 
 #ifdef CONFIG_MALI_ARBITER_SUPPORT
 #include <arbiter/mali_kbase_arbiter_pm.h>
 #endif /* CONFIG_MALI_ARBITER_SUPPORT */
 
-#include <mali_kbase_clk_rate_trace_mgr.h>
+#include <backend/gpu/mali_kbase_clk_rate_trace_mgr.h>
 
 int kbase_pm_powerup(struct kbase_device *kbdev, unsigned int flags)
 {

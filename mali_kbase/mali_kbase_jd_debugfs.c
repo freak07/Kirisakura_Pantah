@@ -19,7 +19,7 @@
  *
  */
 
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 
 #include <linux/seq_file.h>
 #include <mali_kbase.h>

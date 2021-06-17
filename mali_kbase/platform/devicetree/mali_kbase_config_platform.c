@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  *
- * (C) COPYRIGHT 2019-2021 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -19,18 +19,25 @@
  *
  */
 
-#ifndef _KBASE_L2_MMU_CONFIG_H_
-#define _KBASE_L2_MMU_CONFIG_H_
-/**
- * kbase_set_mmu_quirks - Set the hw_quirks_mmu field of kbdev
- *
- * @kbdev: The kbase device structure for the device (must be a valid pointer)
- *
- * Use this function to initialise the hw_quirks_mmu field, for instance to set
- * the MAX_READS and MAX_WRITES to sane defaults for each GPU.
- *
- * Return: Zero for succeess or a Linux error code
- */
-int kbase_set_mmu_quirks(struct kbase_device *kbdev);
+#include <mali_kbase.h>
+#include <mali_kbase_defs.h>
+#include <mali_kbase_config.h>
+#include "mali_kbase_config_platform.h"
+#include <device/mali_kbase_device.h>
+#include <mali_kbase_hwaccess_time.h>
+#include <gpu/mali_kbase_gpu_regmap.h>
 
-#endif /* _KBASE_L2_MMU_CONFIG_H */
+#include <linux/kthread.h>
+#include <linux/timer.h>
+#include <linux/jiffies.h>
+#include <linux/wait.h>
+#include <linux/delay.h>
+#include <linux/gcd.h>
+#include <asm/arch_timer.h>
+
+struct kbase_platform_funcs_conf platform_funcs = {
+	.platform_init_func = NULL,
+	.platform_term_func = NULL,
+	.platform_late_init_func = NULL,
+	.platform_late_term_func = NULL,
+};

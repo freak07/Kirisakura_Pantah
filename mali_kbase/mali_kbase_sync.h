@@ -30,10 +30,10 @@
 
 #include <linux/fdtable.h>
 #include <linux/syscalls.h>
-#ifdef CONFIG_SYNC
+#if IS_ENABLED(CONFIG_SYNC)
 #include <sync.h>
 #endif
-#ifdef CONFIG_SYNC_FILE
+#if IS_ENABLED(CONFIG_SYNC_FILE)
 #include "mali_kbase_fence_defs.h"
 #include <linux/sync_file.h>
 #endif

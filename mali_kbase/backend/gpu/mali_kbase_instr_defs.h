@@ -26,7 +26,7 @@
 #ifndef _KBASE_INSTR_DEFS_H_
 #define _KBASE_INSTR_DEFS_H_
 
-#include "../../mali_kbase_hwcnt_gpu.h"
+#include <mali_kbase_hwcnt_gpu.h>
 
 /*
  * Instrumentation State Machine States

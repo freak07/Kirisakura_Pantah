@@ -30,7 +30,7 @@
 #include "mali_kbase.h"
 #include "mali_kbase_linux.h"
 
-#include <mali_kbase_jm_rb.h>
+#include <backend/gpu/mali_kbase_jm_rb.h>
 
 #include <asm/barrier.h>
 #include <linux/anon_inodes.h>
