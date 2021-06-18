@@ -131,7 +131,7 @@ static int gpu_tmu_get_cur_util(void *gpu_drv_data)
 	struct pixel_context *pc = kbdev->platform_context;
 	int util = 0;
 
-	if (gpu_pm_get_power_state(kbdev))
+	if (gpu_power_status(kbdev))
 		util = atomic_read(&pc->dvfs.util);
 
 	return util;

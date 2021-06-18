@@ -9,9 +9,9 @@
 #define _PIXEL_GPU_CONTROL_H_
 
 /* Power management */
-bool gpu_pm_get_power_state(struct kbase_device *kbdev);
-int gpu_pm_init(struct kbase_device *kbdev);
-void gpu_pm_term(struct kbase_device *kbdev);
+bool gpu_power_status(struct kbase_device *kbdev);
+int gpu_power_init(struct kbase_device *kbdev);
+void gpu_power_term(struct kbase_device *kbdev);
 
 /* DVFS */
 void gpu_dvfs_event_power_on(struct kbase_device *kbdev);

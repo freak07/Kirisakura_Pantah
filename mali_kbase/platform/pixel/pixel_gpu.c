@@ -141,9 +141,9 @@ static int gpu_pixel_init(struct kbase_device *kbdev)
 	kbdev->platform_context = pc;
 	pc->kbdev = kbdev;
 
-	ret = gpu_pm_init(kbdev);
+	ret = gpu_power_init(kbdev);
 	if (ret) {
-		dev_err(kbdev->dev, "power management init failed\n");
+		dev_err(kbdev->dev, "power init failed\n");
 		goto done;
 	}
 
@@ -177,7 +177,7 @@ static void gpu_pixel_term(struct kbase_device *kbdev)
 
 	gpu_sysfs_term(kbdev);
 	gpu_dvfs_term(kbdev);
-	gpu_pm_term(kbdev);
+	gpu_power_term(kbdev);
 
 	kbdev->platform_context = NULL;
 	kfree(pc);

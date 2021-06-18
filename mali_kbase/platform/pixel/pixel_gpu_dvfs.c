@@ -299,7 +299,7 @@ void gpu_dvfs_select_level(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	struct gpu_dvfs_utlization util_stats;
 
-	if (gpu_pm_get_power_state(kbdev)) {
+	if (gpu_power_status(kbdev)) {
 		util_stats.util = atomic_read(&pc->dvfs.util);
 		util_stats.util_gl = atomic_read(&pc->dvfs.util_gl);
 		util_stats.util_cl = atomic_read(&pc->dvfs.util_cl);
