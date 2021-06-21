@@ -258,6 +258,9 @@ static int mgm_debugfs_init(struct mgm_groups *mgm_data)
  */
 extern struct kobject *pixel_stat_gpu_kobj;
 
+#define ORDER_SMALL_PAGE 0
+#define ORDER_LARGE_PAGE 9
+
 #define MGM_ATTR_RO(_name) \
 	static struct kobj_attribute _name##_attr = __ATTR_RO(_name)
 
@@ -267,8 +270,10 @@ static ssize_t total_page_count_show(struct kobject *kobj,
 	struct mgm_groups *data = container_of(kobj, struct mgm_groups, kobj);
 	int i, pages = 0;
 
+	/* count pages as 4K unit */
 	for (i = 0; i < MEMORY_GROUP_MANAGER_NR_GROUPS; i++)
-		pages += atomic_read(&data->groups[i].size) + atomic_read(&data->groups[i].lp_size);
+		pages += (atomic_read(&data->groups[i].size) << ORDER_SMALL_PAGE) +
+			 (atomic_read(&data->groups[i].lp_size) << ORDER_LARGE_PAGE);
 
 	return sysfs_emit(buf, "%d\n", pages);
 }
@@ -340,8 +345,6 @@ static void mgm_sysfs_term(struct mgm_groups *data)
 	kobject_put(&data->kobj);
 }
 
-#define ORDER_SMALL_PAGE 0
-#define ORDER_LARGE_PAGE 9
 static void update_size(struct memory_group_manager_device *mgm_dev, int
 		group_id, int order, bool alloc)
 {
