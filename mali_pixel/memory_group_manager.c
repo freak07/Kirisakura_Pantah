@@ -345,28 +345,35 @@ static void mgm_sysfs_term(struct mgm_groups *data)
 	kobject_put(&data->kobj);
 }
 
+static atomic64_t total_gpu_pages = ATOMIC64_INIT(0);
+
 static void update_size(struct memory_group_manager_device *mgm_dev, int
 		group_id, int order, bool alloc)
 {
+	static DEFINE_RATELIMIT_STATE(gpu_alloc_rs, 10*HZ, 1);
 	struct mgm_groups *data = mgm_dev->data;
 
 	switch (order) {
 	case ORDER_SMALL_PAGE:
-		if (alloc)
+		if (alloc) {
 			atomic_inc(&data->groups[group_id].size);
-		else {
+			atomic64_inc(&total_gpu_pages);
+		} else {
 			WARN_ON(atomic_read(&data->groups[group_id].size) == 0);
 			atomic_dec(&data->groups[group_id].size);
+			atomic64_dec(&total_gpu_pages);
 		}
 	break;
 
 	case ORDER_LARGE_PAGE:
-		if (alloc)
+		if (alloc) {
 			atomic_inc(&data->groups[group_id].lp_size);
-		else {
+			atomic64_add(1 << ORDER_LARGE_PAGE, &total_gpu_pages);
+		} else {
 			WARN_ON(atomic_read(
 				&data->groups[group_id].lp_size) == 0);
 			atomic_dec(&data->groups[group_id].lp_size);
+			atomic64_sub(1 << ORDER_LARGE_PAGE, &total_gpu_pages);
 		}
 	break;
 
@@ -374,6 +381,10 @@ static void update_size(struct memory_group_manager_device *mgm_dev, int
 		dev_err(data->dev, "Unknown order(%d)\n", order);
 	break;
 	}
+
+	if (atomic64_read(&total_gpu_pages) >= (4 << (30 - PAGE_SHIFT)) &&
+			  __ratelimit(&gpu_alloc_rs))
+		pr_warn("total_gpu_pages %lu\n", atomic64_read(&total_gpu_pages));
 }
 
 static struct page *mgm_alloc_page(
