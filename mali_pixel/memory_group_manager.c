@@ -384,7 +384,7 @@ static void update_size(struct memory_group_manager_device *mgm_dev, int
 
 	if (atomic64_read(&total_gpu_pages) >= (4 << (30 - PAGE_SHIFT)) &&
 			  __ratelimit(&gpu_alloc_rs))
-		pr_warn("total_gpu_pages %lu\n", atomic64_read(&total_gpu_pages));
+		pr_warn("total_gpu_pages %lld\n", atomic64_read(&total_gpu_pages));
 }
 
 static struct page *mgm_alloc_page(
