@@ -125,7 +125,7 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 {
 	int error;
 	struct pixel_context *pc = kbdev->platform_context;
-	int ret = (pc->pm.state_lost ? 1 : 0);
+	int ret = 1; /* TODO b/191136938 */
 
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
@@ -155,13 +155,6 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
  */
 static void pm_callback_power_off(struct kbase_device *kbdev)
 {
-#ifdef CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING
-	struct pixel_context *pc = kbdev->platform_context;
-
-	if (pc->tz_protection_enabled)
-		return;
-#endif /* CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING */
-
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
 	if (gpu_power_off(kbdev, false)) {
