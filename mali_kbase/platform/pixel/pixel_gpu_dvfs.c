@@ -720,7 +720,10 @@ void gpu_dvfs_term(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
+	cancel_delayed_work_sync(&pc->dvfs.clockdown_work);
 	destroy_workqueue(pc->dvfs.clockdown_wq);
+
+	cancel_work_sync(&pc->dvfs.control_work);
 	destroy_workqueue(pc->dvfs.control_wq);
 
 #ifdef CONFIG_MALI_PIXEL_GPU_THERMAL
