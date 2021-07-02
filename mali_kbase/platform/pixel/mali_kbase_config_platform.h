@@ -292,7 +292,7 @@ struct pixel_context {
 		struct gpu_dvfs_opp_metrics power_on_metrics;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 #ifdef CONFIG_GOOGLE_BCL
-		struct gs101_bcl_dev *bcl_dev;
+		struct bcl_device *bcl_dev;
 #endif
 	} pm;
 
