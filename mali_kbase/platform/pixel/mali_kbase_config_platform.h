@@ -287,7 +287,9 @@ struct pixel_context {
 		struct gpu_dvfs_opp_metrics power_off_metrics;
 		struct gpu_dvfs_opp_metrics power_on_metrics;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
-		struct gs101_bcl_dev *bcl_dev;
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+		struct bcl_device *bcl_dev;
+#endif
 	} pm;
 
 #ifdef CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING

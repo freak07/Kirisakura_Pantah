@@ -62,8 +62,10 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev)
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 	gpu_dvfs_event_power_on(kbdev);
 #endif
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
 	if (pc->pm.bcl_dev)
-		gs101_init_gpu_ratio(pc->pm.bcl_dev);
+		google_init_gpu_ratio(pc->pm.bcl_dev);
+#endif
 }
 
 /**
@@ -481,7 +483,9 @@ int gpu_pm_init(struct kbase_device *kbdev)
 	if (pc->pm.domain == NULL)
 		return -ENODEV;
 
-	pc->pm.bcl_dev = gs101_retrieve_bcl_handle();
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+	pc->pm.bcl_dev = google_retrieve_bcl_handle();
+#endif
 
 	return 0;
 
