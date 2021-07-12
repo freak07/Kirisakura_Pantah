@@ -29,9 +29,6 @@
 #include "mali_kbase_pm_always_on.h"
 #include "mali_kbase_pm_coarse_demand.h"
 #include "mali_kbase_pm_adaptive.h"
-#if !MALI_CUSTOMER_RELEASE
-#include "mali_kbase_pm_always_on_demand.h"
-#endif
 
 /* Forward definition - see mali_kbase.h */
 struct kbase_device;
@@ -211,9 +208,6 @@ union kbase_pm_policy_data {
 	struct kbasep_pm_policy_always_on always_on;
 	struct kbasep_pm_policy_coarse_demand coarse_demand;
 	struct kbasep_pm_policy_adaptive adaptive;
-#if !MALI_CUSTOMER_RELEASE
-	struct kbasep_pm_policy_always_on_demand always_on_demand;
-#endif
 };
 
 /**
@@ -584,7 +578,7 @@ struct kbase_pm_policy {
 	 * @event: The id of the power event that has occurred
 	 */
 	void (*handle_event)(struct kbase_device *kbdev,
-		enum kbase_pm_policy_event event);
+			     enum kbase_pm_policy_event event);
 
 	enum kbase_pm_policy_id id;
 

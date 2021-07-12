@@ -28,20 +28,23 @@
 
 #include <linux/mm.h>
 #include <mali_malisw.h>
-#include <mali_kbase_backend_config.h>
+#include <backend/gpu/mali_kbase_backend_config.h>
 #include <linux/rbtree.h>
 
 /* Forward declaration of struct kbase_device */
 struct kbase_device;
 
+#if !MALI_USE_CSF
 /* Forward declaration of struct kbase_context */
 struct kbase_context;
 
 /* Forward declaration of struct kbase_atom */
 struct kbase_jd_atom;
+#endif
 
 /**
- * struct kbase_platform_funcs_conf - Specifies platform init/term function pointers
+ * struct kbase_platform_funcs_conf - Specifies platform integration function
+ * pointers for DDK events such as device init and term.
  *
  * Specifies the functions pointers for platform specific initialization and
  * termination as well as other events. By default no functions are required.
@@ -75,8 +78,36 @@ struct kbase_platform_funcs_conf {
 	 * can be accessed (and possibly terminated) in here.
 	 */
 	void (*platform_term_func)(struct kbase_device *kbdev);
+
 	/**
-	 * platform_handler_context_init_func - platform specific handler for
+	 * @platform_late_init_func: platform specific late init function pointer
+	 * @kbdev - kbase_device pointer
+	 *
+	 * Function pointer to inform that the kbase driver initialization completed
+	 * or NULL if no such function is required. At this point the GPU driver will be
+	 * fully initialized.
+	 *
+	 * The platform specific private pointer kbase_device::platform_context
+	 * can be accessed (and possibly terminated) in here.
+	 */
+	int (*platform_late_init_func)(struct kbase_device *kbdev);
+
+	/**
+	 * @platform_late_term_func: platform specific late termination function pointer
+	 * @kbdev - kbase_device pointer
+	 *
+	 * Function pointer for platform specific termination or NULL if no
+	 * termination function is required. At this point the GPU driver will complete
+	 * termination process
+	 *
+	 * The platform specific private pointer kbase_device::platform_context
+	 * can be accessed (and possibly terminated) in here.
+	 */
+	void (*platform_late_term_func)(struct kbase_device *kbdev);
+
+#if !MALI_USE_CSF
+	/**
+	 * @platform_handler_context_init_func: platform specific handler for
 	 * when a new kbase_context is created.
 	 * @kctx - kbase_context pointer
 	 *
@@ -88,7 +119,7 @@ struct kbase_platform_funcs_conf {
 	 */
 	int (*platform_handler_context_init_func)(struct kbase_context *kctx);
 	/**
-	 * platform_handler_context_term_func - platform specific handler for
+	 * @platform_handler_context_term_func: platform specific handler for
 	 * when a kbase_context is terminated.
 	 * @kctx - kbase_context pointer
 	 *
@@ -98,7 +129,7 @@ struct kbase_platform_funcs_conf {
 	 */
 	void (*platform_handler_context_term_func)(struct kbase_context *kctx);
 	/**
-	 * platform_handler_atom_submit_func - platform specific handler for
+	 * @platform_handler_atom_submit_func: platform specific handler for
 	 * when a kbase_jd_atom is submitted.
 	 * @katom - kbase_jd_atom pointer
 	 *
@@ -111,7 +142,7 @@ struct kbase_platform_funcs_conf {
 	 */
 	void (*platform_handler_atom_submit_func)(struct kbase_jd_atom *katom);
 	/**
-	 * platform_handler_atom_complete_func - platform specific handler for
+	 * @platform_handler_atom_complete_func: platform specific handler for
 	 * when a kbase_jd_atom completes.
 	 * @katom - kbase_jd_atom pointer
 	 *
@@ -122,7 +153,9 @@ struct kbase_platform_funcs_conf {
 	 * Context: The caller must hold the hwaccess_lock. Function must be
 	 *          runnable in an interrupt context.
 	 */
-	void (*platform_handler_atom_complete_func)(struct kbase_jd_atom *katom);
+	void (*platform_handler_atom_complete_func)(
+		struct kbase_jd_atom *katom);
+#endif
 };
 
 /*
@@ -266,8 +299,8 @@ struct kbase_pm_callback_conf {
  * and such alignment should be maintained.
  *
  * @gpu_clk_handle: Handle of the GPU clock for which notifier was registered.
- * @old_rate:       Previous rate of this GPU clock.
- * @new_rate:       New rate of this GPU clock.
+ * @old_rate:       Previous rate of this GPU clock in Hz.
+ * @new_rate:       New rate of this GPU clock in Hz.
  */
 struct kbase_gpu_clk_notifier_data {
 	void *gpu_clk_handle;
@@ -341,7 +374,7 @@ struct kbase_clk_rate_trace_op_conf {
 		void *gpu_clk_handle, struct notifier_block *nb);
 };
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 struct kbase_platform_config {
 };
 #else
@@ -403,9 +436,37 @@ int kbasep_platform_device_init(struct kbase_device *kbdev);
 void kbasep_platform_device_term(struct kbase_device *kbdev);
 
 /**
+ * kbasep_platform_device_late_init: - Platform specific call to finish hardware
+ *                                     initialization
+ * @kbdev: kbase device pointer
+ *
+ * Function calls a platform defined routine if specified in the configuration
+ * attributes.  The routine can initialize any hardware and context state that
+ * is required for the GPU block to function.
+ *
+ * Return: 0 if no errors have been found in the config.
+ *         Negative error code otherwise.
+ */
+int kbasep_platform_device_late_init(struct kbase_device *kbdev);
+
+/**
+ * kbasep_platform_device_late_term - Platform specific call to finish hardware
+ *                                    termination
+ * @kbdev: Kbase device pointer
+ *
+ * Function calls a platform defined routine if specified in the configuration
+ * attributes. The routine can destroy any platform specific context state and
+ * shut down any hardware functionality that are outside of the Power Management
+ * callbacks.
+ *
+ */
+void kbasep_platform_device_late_term(struct kbase_device *kbdev);
+
+#if !MALI_USE_CSF
+/**
  * kbasep_platform_context_init - Platform specific callback when a kernel
- * context is created
- * @kctx - kbase_context pointer
+ *                                context is created
+ * @kctx: kbase_context pointer
  *
  * Function calls a platform defined routine if specified in the configuration
  * attributes.  The routine can initialize any per kernel context structures
@@ -417,7 +478,8 @@ int kbasep_platform_context_init(struct kbase_context *kctx);
 
 /**
  * kbasep_platform_context_term - Platform specific callback when a kernel
- * context is terminated
+ *                                context is terminated
+ * @kctx: kbase_context pointer
  *
  * Function calls a platform defined routine if specified in the configuration
  * attributes.  The routine should terminate any per kernel context structures
@@ -427,9 +489,9 @@ int kbasep_platform_context_init(struct kbase_context *kctx);
 void kbasep_platform_context_term(struct kbase_context *kctx);
 
 /**
- * kbasep_platform_event_atom_submit - Platform specific callback when an atom is
- * submitted to the GPU
- * @katom - kbase_jd_atom pointer
+ * kbasep_platform_event_atom_submit - Platform specific callback when an atom
+ *                                     is submitted to the GPU
+ * @katom: kbase_jd_atom pointer
  *
  * Function calls a platform defined routine if specified in the configuration
  * attributes.  The routine should not assume that it is in a process context.
@@ -440,14 +502,15 @@ void kbasep_platform_event_atom_submit(struct kbase_jd_atom *katom);
 
 /**
  * kbasep_platform_event_atom_complete - Platform specific callback when an atom
- * has stopped running on the GPU
- * @katom - kbase_jd_atom pointer
+ *                                       has stopped running on the GPU
+ * @katom: kbase_jd_atom pointer
  *
  * Function calls a platform defined routine if specified in the configuration
  * attributes.  The routine should not assume that it is in a process context.
  *
  */
 void kbasep_platform_event_atom_complete(struct kbase_jd_atom *katom);
+#endif
 
 #ifndef CONFIG_OF
 /**

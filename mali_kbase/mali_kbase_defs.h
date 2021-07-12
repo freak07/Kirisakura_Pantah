@@ -32,7 +32,7 @@
 #include <mali_base_hwconfig_issues.h>
 #include <mali_kbase_mem_lowlevel.h>
 #include <mmu/mali_kbase_mmu_hw.h>
-#include <mali_kbase_instr_defs.h>
+#include <backend/gpu/mali_kbase_instr_defs.h>
 #include <mali_kbase_pm.h>
 #include <mali_kbase_gpuprops_types.h>
 #if MALI_USE_CSF
@@ -55,7 +55,7 @@
 #include "mali_kbase_fence_defs.h"
 #endif
 
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 #include <linux/debugfs.h>
 #endif /* CONFIG_DEBUG_FS */
 
@@ -341,10 +341,9 @@ struct kbase_clk_rate_listener;
  * sleep. No clock rate manager functions must be called from here, as
  * its lock is taken.
  */
-typedef void (*kbase_clk_rate_listener_on_change_t)(
-	struct kbase_clk_rate_listener *listener,
-	u32 clk_index,
-	u32 clk_rate_hz);
+typedef void
+kbase_clk_rate_listener_on_change_t(struct kbase_clk_rate_listener *listener,
+				    u32 clk_index, u32 clk_rate_hz);
 
 /**
  * struct kbase_clk_rate_listener - Clock frequency listener
@@ -354,7 +353,7 @@ typedef void (*kbase_clk_rate_listener_on_change_t)(
  */
 struct kbase_clk_rate_listener {
 	struct list_head node;
-	kbase_clk_rate_listener_on_change_t notify;
+	kbase_clk_rate_listener_on_change_t *notify;
 };
 
 /**
@@ -699,6 +698,7 @@ struct kbase_process {
  *                         accesses made by the driver.
  * @pm:                    Per device object for storing data for power management
  *                         framework.
+ * @fw_load_lock:          Mutex to protect firmware loading in @ref kbase_open.
  * @csf:                   CSF object for the GPU device.
  * @js_data:               Per device object encapsulating the current context of
  *                         Job Scheduler, which is global to the device and is not
@@ -949,8 +949,12 @@ struct kbase_process {
  * @dummy_job_wa.jc:        dummy job workaround job
  * @dummy_job_wa.slot:      dummy job workaround slot
  * @dummy_job_wa.flags:     dummy job workaround flags
+ * @dummy_job_wa_loaded:    Flag for indicating that the workaround blob has
+ *                          been loaded. Protected by @fw_load_lock.
  * @arb:                    Pointer to the arbiter device
  * @pcm_dev:                The priority control manager device.
+ * @oom_notifier_block:     notifier_block containing kernel-registered out-of-
+ *                          memory handler.
  */
 struct kbase_device {
 	u32 hw_quirks_sc;
@@ -972,7 +976,7 @@ struct kbase_device {
 
 	struct clk *clocks[BASE_MAX_NR_CLOCKS_REGULATORS];
 	unsigned int nr_clocks;
-#ifdef CONFIG_REGULATOR
+#if IS_ENABLED(CONFIG_REGULATOR)
 	struct regulator *regulators[BASE_MAX_NR_CLOCKS_REGULATORS];
 	unsigned int nr_regulators;
 #if (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
@@ -981,16 +985,6 @@ struct kbase_device {
 #endif /* CONFIG_REGULATOR */
 	char devname[DEVNAME_SIZE];
 	u32  id;
-
-#ifdef CONFIG_MALI_NO_MALI
-	void *model;
-	struct kmem_cache *irq_slab;
-	struct workqueue_struct *irq_workq;
-	atomic_t serving_job_irq;
-	atomic_t serving_gpu_irq;
-	atomic_t serving_mmu_irq;
-	spinlock_t reg_op_lock;
-#endif	/* CONFIG_MALI_NO_MALI */
 
 	struct kbase_pm_device_data pm;
 
@@ -1068,7 +1062,7 @@ struct kbase_device {
 	struct kbasep_pm_metrics last_devfreq_metrics;
 	struct kbase_devfreq_queue_info devfreq_queue;
 
-#ifdef CONFIG_DEVFREQ_THERMAL
+#if IS_ENABLED(CONFIG_DEVFREQ_THERMAL)
 	struct thermal_cooling_device *devfreq_cooling;
 	bool ipa_protection_mode_switched;
 	struct {
@@ -1096,7 +1090,7 @@ struct kbase_device {
 
 	atomic_t job_fault_debug;
 
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	struct dentry *mali_debugfs_directory;
 	struct dentry *debugfs_ctx_directory;
 	struct dentry *debugfs_instr_directory;
@@ -1120,7 +1114,7 @@ struct kbase_device {
 
 	atomic_t ctx_num;
 
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	struct kbase_io_history io_history;
 #endif /* CONFIG_DEBUG_FS */
 
@@ -1173,6 +1167,7 @@ struct kbase_device {
 	bool l2_hash_values_override;
 	u32 l2_hash_values[ASN_HASH_COUNT];
 
+	struct mutex fw_load_lock;
 #if MALI_USE_CSF
 	/* CSF object for the GPU device. */
 	struct kbase_csf_device csf;
@@ -1220,12 +1215,15 @@ struct kbase_device {
 		int slot;
 		u64 flags;
 	} dummy_job_wa;
+	bool dummy_job_wa_loaded;
 
 #ifdef CONFIG_MALI_ARBITER_SUPPORT
 		struct kbase_arbiter_device arb;
 #endif
 	/* Priority Control Manager device */
 	struct priority_control_manager_device *pcm_dev;
+
+	struct notifier_block oom_notifier_block;
 };
 
 /**
@@ -1556,6 +1554,8 @@ struct kbase_reg_zone {
  *                        evictable/reclaimable.
  * @evict_list:           List head for the list containing the allocations which
  *                        can be evicted or freed up in the shrinker callback.
+ * @evict_nents:          Total number of pages allocated by the allocations within
+ *                        @evict_list (atomic).
  * @waiting_soft_jobs:    List head for the list containing softjob atoms, which
  *                        are either waiting for the event set operation, or waiting
  *                        for the signaling of input fence or waiting for the GPU
@@ -1799,6 +1799,7 @@ struct kbase_context {
 
 	struct shrinker         reclaim;
 	struct list_head        evict_list;
+	atomic_t evict_nents;
 
 	struct list_head waiting_soft_jobs;
 	spinlock_t waiting_soft_jobs_lock;
@@ -1818,7 +1819,7 @@ struct kbase_context {
 	u64 gpu_va_end;
 	bool jit_va;
 
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	char *mem_profile_data;
 	size_t mem_profile_size;
 	struct mutex mem_profile_lock;
@@ -1873,7 +1874,9 @@ struct kbase_context {
 
 	u64 limited_core_mask;
 
-        void* platform_data;
+#if !MALI_USE_CSF
+	void *platform_data;
+#endif
 };
 
 #ifdef CONFIG_MALI_CINSTR_GWT

@@ -36,20 +36,9 @@
 #include <linux/of.h>
 
 static const struct kbase_pm_policy *const all_policy_list[] = {
-#ifdef CONFIG_MALI_NO_MALI
-	&kbase_pm_always_on_policy_ops,
-	&kbase_pm_coarse_demand_policy_ops,
-#if !MALI_CUSTOMER_RELEASE
-	&kbase_pm_always_on_demand_policy_ops,
-#endif
-#else				/* CONFIG_MALI_NO_MALI */
 	&kbase_pm_coarse_demand_policy_ops,
 	&kbase_pm_adaptive_policy_ops,
-#if !MALI_CUSTOMER_RELEASE
-	&kbase_pm_always_on_demand_policy_ops,
-#endif
 	&kbase_pm_always_on_policy_ops
-#endif /* CONFIG_MALI_NO_MALI */
 };
 
 void kbase_pm_policy_init(struct kbase_device *kbdev)
@@ -60,14 +49,6 @@ void kbase_pm_policy_init(struct kbase_device *kbdev)
 	unsigned long flags;
 	int i;
 
-#if MALI_USE_CSF && defined(CONFIG_MALI_DEBUG)
-	/* Use always_on policy if module param fw_debug=1 is
-	 * passed, to aid firmware debugging.
-	 */
-	if (fw_debug)
-		default_policy = &kbase_pm_always_on_policy_ops;
-#endif
-
 	if (of_property_read_string(np, "power_policy", &power_policy_name) == 0) {
 		for (i = 0; i < ARRAY_SIZE(all_policy_list); i++)
 			if (sysfs_streq(all_policy_list[i]->name, power_policy_name)) {
@@ -75,6 +56,14 @@ void kbase_pm_policy_init(struct kbase_device *kbdev)
 				break;
 			}
 	}
+
+#if MALI_USE_CSF && defined(CONFIG_MALI_DEBUG)
+	/* Use always_on policy if module param fw_debug=1 is
+	 * passed, to aid firmware debugging.
+	 */
+	if (fw_debug)
+		default_policy = &kbase_pm_always_on_policy_ops;
+#endif
 
 	default_policy->init(kbdev);
 
@@ -373,7 +362,8 @@ void kbase_pm_set_policy(struct kbase_device *kbdev,
 	if (old_policy->term)
 		old_policy->term(kbdev);
 
-	memset(&kbdev->pm.backend.pm_policy_data, 0, sizeof(union kbase_pm_policy_data));
+	memset(&kbdev->pm.backend.pm_policy_data, 0,
+	       sizeof(union kbase_pm_policy_data));
 
 	KBASE_KTRACE_ADD(kbdev, PM_CURRENT_POLICY_INIT, NULL, new_policy->id);
 	if (new_policy->init)

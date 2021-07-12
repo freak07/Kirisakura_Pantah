@@ -27,7 +27,7 @@ enum kbase_ipa_model_param_type {
 	PARAM_TYPE_STRING,
 };
 
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 
 void kbase_ipa_debugfs_init(struct kbase_device *kbdev);
 int kbase_ipa_model_param_add(struct kbase_ipa_model *model, const char *name,
