@@ -49,7 +49,8 @@
 #include <linux/sched/rt.h>
 #include <uapi/linux/sched/types.h>
 
-#include "mali_base_kernel.h"
+#include <uapi/gpu/arm/midgard/mali_base_kernel.h>
+
 #include <mali_kbase_linux.h>
 
 /*
@@ -68,7 +69,7 @@
 #include "mali_kbase_gpu_memory_debugfs.h"
 #include "mali_kbase_mem_profile_debugfs.h"
 #include "mali_kbase_gpuprops.h"
-#include "mali_kbase_ioctl.h"
+#include <uapi/gpu/arm/midgard/mali_kbase_ioctl.h>
 #if !MALI_USE_CSF
 #include "mali_kbase_debug_job_fault.h"
 #include "mali_kbase_jd_debugfs.h"
@@ -217,10 +218,6 @@ void registers_unmap(struct kbase_device *kbdev);
 
 int kbase_device_coherency_init(struct kbase_device *kbdev);
 
-#ifdef CONFIG_MALI_BUSLOG
-int buslog_init(struct kbase_device *kbdev);
-void buslog_term(struct kbase_device *kbdev);
-#endif
 
 #if !MALI_USE_CSF
 int kbase_jd_init(struct kbase_context *kctx);

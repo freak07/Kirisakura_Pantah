@@ -42,7 +42,7 @@ export CONFIG_MALI_DEVFREQ?=y
 endif
 
 DEFINES += -DCONFIG_MALI_MIDGARD=$(CONFIG_MALI_MIDGARD) \
-	-DCONFIF_MALI_CSF_SUPPORT=$(CONFIF_MALI_CSF_SUPPORT) \
+	-DCONFIG_MALI_CSF_SUPPORT=$(CONFIG_MALI_CSF_SUPPORT) \
 	-DCONFIG_MALI_KUTF=$(CONFIG_MALI_KUTF) \
 	-DCONFIG_MALI_REAL_HW=$(CONFIG_MALI_REAL_HW) \
 	-DCONFIG_MALI_GATOR_SUPPORT=$(CONFIG_MALI_GATOR_SUPPORT) \
@@ -62,13 +62,7 @@ export CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING=y
 endif
 endif
 
-BUSLOG_PATH_RELATIVE = $(M)/../../../..
 KBASE_PATH_RELATIVE = $(M)
-
-ifeq ($(CONFIG_MALI_BUSLOG),y)
-#Add bus logger symbols
-EXTRA_SYMBOLS += $(BUSLOG_PATH_RELATIVE)/drivers/base/bus_logger/Module.symvers
-endif
 
 # we get the symbols from modules using KBUILD_EXTRA_SYMBOLS to prevent warnings about unknown functions
 modules:

@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef _KBASE_CSF_IOCTL_H_
-#define _KBASE_CSF_IOCTL_H_
+#ifndef _UAPI_KBASE_CSF_IOCTL_H_
+#define _UAPI_KBASE_CSF_IOCTL_H_
 
 #include <asm-generic/ioctl.h>
 #include <linux/types.h>
@@ -34,10 +34,16 @@
  * 1.2:
  * - Add new CSF GPU_FEATURES register into the property structure
  *   returned by KBASE_IOCTL_GET_GPUPROPS
+ * 1.3:
+ * - Add __u32 group_uid member to
+ *   &struct_kbase_ioctl_cs_queue_group_create.out
+ * 1.4:
+ * - Replace padding in kbase_ioctl_cs_get_glb_iface with
+ *   instr_features member of same size
  */
 
 #define BASE_UK_VERSION_MAJOR 1
-#define BASE_UK_VERSION_MINOR 2
+#define BASE_UK_VERSION_MINOR 4
 
 /**
  * struct kbase_ioctl_version_check - Check version compatibility between
@@ -146,6 +152,7 @@ struct kbase_ioctl_cs_queue_terminate {
  * @out:              Output parameters
  * @out.group_handle: Handle of a newly created queue group.
  * @out.padding:      Currently unused, must be zero
+ * @out.group_uid:    UID of the queue group available to base.
  */
 union kbase_ioctl_cs_queue_group_create {
 	struct {
@@ -162,7 +169,8 @@ union kbase_ioctl_cs_queue_group_create {
 	} in;
 	struct {
 		__u8 group_handle;
-		__u8 padding[7];
+		__u8 padding[3];
+		__u32 group_uid;
 	} out;
 };
 
@@ -287,25 +295,25 @@ struct kbase_ioctl_cs_tiler_heap_term {
  * union kbase_ioctl_cs_get_glb_iface - Request the global control block
  *                                        of CSF interface capabilities
  *
- * @in:                Input parameters
- * @in.max_group_num:  The maximum number of groups to be read. Can be 0, in
- *                     which case groups_ptr is unused.
- * @in.max_total_stream_num: The maximum number of CSs to be read. Can be 0, in
- *                     which case streams_ptr is unused.
- * @in.groups_ptr:     Pointer where to store all the group data (sequentially).
- * @in.streams_ptr:    Pointer where to store all the CS data (sequentially).
- * @out:               Output parameters
- * @out.glb_version:   Global interface version.
- * @out.features:      Bit mask of features (e.g. whether certain types of job
- *                     can be suspended).
- * @out.group_num:     Number of CSGs supported.
- * @out.prfcnt_size:   Size of CSF performance counters, in bytes. Bits 31:16
- *                     hold the size of firmware performance counter data
- *                     and 15:0 hold the size of hardware performance counter
- *                     data.
- * @out.total_stream_num: Total number of CSs, summed across all groups.
- * @out.padding:       Will be zeroed.
- *
+ * @in:                    Input parameters
+ * @in.max_group_num:      The maximum number of groups to be read. Can be 0, in
+ *                         which case groups_ptr is unused.
+ * @in.max_total_stream    _num: The maximum number of CSs to be read. Can be 0, in
+ *                         which case streams_ptr is unused.
+ * @in.groups_ptr:         Pointer where to store all the group data (sequentially).
+ * @in.streams_ptr:        Pointer where to store all the CS data (sequentially).
+ * @out:                   Output parameters
+ * @out.glb_version:       Global interface version.
+ * @out.features:          Bit mask of features (e.g. whether certain types of job
+ *                         can be suspended).
+ * @out.group_num:         Number of CSGs supported.
+ * @out.prfcnt_size:       Size of CSF performance counters, in bytes. Bits 31:16
+ *                         hold the size of firmware performance counter data
+ *                         and 15:0 hold the size of hardware performance counter
+ *                         data.
+ * @out.total_stream_num:  Total number of CSs, summed across all groups.
+ * @out.instr_features:    Instrumentation features. Bits 7:4 hold the maximum
+ *                         size of events. Bits 3:0 hold the offset update rate.
  *
  */
 union kbase_ioctl_cs_get_glb_iface {
@@ -321,7 +329,7 @@ union kbase_ioctl_cs_get_glb_iface {
 		__u32 group_num;
 		__u32 prfcnt_size;
 		__u32 total_stream_num;
-		__u32 padding;
+		__u32 instr_features;
 	} out;
 };
 
@@ -379,4 +387,4 @@ union kbase_ioctl_cs_event_memory_read {
 
 #endif /* MALI_UNIT_TEST */
 
-#endif /* _KBASE_CSF_IOCTL_H_ */
+#endif /* _UAPI_KBASE_CSF_IOCTL_H_ */

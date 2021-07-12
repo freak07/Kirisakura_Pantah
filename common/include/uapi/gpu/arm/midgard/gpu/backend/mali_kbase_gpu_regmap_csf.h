@@ -19,10 +19,12 @@
  *
  */
 
-#ifndef _KBASE_GPU_REGMAP_CSF_H_
-#define _KBASE_GPU_REGMAP_CSF_H_
+#ifndef _UAPI_KBASE_GPU_REGMAP_CSF_H_
+#define _UAPI_KBASE_GPU_REGMAP_CSF_H_
 
-#if !MALI_USE_CSF
+#include <linux/types.h>
+
+#if !MALI_USE_CSF && defined(__KERNEL__)
 #error "Cannot be compiled with JM"
 #endif
 
@@ -61,8 +63,7 @@
 #define VALUE_SHADER_REG_LO(n) (VALUE_SHADER_BASE + ((n) << 3))     /* (RO) Counter value #n, low word */
 #define VALUE_SHADER_REG_HI(n) (VALUE_SHADER_BASE + ((n) << 3) + 4) /* (RO) Counter value #n, high word */
 
-
-#include "csf/mali_gpu_csf_control_registers.h"
+#include "../../csf/mali_gpu_csf_control_registers.h"
 
 /* Set to implementation defined, outer caching */
 #define AS_MEMATTR_AARCH64_OUTER_IMPL_DEF 0x88ull
@@ -188,7 +189,7 @@
 
 /* GPU_COMMAND command + payload */
 #define GPU_COMMAND_CODE_PAYLOAD(opcode, payload) \
-	((u32)opcode | ((u32)payload << 8))
+	((__u32)opcode | ((__u32)payload << 8))
 
 /* Final GPU_COMMAND form */
 /* No operation, nothing happens */
@@ -282,9 +283,9 @@
 /* Implementation-dependent exception codes used to indicate CSG
  * and CS errors that are not specified in the specs.
  */
-#define GPU_EXCEPTION_TYPE_SW_FAULT_0 ((u8)0x70)
-#define GPU_EXCEPTION_TYPE_SW_FAULT_1 ((u8)0x71)
-#define GPU_EXCEPTION_TYPE_SW_FAULT_2 ((u8)0x72)
+#define GPU_EXCEPTION_TYPE_SW_FAULT_0 ((__u8)0x70)
+#define GPU_EXCEPTION_TYPE_SW_FAULT_1 ((__u8)0x71)
+#define GPU_EXCEPTION_TYPE_SW_FAULT_2 ((__u8)0x72)
 
 /* GPU_FAULTSTATUS_EXCEPTION_TYPE values */
 #define GPU_FAULTSTATUS_EXCEPTION_TYPE_OK 0x00
@@ -331,4 +332,4 @@
 /* GPU_CONTROL_MCU.GPU_IRQ_RAWSTAT */
 #define PRFCNT_SAMPLE_COMPLETED (1 << 16)   /* Set when performance count sample has completed */
 
-#endif /* _KBASE_GPU_REGMAP_CSF_H_ */
+#endif /* _UAPI_KBASE_GPU_REGMAP_CSF_H_ */

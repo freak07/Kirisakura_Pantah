@@ -56,7 +56,7 @@ static int kbasep_gpu_memory_seq_show(struct seq_file *sfile, void *data)
 			/* output the memory usage and cap for each kctx
 			* opened on this device
 			*/
-			seq_printf(sfile, "  %s-0x%p %10u\n",
+			seq_printf(sfile, "  %s-0x%pK %10u\n",
 				"kctx",
 				kctx,
 				atomic_read(&(kctx->used_pages)));

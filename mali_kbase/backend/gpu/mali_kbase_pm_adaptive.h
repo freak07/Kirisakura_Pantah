@@ -23,6 +23,10 @@
 
 /*
  * "Adaptive" power management policy
+ *
+ * Copyright 2021 Google LLC
+ *
+ * Author: Sidath Senanayake <sidaths@google.com>
  */
 
 #ifndef MALI_KBASE_PM_ADAPTIVE_H
