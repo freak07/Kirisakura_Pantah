@@ -142,10 +142,15 @@ static int kbase_insert_kctx_to_process(struct kbase_context *kctx)
 		kprcs->dma_buf_root = RB_ROOT;
 		kprcs->total_gpu_pages = 0;
 		kprcs->dma_buf_pages = 0;
+
+		/* Setup process's sysfs nodes */
 		WARN_ON(kobject_init_and_add(
 					&kprcs->kobj, &kprcs_ktype,
 					kctx->kbdev->proc_sysfs_node,
 					"%d", tgid));
+		kprcs->dma_bufs_sysfs_node = kobject_create_and_add("dma_bufs",
+				&kprcs->kobj);
+		WARN_ON(!(kprcs->dma_bufs_sysfs_node));
 
 		while (*new) {
 			struct kbase_process *prcs_node;
@@ -284,8 +289,13 @@ static void kbase_remove_kctx_from_process(struct kbase_context *kctx)
 		 */
 		WARN_ON(kprcs->total_gpu_pages);
 		WARN_ON(!RB_EMPTY_ROOT(&kprcs->dma_buf_root));
+
 		kobject_del(&kprcs->kobj);
 		kobject_put(&kprcs->kobj);
+
+		kobject_del(kprcs->dma_bufs_sysfs_node);
+		kobject_put(kprcs->dma_bufs_sysfs_node);
+
 		kfree(kprcs);
 	}
 }
