@@ -7,10 +7,6 @@
  *
  */
 
-/* Turn this on for more debug */
-//#define DEBUG
-
-
 #include <linux/atomic.h>
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>

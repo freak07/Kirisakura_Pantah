@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-2.0
+# SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 #
 # (C) COPYRIGHT 2012-2021 ARM Limited. All rights reserved.
 #
@@ -67,7 +67,7 @@ endif
 #
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= '"r32p1-00bet0"'
+MALI_RELEASE_NAME ?= '"r32p1-00bet2"'
 
 # Append pixel to release name for debugging
 MALI_RELEASE_NAME := $(subst "',-pixel"',$(MALI_RELEASE_NAME))

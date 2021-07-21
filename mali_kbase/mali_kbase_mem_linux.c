@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
  * (C) COPYRIGHT 2010-2021 ARM Limited. All rights reserved.
@@ -2711,7 +2711,7 @@ static int kbasep_reg_mmap(struct kbase_context *kctx,
 						reg->nr_pages, 1) != 0) {
 		dev_err(kctx->kbdev->dev, "%s:%d\n", __FILE__, __LINE__);
 		/* Unable to map in GPU space. */
-		WARN_ON_ONCE(1); /* TODO: b/162291137 */
+		WARN_ON_ONCE(1);
 		err = -ENOMEM;
 		goto out;
 	}
