@@ -19,8 +19,6 @@
  *
  */
 
-#include <linux/dma-buf.h>
-
 #include <mali_kbase.h>
 #include <mali_kbase_mem_linux.h>
 #include <mali_kbase_defs.h>
@@ -166,9 +164,6 @@ void kbase_remove_dma_buf_usage(struct kbase_context *kctx,
 {
 	struct kbase_device *kbdev = kctx->kbdev;
 	bool dev_mapping_removed, prcs_mapping_removed;
-#if IS_ENABLED(CONFIG_DMABUF_SYSFS_STATS)
-	char dma_inode[64];
-#endif
 
 	mutex_lock(&kbdev->dma_buf_lock);
 
@@ -189,12 +184,6 @@ void kbase_remove_dma_buf_usage(struct kbase_context *kctx,
 	if (prcs_mapping_removed) {
 		kctx->kprcs->total_gpu_pages -= alloc->nents;
 		kctx->kprcs->dma_buf_pages -= alloc->nents;
-
-#if IS_ENABLED(CONFIG_DMABUF_SYSFS_STATS)
-		snprintf(dma_inode, 64, "%lu",
-				file_inode(alloc->imported.umm.dma_buf->file)->i_ino);
-		sysfs_remove_link(kctx->kprcs->dma_bufs_sysfs_node, dma_inode);
-#endif
 	}
 
 	if (dev_mapping_removed || prcs_mapping_removed)
@@ -209,9 +198,6 @@ void kbase_add_dma_buf_usage(struct kbase_context *kctx,
 {
 	struct kbase_device *kbdev = kctx->kbdev;
 	bool unique_dev_dmabuf, unique_prcs_dmabuf;
-#if IS_ENABLED(CONFIG_DMABUF_SYSFS_STATS)
-	char dma_inode[64];
-#endif
 
 	mutex_lock(&kbdev->dma_buf_lock);
 
@@ -233,14 +219,6 @@ void kbase_add_dma_buf_usage(struct kbase_context *kctx,
 	if (unique_prcs_dmabuf) {
 		kctx->kprcs->total_gpu_pages += alloc->nents;
 		kctx->kprcs->dma_buf_pages += alloc->nents;
-
-#if IS_ENABLED(CONFIG_DMABUF_SYSFS_STATS)
-		snprintf(dma_inode, 64, "%lu",
-				file_inode(alloc->imported.umm.dma_buf->file)->i_ino);
-		sysfs_create_link(kctx->kprcs->dma_bufs_sysfs_node,
-				&alloc->imported.umm.dma_buf->sysfs_entry->kobj,
-				dma_inode);
-#endif
 	}
 
 	if (unique_prcs_dmabuf || unique_dev_dmabuf)

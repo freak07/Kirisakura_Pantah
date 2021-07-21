@@ -631,8 +631,6 @@ struct kbase_devfreq_queue_info {
  *                      imported multiple times for the process.
  * @kobj:               Links to the per-process sysfs node
  *                      &kbase_device.proc_sysfs_node.
- * @dma_bufs_sysfs_node:    Sysfs directory node to store process mapped dmabufs
- *                          symlinks.
  */
 struct kbase_process {
 	pid_t tgid;
@@ -644,7 +642,6 @@ struct kbase_process {
 	struct rb_root dma_buf_root;
 
 	struct kobject kobj;
-	struct kobject *dma_bufs_sysfs_node;
 };
 
 /**
