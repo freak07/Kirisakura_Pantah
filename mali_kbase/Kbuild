@@ -67,10 +67,9 @@ endif
 #
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= '"r32p1-00bet2"'
+MALI_RELEASE_NAME ?= '"r32p1-00pxl0"'
 
-# Append pixel to release name for debugging
-MALI_RELEASE_NAME := $(subst "',-pixel"',$(MALI_RELEASE_NAME))
+# We are building for Pixel
 CONFIG_MALI_PLATFORM_NAME="pixel"
 
 # Set up defaults if not defined by build system
