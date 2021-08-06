@@ -14,6 +14,7 @@
 
 /* SOC includes */
 #include <soc/google/exynos-pmu-if.h>
+#include <soc/google/exynos-pd.h>
 #include <soc/google/cal-if.h>
 
 /* Mali core includes */
@@ -24,24 +25,12 @@
 #include "pixel_gpu_control.h"
 #include "pixel_gpu_trace.h"
 
-/*
- * GPU_PM_DOMAIN_NAMES - names for GPU power domains.
- *
- * This array of names is used to match up devicetree defined power domains with their
- * representation in the Mali GPU driver. The names here must have a one to one mapping with the
- * 'power-domain-names' entry in the GPU's devicetree entry.
- */
-static const char * const GPU_PM_DOMAIN_NAMES[GPU_PM_DOMAIN_COUNT] = {
-	"top", "cores"
-};
-
 /**
  * gpu_pm_power_on_cores() - Powers on the GPU shader cores.
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
- * Powers off the CORES domain and issues trace points and events. Also powers on TOP and cancels
- * any pending suspend operations on it.
+ * Powers on the shader cores and issues trace points and events.
  *
  * Context: Process context.
  */
@@ -50,17 +39,24 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
-	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
-	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
+	mutex_lock(&pc->dvfs.lock);
+	mutex_lock(&pc->pm.domain->access_lock);
+
+	/* We restore to dvfs.level rather than dvfs.level_target because this is just an on/off
+	 * switch and that's the frequency we were at when we turned shaders off; the dvfs system
+	 * will change to dvfs.level_target (possibly after re-evaluating it) as part of its normal
+	 * operation.
+	 */
+	cal_dfs_set_rate(pc->dvfs.clks[GPU_DVFS_CLK_SHADERS].cal_id,
+			 pc->dvfs.table[pc->dvfs.level].clk[GPU_DVFS_CLK_SHADERS]);
+
+	mutex_unlock(&pc->pm.domain->access_lock);
+	mutex_unlock(&pc->dvfs.lock);
 
 	trace_gpu_power_state(ktime_get_ns() - start_ns,
 		GPU_POWER_LEVEL_GLOBAL, GPU_POWER_LEVEL_STACKS);
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 	gpu_dvfs_event_power_on(kbdev);
-#endif
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
-	if (pc->pm.bcl_dev)
-		google_init_gpu_ratio(pc->pm.bcl_dev);
 #endif
 }
 
@@ -69,8 +65,7 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev)
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
- * Powers off the CORES domain and issues trace points and events. Also marks the TOP domain for
- * delayed suspend.
+ * Powers off the shader cores and issues trace points and events.
  *
  * Context: Process context.
  */
@@ -79,10 +74,14 @@ static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
-	pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
+	mutex_lock(&pc->dvfs.lock);
+	mutex_lock(&pc->pm.domain->access_lock);
 
-	pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
-	pm_runtime_put_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
+	/* Setting a frequency of 0 is a backdoor request to ACPM to power off the shader cores. */
+	cal_dfs_set_rate(pc->dvfs.clks[GPU_DVFS_CLK_SHADERS].cal_id, 0);
+
+	mutex_unlock(&pc->pm.domain->access_lock);
+	mutex_unlock(&pc->dvfs.lock);
 
 	trace_gpu_power_state(ktime_get_ns() - start_ns,
 		GPU_POWER_LEVEL_STACKS, GPU_POWER_LEVEL_GLOBAL);
@@ -99,27 +98,17 @@ static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
  * This callback is called by the core Mali driver when it identifies that the GPU is about to
  * become active.
  *
- * Since we are using idle hints to power down the GPU in &pm_callback_power_off we will need to
- * power up the GPU when we receive this callback.
+ * Since we currently don't power anything off between suspend and resume, this function is
+ * a no-op.
  *
- * If we detect that we are being called after TOP has been powered off, we indicate to the caller
- * that the GPU state has been lost.
- *
- * Return: If GPU state has been lost, 1 is returned. Otherwise 0 is returned.
+ * Return: Returns 0 indicating GPU state has not been lost since the last power off since the most
+ *         recent resume.
  */
 static int gpu_pm_callback_power_on(struct kbase_device *kbdev)
 {
-	struct pixel_context *pc = kbdev->platform_context;
-	int ret = (pc->pm.state_lost ? 1 : 0);
-
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
-	if (pc->pm.state_lost)
-		pc->pm.state_lost = false;
-
-	gpu_pm_power_on_cores(kbdev);
-
-	return ret;
+	return 0;
 }
 
 /**
@@ -130,14 +119,40 @@ static int gpu_pm_callback_power_on(struct kbase_device *kbdev)
  * This callback is called by the core Mali driver when it identifies that the GPU is idle and may
  * be powered off.
  *
- * We take this opportunity to power down the CORES domain to allow for inter-frame power downs that
- * save power.
+ * We currently don't take advantage of this opportunity.
  */
 static void gpu_pm_callback_power_off(struct kbase_device *kbdev)
 {
 	dev_dbg(kbdev->dev, "%s\n", __func__);
+}
 
-	gpu_pm_power_off_cores(kbdev);
+/**
+ * gpu_pm_callback_power_resume() - Called when the system is resuming from suspend
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * This callback is called by the core Mali driver when it is notified that the system is resuming
+ * from suspend. The driver does not require that the GPU is powered on immediately.
+ *
+ * Since our current policy is to keep the GPU fully powered on whenever we're not in suspend, we
+ * do restore power to both the frontend and shader cores here.
+ */
+static void gpu_pm_callback_power_resume(struct kbase_device *kbdev)
+{
+	struct pixel_context *pc = kbdev->platform_context;
+	int ret;
+
+	dev_dbg(kbdev->dev, "%s\n", __func__);
+
+	if ((ret = exynos_pd_power_on(pc->pm.domain)) < 0)
+		dev_warn(kbdev->dev, "failed to power on domain: %d\n", ret);
+
+	gpu_pm_power_on_cores(kbdev);
+
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+	if (pc->pm.bcl_dev)
+		google_init_gpu_ratio(pc->pm.bcl_dev);
+#endif
 }
 
 /**
@@ -148,144 +163,23 @@ static void gpu_pm_callback_power_off(struct kbase_device *kbdev)
  * This callback is called by the core Mali driver when it is notified that the system is about to
  * suspend and the GPU needs to be powered down.
  *
- * We manage 2 logical power domains; an SOC might have more physical domains, but they will be
- * grouped into these two domains.
- *
- *   1. the TOP or front-end domain, which holds useful state even when the GPU is idle.
- *   2. the CORES or back-end domain, which has no persistent state between tasks.
- *
- * GPU state is stored in the TOP power domain. This domain is powered whenever the SOC is not in
- * suspend, so that we don't have to restore state when we have new work. The CORES domain is
- * powered off when the GPU is idle in order to save power.
- *
- * This callback is called when the SOC is about to suspend which will result in GPU state being
- * lost. As the core Mali driver doesn't guarantee that &gpu_pm_callback_power_off will be called as
- * well, all operations made in that function are made in this callback too if CORES is still
- * powered. In addition, we also record that state will be lost and power down the TOP domain.
- *
- * Logging the GPU state in this way enables an optimization where GPU state is only reconstructed
- * if necessary when the GPU is powered on by &gpu_pm_callback_power_on. This saves CPU cycles and
- * reduces power on latency.
+ * We power off both the shader cores (stateless) and the front-end and memory system (stateful).
+ * The core Mali driver doesn't guarantee that &gpu_pm_callback_power_off will be called first, so
+ * if we ever do something there (e.g. power off shader cores) we'll also need to ensure it is done
+ * here.
  */
 static void gpu_pm_callback_power_suspend(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
+	int ret;
 
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
-	if (pc->pm.state_lost)
-		return;
+	gpu_pm_power_off_cores(kbdev);
 
-	if (gpu_pm_get_power_state(kbdev))
-		gpu_pm_power_off_cores(kbdev);
-
-	pc->pm.state_lost = true;
+	if ((ret = exynos_pd_power_off(pc->pm.domain)) < 0)
+		dev_warn(kbdev->dev, "failed to power off domain: %d\n", ret);
 }
-
-#ifdef KBASE_PM_RUNTIME
-
-/**
- * gpu_pm_callback_power_runtime_suspend() - Called when a TOP domain is going to runtime suspend
- *
- * @dev: The device that is going to runtime suspend
- *
- * This callback is made when @dev is about to enter runtime suspend. In our case, this occurs when
- * the TOP domain of GPU is about to enter runtime suspend. At this point we take the opportunity
- * to store that state will be lost and disable DVFS metrics gathering.
- *
- * Return: Always returns 0.
- */
-static int gpu_pm_callback_power_runtime_suspend(struct device *dev)
-{
-	struct kbase_device *kbdev = dev_get_drvdata(dev);
-	struct pixel_context *pc = kbdev->platform_context;
-
-	dev_dbg(kbdev->dev, "%s\n", __func__);
-
-	WARN_ON(pc->pm.state_lost);
-
-	pc->pm.state_lost = true;
-
-#ifdef CONFIG_MALI_MIDGARD_DVFS
-	kbase_pm_metrics_stop(kbdev);
-#endif
-
-	return 0;
-}
-
-/**
- * gpu_pm_callback_power_runtime_resume() - Called when a TOP domain is going to runtime resume
- *
- * @dev: The device that is going to runtime suspend
- *
- * This callback is made when @dev is about to runtime resume. In our case, this occurs when
- * the TOP domain of GPU is about to runtime resume. We use this callback to enable DVFS metrics
- * gathering.
- *
- * Return: Always returns 0.
- */
-static int gpu_pm_callback_power_runtime_resume(struct device *dev)
-{
-#ifdef CONFIG_MALI_MIDGARD_DVFS
-	struct kbase_device *kbdev = dev_get_drvdata(dev);
-
-	kbase_pm_metrics_start(kbdev);
-#endif
-	return 0;
-}
-
-/**
- * gpu_pm_callback_power_runtime_init() - Initialize runtime power management.
- *
- * @kbdev: The &struct kbase_device for the GPU.
- *
- * This callback is made by the core Mali driver at the point where runtime power management is
- * being initialized early on in the probe of the Mali device.
- *
- * We enable autosuspend for the TOP domain so that after the autosuspend delay, the core Mali
- * driver knows to disable the collection of GPU utilization data used for DVFS purposes.
- *
- * Return: Returns 0 on success, or an error code on failure.
- */
-static int gpu_pm_callback_power_runtime_init(struct kbase_device *kbdev)
-{
-	struct pixel_context *pc = kbdev->platform_context;
-
-	dev_dbg(kbdev->dev, "%s\n", __func__);
-
-	pm_runtime_set_autosuspend_delay(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP],
-		pc->pm.autosuspend_delay);
-	pm_runtime_use_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
-
-	if (!pm_runtime_enabled(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]) ||
-		!pm_runtime_enabled(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES])) {
-		dev_warn(kbdev->dev, "pm_runtime not enabled\n");
-		return -ENOSYS;
-	}
-
-	return 0;
-}
-
-/**
- * kbase_device_runtime_term() - Initialize runtime power management.
- *
- * @kbdev: The &struct kbase_device for the GPU.
- *
- * This callback is made via the core Mali driver at the point where runtime power management needs
- * to be de-initialized. Currently this only happens if the device probe fails at a point after
- * which runtime power management has been initialized.
- */
-static void gpu_pm_callback_power_runtime_term(struct kbase_device *kbdev)
-{
-	struct pixel_context *pc = kbdev->platform_context;
-
-	dev_dbg(kbdev->dev, "%s\n", __func__);
-
-	pm_runtime_disable(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
-	pm_runtime_disable(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
-}
-
-#endif /* KBASE_PM_RUNTIME */
 
 /*
  * struct pm_callbacks - Callbacks for linking to core Mali KMD power management
@@ -294,79 +188,33 @@ static void gpu_pm_callback_power_runtime_term(struct kbase_device *kbdev)
  * integration. For more information on the fields below, see the documentation for each function
  * assigned below, and &struct kbase_pm_callback_conf.
  *
- * Currently we power down the GPU when the core Mali driver indicates that the GPU is idle. This is
- * indicated by the core Mali driver via &power_off_callback and actioned in this integration via
- * &gpu_pm_callback_power_off. Similarly, the GPU is powered on in the mirror callback
- * &power_on_callback and actioned by &gpu_pm_callback_power_on.
+ * Currently we keep the entire GPU powered except during system suspend. A future change will
+ * power off the shader cores when the GPU is idle (in response to &power_off_callback), and power
+ * them on again just before the GPU becomes active (in response to &power_on_callback).
  *
- * We also provide a callback for &power_suspend_callback since this call is made when the system is
- * going to suspend which will result in the GPU state being lost. We need to log this so that when
- * the GPU comes on again we can indicate to the core Mali driver that the GPU state needs to be
- * reconstructed. See the documentation for &gpu_pm_callback_power_suspend for more information.
+ * The callback for &power_suspend_callback turns off the frontend (and, currently, the shader
+ * cores) just before the system enters suspend. That process is reversed during resume in
+ * &power_resume_callback.
  *
- * Since all power operations are handled in the most aggressive manner, &power_resume_callback, is
- * not needed and set to NULL.
- *
- * For runtime PM operations, we use virtual devices mapped to the two GPU power domains (TOP and
- * CORES) instead, and so all runtime PM callbacks as defined in &struct dev_pm_ops are set to NULL
- * here. Note that &power_runtime_init_callback and &power_runtime_term_callback are constructs of
- * the Mali GPU driver and not present in &struct dev_pm_ops despite their naming similarity. We do
- * define these as they link initialization in this file with the probe of the GPU device.
- *
- * Finally, we set &soft_reset_callback to NULL as we do not need to perform a custom soft reset,
- * and can rely on this being handled in the default way by the core Mali driver.
+ * We're not currently using runtime PM, so we leave all of those callbacks NULL. Similarly, we
+ * don't need custom soft reset handling beyond what the core driver does, so that callback is
+ * also NULL.
  */
 struct kbase_pm_callback_conf pm_callbacks = {
 	.power_off_callback = gpu_pm_callback_power_off,
 	.power_on_callback = gpu_pm_callback_power_on,
 	.power_suspend_callback = gpu_pm_callback_power_suspend,
-	.power_resume_callback = NULL,
-#ifdef KBASE_PM_RUNTIME
-	.power_runtime_init_callback = gpu_pm_callback_power_runtime_init,
-	.power_runtime_term_callback = gpu_pm_callback_power_runtime_term,
-	.power_runtime_off_callback = NULL,
-	.power_runtime_on_callback = NULL,
-	.power_runtime_idle_callback = NULL,
-#else /* KBASE_PM_RUNTIME */
+	.power_resume_callback = gpu_pm_callback_power_resume,
 	.power_runtime_init_callback = NULL,
 	.power_runtime_term_callback = NULL,
 	.power_runtime_off_callback = NULL,
 	.power_runtime_on_callback = NULL,
 	.power_runtime_idle_callback = NULL,
-#endif /* KBASE_PM_RUNTIME */
-	.soft_reset_callback = NULL
+	.soft_reset_callback = NULL,
 };
 
 /**
- * gpu_pm_get_pm_cores_domain() - Find the GPU's power domain.
- *
- * @g3d_genpd_name: A string containing the name of the power domain
- *
- * Searches through the available power domains in device tree for one that
- * matched @g3d_genpd_name and returns it if found.
- *
- * Return: A pointer to the power domain if found, NULL otherwise.
- */
-static struct exynos_pm_domain *gpu_pm_get_pm_cores_domain(const char *g3d_genpd_name)
-{
-	struct device_node *np;
-	struct platform_device *pdev;
-	struct exynos_pm_domain *pd;
-
-	for_each_compatible_node(np, NULL, "samsung,exynos-pd") {
-		if (of_device_is_available(np)) {
-			pdev = of_find_device_by_node(np);
-			pd = (struct exynos_pm_domain *)platform_get_drvdata(pdev);
-			if (strcmp(g3d_genpd_name, (const char *)(pd->genpd.name)) == 0)
-				return pd;
-		}
-	}
-
-	return NULL;
-}
-
-/**
- * gpu_pm_get_power_state() - Returns the current power state of a GPU.
+ * gpu_pm_get_power_state() - Returns the current power state of the GPU.
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
@@ -401,54 +249,7 @@ int gpu_pm_init(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	struct device_node *np = kbdev->dev->of_node;
 	const char *g3d_power_domain_name;
-	int i, num_pm_domains;
 	int ret = 0;
-
-	num_pm_domains = of_count_phandle_with_args(np, "power-domains", "#power-domain-cells");
-	if (num_pm_domains != GPU_PM_DOMAIN_COUNT) {
-		dev_err(kbdev->dev, "incorrect number of power domains in DT actual=%d expected=%d",
-				num_pm_domains, GPU_PM_DOMAIN_COUNT);
-		return -EINVAL;
-	}
-
-	for (i = 0; i < GPU_PM_DOMAIN_COUNT; i++) {
-		pc->pm.domain_devs[i] = dev_pm_domain_attach_by_name(kbdev->dev,
-			GPU_PM_DOMAIN_NAMES[i]);
-
-		if (IS_ERR_OR_NULL(pc->pm.domain_devs[i])) {
-			if (IS_ERR(pc->pm.domain_devs[i]))
-				ret = PTR_ERR(pc->pm.domain_devs[i]);
-			else
-				ret = -EINVAL;
-
-			dev_err(kbdev->dev, "failed to attach pm domain %s: %d\n",
-				GPU_PM_DOMAIN_NAMES[i], ret);
-
-			pc->pm.domain_devs[i] = NULL;
-			goto error;
-		}
-
-		dev_set_drvdata(pc->pm.domain_devs[i], kbdev);
-
-		pc->pm.domain_links[i] = device_link_add(kbdev->dev,
-			pc->pm.domain_devs[i], DL_FLAG_STATELESS | DL_FLAG_PM_RUNTIME);
-
-		if (!pc->pm.domain_links[i]) {
-			dev_err(kbdev->dev, "failed to link pm domain device");
-			ret = -EINVAL;
-			goto error;
-		}
-	}
-
-	/*
-	 * We set up runtime pm callbacks specifically for the TOP domain. This is so that when we
-	 * use autosupend it will only affect the TOP domain and not CORES as we control the power
-	 * state of CORES directly.
-	 */
-	pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]->pm_domain->ops.runtime_suspend =
-		&gpu_pm_callback_power_runtime_suspend;
-	pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]->pm_domain->ops.runtime_resume =
-		&gpu_pm_callback_power_runtime_resume;
 
 	if (of_property_read_u32(np, "gpu_pm_autosuspend_delay", &pc->pm.autosuspend_delay)) {
 		pc->pm.autosuspend_delay = AUTO_SUSPEND_DELAY;
@@ -475,12 +276,13 @@ int gpu_pm_init(struct kbase_device *kbdev)
 		goto error;
 	}
 
-	pc->pm.domain = gpu_pm_get_pm_cores_domain(g3d_power_domain_name);
+	pc->pm.domain = exynos_pd_lookup_name(g3d_power_domain_name);
 	if (pc->pm.domain == NULL) {
-		dev_err(kbdev->dev, "Failed to find GPU cores power domain '%s'\n",
+		dev_err(kbdev->dev, "Failed to find GPU power domain '%s'\n",
 			g3d_power_domain_name);
 		return -ENODEV;
 	}
+	exynos_pd_power_on(pc->pm.domain);
 
 #if IS_ENABLED(CONFIG_GOOGLE_BCL)
 	pc->pm.bcl_dev = google_retrieve_bcl_handle();
@@ -503,14 +305,4 @@ error:
  */
 void gpu_pm_term(struct kbase_device *kbdev)
 {
-	struct pixel_context *pc = kbdev->platform_context;
-	int i;
-
-	for (i = 0; i < GPU_PM_DOMAIN_COUNT; i++) {
-		if (pc->pm.domain_devs[i]) {
-			if (pc->pm.domain_links[i])
-				device_link_del(pc->pm.domain_links[i]);
-			dev_pm_domain_detach(pc->pm.domain_devs[i], true);
-		}
-	}
 }
