@@ -28,9 +28,6 @@
 #include "pixel_gpu_control.h"
 #include "pixel_gpu_trace.h"
 
-#define GPU_PM_POWER_ON_MAX_RETRY 5
-#define GPU_PM_POWER_ON_RETRY_WAIT 100 /* 100us */
-
 /*
  * GPU_PM_DOMAIN_NAMES - names for GPU power domains.
  *
@@ -47,7 +44,7 @@ static const char * const GPU_PM_DOMAIN_NAMES[GPU_PM_DOMAIN_COUNT] = {
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
- * Powers on the CORES domain and issues trace points and events. Also powers on TOP and cancels
+ * Powers off the CORES domain and issues trace points and events. Also powers on TOP and cancels
  * any pending suspend operations on it.
  *
  * Context: Process context.
@@ -56,25 +53,9 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
-	unsigned int retry = GPU_PM_POWER_ON_MAX_RETRY;
-	bool gpu_power_state;
 
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
-
-	while (!(gpu_power_state = gpu_pm_get_power_state(kbdev)) && retry--)
-		usleep_range(GPU_PM_POWER_ON_RETRY_WAIT, GPU_PM_POWER_ON_RETRY_WAIT);
-
-	if (retry != GPU_PM_POWER_ON_MAX_RETRY) {
-		if (gpu_power_state)
-			dev_warn(kbdev->dev,
-				"GPU pm_runtime_get_sync didn't power on GPU immediately, needed %u us\n",
-				(GPU_PM_POWER_ON_MAX_RETRY - retry) * GPU_PM_POWER_ON_RETRY_WAIT);
-		else
-			WARN(true,
-				"GPU pm_runtime_get_sync didn't power on GPU, despite waiting %u us!\n",
-				GPU_PM_POWER_ON_MAX_RETRY * GPU_PM_POWER_ON_RETRY_WAIT);
-	}
 
 	trace_gpu_power_state(ktime_get_ns() - start_ns,
 		GPU_POWER_LEVEL_GLOBAL, GPU_POWER_LEVEL_STACKS);
