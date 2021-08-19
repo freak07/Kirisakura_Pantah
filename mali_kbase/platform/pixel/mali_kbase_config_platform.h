@@ -202,6 +202,7 @@ struct gpu_dvfs_metrics_uid_stats;
  *
  * @kbdev:                      The &struct kbase_device for the GPU.
  *
+ * @pm.lock:                    &struct mutex used to control access to the power down sequence.
  * @pm.domain_devs              Virtual pm domain devices.
  * @pm.domain_links             Links from pm domain devices to the real device.
  * @pm.state_lost:              Stores whether the TOP domain has been powered off and state lost.
@@ -275,6 +276,8 @@ struct pixel_context {
 	struct kbase_device *kbdev;
 
 	struct {
+		struct mutex lock;
+
 		struct device *domain_devs[GPU_PM_DOMAIN_COUNT];
 		struct device_link *domain_links[GPU_PM_DOMAIN_COUNT];
 

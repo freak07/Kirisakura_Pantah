@@ -76,23 +76,34 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev)
  * Powers off the CORES domain and issues trace points and events. Also marks the TOP domain for
  * delayed suspend.
  *
- * Context: Process context.
+ * While the GPU power on sequence occurs only due to incoming GPU work, the power down sequence is
+ * more complex in that it can be triggered by more than one event. In order to avoid races between
+ * these power down triggers, we use the PM lock to ensure correct behaviour.
+ *
+ * Context: Process context. Takes and releases the PM lock.
  */
 static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
-	pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
+	mutex_lock(&pc->pm.lock);
 
-	pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
-	pm_runtime_put_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
+	if (gpu_pm_get_power_state(kbdev)) {
 
-	trace_gpu_power_state(ktime_get_ns() - start_ns,
-		GPU_POWER_LEVEL_STACKS, GPU_POWER_LEVEL_GLOBAL);
+		pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
+
+		pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
+		pm_runtime_put_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
+
+		trace_gpu_power_state(ktime_get_ns() - start_ns,
+			GPU_POWER_LEVEL_STACKS, GPU_POWER_LEVEL_GLOBAL);
 #ifdef CONFIG_MALI_MIDGARD_DVFS
-	gpu_dvfs_event_power_off(kbdev);
+		gpu_dvfs_event_power_off(kbdev);
 #endif
+	}
+
+	mutex_unlock(&pc->pm.lock);
 }
 
 /**
@@ -103,7 +114,7 @@ static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
  * This callback is called by the core Mali driver when it identifies that the GPU is about to
  * become active.
  *
- * Since we are using idle hints to power down the GPU in &pm_callback_power_off we will need to
+ * Since we are using idle hints to power down the GPU in &gpu_pm_callback_power_off we will need to
  * power up the GPU when we receive this callback.
  *
  * If we detect that we are being called after TOP has been powered off, we indicate to the caller
@@ -180,8 +191,7 @@ static void gpu_pm_callback_power_suspend(struct kbase_device *kbdev)
 	if (pc->pm.state_lost)
 		return;
 
-	if (gpu_pm_get_power_state(kbdev))
-		gpu_pm_power_off_cores(kbdev);
+	gpu_pm_power_off_cores(kbdev);
 
 	pc->pm.state_lost = true;
 }
@@ -407,6 +417,9 @@ int gpu_pm_init(struct kbase_device *kbdev)
 	const char *g3d_power_domain_name;
 	int i, num_pm_domains;
 	int ret = 0;
+
+	/* Initialize lock */
+	mutex_init(&pc->pm.lock);
 
 	num_pm_domains = of_count_phandle_with_args(np, "power-domains", "#power-domain-cells");
 	if (num_pm_domains != GPU_PM_DOMAIN_COUNT) {
