@@ -107,22 +107,23 @@ extern struct protected_mode_ops pixel_protected_ops;
 #define CPU_FREQ_MAX INT_MAX
 
 enum gpu_power_state {
-        /* Mali GPUs have a hierarchy of power domains, which must be powered up
-         * in order and powered down in reverse order. Individual architectures
-         * and implementations may not allow each domain to be powered up or
-         * down independently of the others.
-         *
-         * The power state can thus be defined as the highest-level domain that
-         * is currently powered on.
-         *
-         * GLOBAL: The frontend (JM, CSF), including registers.
-         * COREGROUP: The L2 and AXI interface, Tiler, and MMU.
-         * STACKS: The shader cores.
-         */
-        GPU_POWER_LEVEL_OFF             = 0,
-        GPU_POWER_LEVEL_GLOBAL          = 1,
-        GPU_POWER_LEVEL_COREGROUP       = 2,
-        GPU_POWER_LEVEL_STACKS          = 3,
+	/*
+	 * Mali GPUs have a hierarchy of power domains, which must be powered up
+	 * in order and powered down in reverse order. Individual architectures
+	 * and implementations may not allow each domain to be powered up or
+	 * down independently of the others.
+	 *
+	 * The power state can thus be defined as the highest-level domain that
+	 * is currently powered on.
+	 *
+	 * GLOBAL: The frontend (JM, CSF), including registers.
+	 * COREGROUP: The L2 and AXI interface, Tiler, and MMU.
+	 * STACKS: The shader cores.
+	 */
+	GPU_POWER_LEVEL_OFF       = 0,
+	GPU_POWER_LEVEL_GLOBAL    = 1,
+	GPU_POWER_LEVEL_COREGROUP = 2,
+	GPU_POWER_LEVEL_STACKS    = 3,
 };
 
 /**
@@ -221,7 +222,9 @@ struct gpu_dvfs_metrics_uid_stats;
  *
  * @kbdev:                      The &struct kbase_device for the GPU.
  *
- * @pm.lock:                    &struct mutex used to control accesses to &state.
+ * @pm.lock:                    &struct mutex used to ensure serialization of calls to kernel power
+ *                              management functions on the GPU power domain devices held in
+ *                              &pm.domain_devs.
  * @pm.state:                   Holds the current power state of the GPU.
  * @pm.domain_devs              Virtual pm domain devices.
  * @pm.domain_links             Links from pm domain devices to the real device.
