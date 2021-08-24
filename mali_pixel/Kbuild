@@ -25,9 +25,6 @@ CONFIG_MALI_MEMORY_GROUP_MANAGER ?= m
 CONFIG_MALI_PRIORITY_CONTROL_MANAGER ?= m
 CONFIG_MALI_PIXEL_STATS ?= m
 
-# Use our defines when compiling, and include mali platform module headers
-ccflags-y += $(DEFINES) -I$(src)/../common/include
-
 mali_pixel-objs :=
 
 ifeq ($(CONFIG_MALI_PIXEL_STATS),m)
@@ -43,6 +40,9 @@ ifeq ($(CONFIG_MALI_PRIORITY_CONTROL_MANAGER),m)
 	DEFINES += -DCONFIG_MALI_PRIORITY_CONTROL_MANAGER
 	mali_pixel-objs += priority_control_manager.o
 endif
+
+# Use our defines when compiling, and include mali platform module headers
+ccflags-y += $(DEFINES) -I$(src)/../common/include
 
 # Add kernel module target if any of our config options is enabled
 ifneq ($(mali_pixel-objs),)
