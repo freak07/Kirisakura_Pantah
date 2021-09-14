@@ -20,17 +20,17 @@
 #
 
 mali_kbase-y += \
-	$(MALI_PLATFORM_DIR)/pixel_gpu.o \
-	$(MALI_PLATFORM_DIR)/pixel_gpu_power.o
+	platform/$(MALI_PLATFORM_DIR)/pixel_gpu.o \
+	platform/$(MALI_PLATFORM_DIR)/pixel_gpu_power.o
 
 mali_kbase-$(CONFIG_MALI_MIDGARD_DVFS) += \
-	$(MALI_PLATFORM_DIR)/pixel_gpu_dvfs.o \
-	$(MALI_PLATFORM_DIR)/pixel_gpu_dvfs_governor.o \
-	$(MALI_PLATFORM_DIR)/pixel_gpu_dvfs_metrics.o \
-	$(MALI_PLATFORM_DIR)/pixel_gpu_sysfs.o
+	platform/$(MALI_PLATFORM_DIR)/pixel_gpu_dvfs.o \
+	platform/$(MALI_PLATFORM_DIR)/pixel_gpu_dvfs_governor.o \
+	platform/$(MALI_PLATFORM_DIR)/pixel_gpu_dvfs_metrics.o \
+	platform/$(MALI_PLATFORM_DIR)/pixel_gpu_sysfs.o
 
 mali_kbase-$(CONFIG_MALI_PIXEL_GPU_QOS) += \
-	$(MALI_PLATFORM_DIR)/pixel_gpu_dvfs_qos.o
+	platform/$(MALI_PLATFORM_DIR)/pixel_gpu_dvfs_qos.o
 
 mali_kbase-$(CONFIG_MALI_PIXEL_GPU_THERMAL) += \
-	$(MALI_PLATFORM_DIR)/pixel_gpu_tmu.o
+	platform/$(MALI_PLATFORM_DIR)/pixel_gpu_tmu.o

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  *
- * (C) COPYRIGHT 2014-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -289,11 +289,11 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 		katom->gpu_rb_state = KBASE_ATOM_GPU_RB_READY;
 		kbase_pm_metrics_update(kbdev, end_timestamp);
 
+		/* Inform platform at start/finish of atom */
 		kbasep_platform_event_atom_complete(katom);
 
 		if (katom->core_req & BASE_JD_REQ_PERMON)
 			kbase_pm_release_gpu_cycle_counter_nolock(kbdev);
-		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
 
 		KBASE_TLSTREAM_TL_NRET_ATOM_LPU(kbdev, katom,
 			&kbdev->gpu_props.props.raw_props.js_features
@@ -302,6 +302,8 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 		KBASE_TLSTREAM_TL_NRET_CTX_LPU(kbdev, kctx,
 			&kbdev->gpu_props.props.raw_props.js_features
 				[katom->slot_nr]);
+
+		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
 
 	case KBASE_ATOM_GPU_RB_READY:
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
@@ -849,7 +851,7 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 					break;
 
 				katom[idx]->gpu_rb_state =
-				KBASE_ATOM_GPU_RB_WAITING_PROTECTED_MODE_PREV;
+					KBASE_ATOM_GPU_RB_WAITING_PROTECTED_MODE_PREV;
 
 				/* ***TRANSITION TO HIGHER STATE*** */
 				/* fallthrough */
@@ -989,7 +991,11 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 
 				kbase_job_hw_submit(kbdev, katom[idx], js);
 				katom[idx]->gpu_rb_state =
-						KBASE_ATOM_GPU_RB_SUBMITTED;
+					KBASE_ATOM_GPU_RB_SUBMITTED;
+
+				/* ***TRANSITION TO HIGHER STATE*** */
+				/* fallthrough */
+			case KBASE_ATOM_GPU_RB_SUBMITTED:
 
 				/* Inform power management at start/finish of
 				 * atom so it can update its GPU utilisation
@@ -998,12 +1004,9 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 				kbase_pm_metrics_update(kbdev,
 						&katom[idx]->start_timestamp);
 
+				/* Inform platform at start/finish of atom */
 				kbasep_platform_event_atom_submit(katom[idx]);
 
-				/* ***TRANSITION TO HIGHER STATE*** */
-				/* fallthrough */
-			case KBASE_ATOM_GPU_RB_SUBMITTED:
-				/* Atom submitted to HW, nothing else to do */
 				break;
 
 			case KBASE_ATOM_GPU_RB_RETURN_TO_JS:
@@ -1028,7 +1031,7 @@ void kbase_backend_run_atom(struct kbase_device *kbdev,
 				struct kbase_jd_atom *katom)
 {
 	lockdep_assert_held(&kbdev->hwaccess_lock);
-	dev_dbg(kbdev->dev, "Backend running atom %p\n", (void *)katom);
+	dev_dbg(kbdev->dev, "Backend running atom %pK\n", (void *)katom);
 
 	kbase_gpu_enqueue_atom(kbdev, katom);
 	kbase_backend_slot_update(kbdev);
@@ -1089,7 +1092,7 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 	struct kbase_context *kctx = katom->kctx;
 
 	dev_dbg(kbdev->dev,
-		"Atom %p completed on hw with code 0x%x and job_tail 0x%llx (s:%d)\n",
+		"Atom %pK completed on hw with code 0x%x and job_tail 0x%llx (s:%d)\n",
 		(void *)katom, completion_code, job_tail, js);
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
@@ -1209,7 +1212,7 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 	if (job_tail != 0 && job_tail != katom->jc) {
 		/* Some of the job has been executed */
 		dev_dbg(kbdev->dev,
-			"Update job chain address of atom %p to resume from 0x%llx\n",
+			"Update job chain address of atom %pK to resume from 0x%llx\n",
 			(void *)katom, job_tail);
 
 		katom->jc = job_tail;
@@ -1229,7 +1232,7 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 	 * - Schedule out the parent context if necessary, and schedule a new
 	 *   one in.
 	 */
-#ifdef CONFIG_GPU_TRACEPOINTS
+#if IS_ENABLED(CONFIG_GPU_TRACEPOINTS)
 	{
 		/* The atom in the HEAD */
 		struct kbase_jd_atom *next_katom = kbase_gpu_inspect(kbdev, js,
@@ -1270,7 +1273,7 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 
 	if (katom) {
 		dev_dbg(kbdev->dev,
-			"Cross-slot dependency %p has become runnable.\n",
+			"Cross-slot dependency %pK has become runnable.\n",
 			(void *)katom);
 
 		/* Check if there are lower priority jobs to soft stop */
@@ -1670,7 +1673,7 @@ void kbase_gpu_dump_slots(struct kbase_device *kbdev)
 
 			if (katom)
 				dev_info(kbdev->dev,
-				"  js%d idx%d : katom=%p gpu_rb_state=%d\n",
+				"  js%d idx%d : katom=%pK gpu_rb_state=%d\n",
 				js, idx, katom, katom->gpu_rb_state);
 			else
 				dev_info(kbdev->dev, "  js%d idx%d : empty\n",

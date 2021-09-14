@@ -57,8 +57,11 @@ enum kbase_arbif_evt {
  * Initialize the arbiter interface and also determines
  * if Arbiter functionality is required.
  *
- * Return: 0 if the Arbiter interface was successfully initialized or the
- *           Arbiter was not required.
+ * Return:
+ * * 0			- the interface was initialized or was not specified
+ * *			in the device tree.
+ * * -EFAULT		- the interface was specified but failed to initialize.
+ * * -EPROBE_DEFER	- module dependencies are not yet available.
  */
 int kbase_arbif_init(struct kbase_device *kbdev);
 
@@ -70,6 +73,14 @@ int kbase_arbif_init(struct kbase_device *kbdev);
  * of the arbif module used
  */
 void kbase_arbif_destroy(struct kbase_device *kbdev);
+
+/**
+ * kbase_arbif_get_max_config() - Request max config info
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ *
+ * call back function from arb interface to arbiter requesting max config info
+ */
+void kbase_arbif_get_max_config(struct kbase_device *kbdev);
 
 /**
  * kbase_arbif_gpu_request() - Send GPU request message to the arbiter

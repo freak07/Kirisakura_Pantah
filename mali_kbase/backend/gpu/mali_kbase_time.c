@@ -87,7 +87,6 @@ static bool timedwait_cycle_count_active(struct kbase_device *kbdev)
 			break;
 		}
 	}
-
 	return success;
 }
 #endif

@@ -19,8 +19,10 @@
  *
  */
 
-#ifndef _BASE_JM_KERNEL_H_
-#define _BASE_JM_KERNEL_H_
+#ifndef _UAPI_BASE_JM_KERNEL_H_
+#define _UAPI_BASE_JM_KERNEL_H_
+
+#include <linux/types.h>
 
 /* Memory allocation, access/hint flags.
  *
@@ -207,8 +209,8 @@
 #define BASE_JIT_ALLOC_MEM_TILER_ALIGN_TOP  (1 << 0)
 
 /**
- * If set, the heap info address points to a u32 holding the used size in bytes;
- * otherwise it points to a u64 holding the lowest address of unused memory.
+ * If set, the heap info address points to a __u32 holding the used size in bytes;
+ * otherwise it points to a __u64 holding the lowest address of unused memory.
  */
 #define BASE_JIT_ALLOC_HEAP_INFO_IS_SIZE  (1 << 1)
 
@@ -230,7 +232,7 @@
  * These share the same space as BASEP_CONTEXT_FLAG_*, and so must
  * not collide with them.
  */
-typedef u32 base_context_create_flags;
+typedef __u32 base_context_create_flags;
 
 /* No flags set */
 #define BASE_CONTEXT_CREATE_FLAG_NONE ((base_context_create_flags)0)
@@ -320,7 +322,7 @@ typedef u32 base_context_create_flags;
  * @blob: per-job data array
  */
 struct base_jd_udata {
-	u64 blob[2];
+	__u64 blob[2];
 };
 
 /**
@@ -333,7 +335,7 @@ struct base_jd_udata {
  * When the flag is set for a particular dependency to signal that it is an
  * ordering only dependency then errors will not be propagated.
  */
-typedef u8 base_jd_dep_type;
+typedef __u8 base_jd_dep_type;
 
 #define BASE_JD_DEP_TYPE_INVALID  (0)       /**< Invalid dependency */
 #define BASE_JD_DEP_TYPE_DATA     (1U << 0) /**< Data dependency */
@@ -349,7 +351,7 @@ typedef u8 base_jd_dep_type;
  * Special case is ::BASE_JD_REQ_DEP, which is used to express complex
  * dependencies, and that doesn't execute anything on the hardware.
  */
-typedef u32 base_jd_core_req;
+typedef __u32 base_jd_core_req;
 
 /* Requirements that come from the HW */
 
@@ -581,6 +583,13 @@ typedef u32 base_jd_core_req;
  */
 #define BASE_JD_REQ_END_RENDERPASS ((base_jd_core_req)1 << 19)
 
+/* SW-only requirement: The atom needs to run on a limited core mask affinity.
+ *
+ * If this bit is set then the kbase_context.limited_core_mask will be applied
+ * to the affinity.
+ */
+#define BASE_JD_REQ_LIMITED_CORE_MASK ((base_jd_core_req)1 << 20)
+
 /* These requirement bits are currently unused in base_jd_core_req
  */
 #define BASEP_JD_REQ_RESERVED \
@@ -591,7 +600,7 @@ typedef u32 base_jd_core_req;
 	BASE_JD_REQ_FS_AFBC | BASE_JD_REQ_PERMON | \
 	BASE_JD_REQ_SKIP_CACHE_START | BASE_JD_REQ_SKIP_CACHE_END | \
 	BASE_JD_REQ_JOB_SLOT | BASE_JD_REQ_START_RENDERPASS | \
-	BASE_JD_REQ_END_RENDERPASS))
+	BASE_JD_REQ_END_RENDERPASS | BASE_JD_REQ_LIMITED_CORE_MASK))
 
 /* Mask of all bits in base_jd_core_req that control the type of the atom.
  *
@@ -636,7 +645,7 @@ enum kbase_jd_atom_state {
 /**
  * typedef base_atom_id - Type big enough to store an atom number in.
  */
-typedef u8 base_atom_id;
+typedef __u8 base_atom_id;
 
 /**
  * struct base_dependency -
@@ -699,10 +708,10 @@ struct base_dependency {
  * BASE_JD_REQ_END_RENDERPASS is set in the base_jd_core_req.
  */
 struct base_jd_fragment {
-	u64 norm_read_norm_write;
-	u64 norm_read_forced_write;
-	u64 forced_read_forced_write;
-	u64 forced_read_norm_write;
+	__u64 norm_read_norm_write;
+	__u64 norm_read_forced_write;
+	__u64 forced_read_forced_write;
+	__u64 forced_read_norm_write;
 };
 
 /**
@@ -742,7 +751,7 @@ struct base_jd_fragment {
  * the same context. See KBASE_JS_SYSTEM_PRIORITY_MODE and
  * KBASE_JS_PROCESS_LOCAL_PRIORITY_MODE for more details.
  */
-typedef u8 base_jd_prio;
+typedef __u8 base_jd_prio;
 
 /* Medium atom priority. This is a priority higher than BASE_JD_PRIO_LOW */
 #define BASE_JD_PRIO_MEDIUM  ((base_jd_prio)0)
@@ -793,32 +802,32 @@ typedef u8 base_jd_prio;
  * @padding:       Unused. Must be zero.
  *
  * This structure has changed since UK 10.2 for which base_jd_core_req was a
- * u16 value.
+ * __u16 value.
  *
- * In UK 10.3 a core_req field of a u32 type was added to the end of the
- * structure, and the place in the structure previously occupied by u16
+ * In UK 10.3 a core_req field of a __u32 type was added to the end of the
+ * structure, and the place in the structure previously occupied by __u16
  * core_req was kept but renamed to compat_core_req.
  *
- * From UK 11.20 - compat_core_req is now occupied by u8 jit_id[2].
+ * From UK 11.20 - compat_core_req is now occupied by __u8 jit_id[2].
  * Compatibility with UK 10.x from UK 11.y is not handled because
  * the major version increase prevents this.
  *
  * For UK 11.20 jit_id[2] must be initialized to zero.
  */
 struct base_jd_atom_v2 {
-	u64 jc;
+	__u64 jc;
 	struct base_jd_udata udata;
-	u64 extres_list;
-	u16 nr_extres;
-	u8 jit_id[2];
+	__u64 extres_list;
+	__u16 nr_extres;
+	__u8 jit_id[2];
 	struct base_dependency pre_dep[2];
 	base_atom_id atom_number;
 	base_jd_prio prio;
-	u8 device_nr;
-	u8 jobslot;
+	__u8 device_nr;
+	__u8 jobslot;
 	base_jd_core_req core_req;
-	u8 renderpass_id;
-	u8 padding[7];
+	__u8 renderpass_id;
+	__u8 padding[7];
 };
 
 /**
@@ -853,20 +862,20 @@ struct base_jd_atom_v2 {
  * @padding:       Unused. Must be zero.
  */
 typedef struct base_jd_atom {
-	u64 seq_nr;
-	u64 jc;
+	__u64 seq_nr;
+	__u64 jc;
 	struct base_jd_udata udata;
-	u64 extres_list;
-	u16 nr_extres;
-	u8 jit_id[2];
+	__u64 extres_list;
+	__u16 nr_extres;
+	__u8 jit_id[2];
 	struct base_dependency pre_dep[2];
 	base_atom_id atom_number;
 	base_jd_prio prio;
-	u8 device_nr;
-	u8 jobslot;
+	__u8 device_nr;
+	__u8 jobslot;
 	base_jd_core_req core_req;
-	u8 renderpass_id;
-	u8 padding[7];
+	__u8 renderpass_id;
+	__u8 padding[7];
 } base_jd_atom;
 
 /* Job chain event code bits
@@ -1181,11 +1190,11 @@ struct base_jd_event_v2 {
  */
 
 struct base_dump_cpu_gpu_counters {
-	u64 system_time;
-	u64 cycle_counter;
-	u64 sec;
-	u32 usec;
-	u8 padding[36];
+	__u64 system_time;
+	__u64 cycle_counter;
+	__u64 sec;
+	__u32 usec;
+	__u8 padding[36];
 };
 
-#endif /* _BASE_JM_KERNEL_H_ */
+#endif /* _UAPI_BASE_JM_KERNEL_H_ */

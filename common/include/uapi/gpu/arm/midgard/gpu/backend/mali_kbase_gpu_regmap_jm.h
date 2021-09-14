@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  *
- * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -19,10 +19,10 @@
  *
  */
 
-#ifndef _KBASE_GPU_REGMAP_JM_H_
-#define _KBASE_GPU_REGMAP_JM_H_
+#ifndef _UAPI_KBASE_GPU_REGMAP_JM_H_
+#define _UAPI_KBASE_GPU_REGMAP_JM_H_
 
-#if MALI_USE_CSF
+#if MALI_USE_CSF && defined(__KERNEL__)
 #error "Cannot be compiled with CSF"
 #endif
 
@@ -284,4 +284,4 @@
 #define GPU_IRQ_REG_COMMON (GPU_FAULT | MULTIPLE_GPU_FAULTS | RESET_COMPLETED \
 		| POWER_CHANGED_ALL | PRFCNT_SAMPLE_COMPLETED)
 
-#endif /* _KBASE_GPU_REGMAP_JM_H_ */
+#endif /* _UAPI_KBASE_GPU_REGMAP_JM_H_ */

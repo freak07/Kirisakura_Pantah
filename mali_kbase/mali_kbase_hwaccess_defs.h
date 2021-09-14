@@ -26,7 +26,7 @@
 #ifndef _KBASE_HWACCESS_DEFS_H_
 #define _KBASE_HWACCESS_DEFS_H_
 
-#include <mali_kbase_jm_defs.h>
+#include <backend/gpu/mali_kbase_jm_defs.h>
 
 /**
  * struct kbase_hwaccess_data - object encapsulating the GPU backend specific

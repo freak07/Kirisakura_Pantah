@@ -282,8 +282,6 @@ void gpu_dvfs_metrics_job_end(struct kbase_jd_atom *atom)
 	pc->dvfs.metrics.js_uid_stats[js] = NULL;
 }
 
-#endif /* !MALI_USE_CSF */
-
 /**
  * gpu_dvfs_create_uid_stats() - Allocates and initializes a per-UID stats block
  *
@@ -315,6 +313,8 @@ static struct gpu_dvfs_metrics_uid_stats *gpu_dvfs_create_uid_stats(struct pixel
 	return ret;
 }
 
+#endif /* !MALI_USE_CSF */
+
 /**
  * gpu_dvfs_destroy_uid_stats() - Destroys a previously initializes per-UID stats block
  *
@@ -328,6 +328,8 @@ static void gpu_dvfs_destroy_uid_stats(struct gpu_dvfs_metrics_uid_stats *stats)
 }
 
 /* Kernel context callback management */
+
+#if !MALI_USE_CSF
 
 /**
  * gpu_dvfs_kctx_init() - Called when a kernel context is created
@@ -427,6 +429,7 @@ void gpu_dvfs_kctx_term(struct kbase_context *kctx)
 	WARN_ON(stats->active_kctx_count < 0);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
+#endif /* !MALI_USE_CSF */
 
 /**
  * gpu_dvfs_metrics_init() - Initializes DVFS metrics.

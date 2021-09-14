@@ -97,7 +97,6 @@ static u32 kbase_g7x_power_model_get_sc_counter(struct kbase_ipa_model_vinstr_da
 	const u32 sc_base = MEMSYS_BASE +
 		(model_data->kbdev->gpu_props.props.l2_props.num_l2_slices *
 		 KBASE_IPA_NR_BYTES_PER_BLOCK);
-
 	return sc_base + counter_block_offset;
 }
 

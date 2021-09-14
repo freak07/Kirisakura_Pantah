@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  *
- * (C) COPYRIGHT 2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2020-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef _KBASE_JM_IOCTL_H_
-#define _KBASE_JM_IOCTL_H_
+#ifndef _UAPI_KBASE_JM_IOCTL_H_
+#define _UAPI_KBASE_JM_IOCTL_H_
 
 #include <asm-generic/ioctl.h>
 #include <linux/types.h>
@@ -116,9 +116,12 @@
  * 11.30:
  * - Add a new priority level BASE_JD_PRIO_REALTIME
  * - Add ioctl 54: This controls the priority setting.
+ * 11.31:
+ * - Added BASE_JD_REQ_LIMITED_CORE_MASK.
+ * - Added ioctl 55: set_limited_core_count.
  */
 #define BASE_UK_VERSION_MAJOR 11
-#define BASE_UK_VERSION_MINOR 30
+#define BASE_UK_VERSION_MINOR 31
 
 /**
  * struct kbase_ioctl_version_check - Check version compatibility between
@@ -217,4 +220,4 @@ union kbase_kinstr_jm_fd {
 #define KBASE_IOCTL_VERSION_CHECK_RESERVED \
 	_IOWR(KBASE_IOCTL_TYPE, 52, struct kbase_ioctl_version_check)
 
-#endif /* _KBASE_JM_IOCTL_H_ */
+#endif /* _UAPI_KBASE_JM_IOCTL_H_ */

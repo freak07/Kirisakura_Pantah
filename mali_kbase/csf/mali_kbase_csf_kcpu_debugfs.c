@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  *
- * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -23,11 +23,11 @@
 #include <mali_kbase.h>
 #include <linux/seq_file.h>
 
-#ifdef CONFIG_SYNC_FILE
+#if IS_ENABLED(CONFIG_SYNC_FILE)
 #include "mali_kbase_sync.h"
 #endif
 
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 
 /**
  * kbasep_csf_kcpu_debugfs_print_queue() - Print additional info for KCPU
@@ -89,13 +89,13 @@ static void kbasep_csf_kcpu_debugfs_print_queue(struct seq_file *file,
 		struct kbase_kcpu_command *cmd =
 				&queue->commands[queue->start_offset];
 		switch (cmd->type) {
-#ifdef CONFIG_SYNC_FILE
+#if IS_ENABLED(CONFIG_SYNC_FILE)
 		case BASE_KCPU_COMMAND_TYPE_FENCE_WAIT:
 		{
 			struct kbase_sync_fence_info info;
 
 			kbase_sync_fence_info_get(cmd->info.fence.fence, &info);
-			seq_printf(file, ",  Fence      %p %s %s",
+			seq_printf(file, ",  Fence      %pK %s %s",
 				   info.fence, info.name,
 				   kbase_sync_status_string(info.status));
 			break;
