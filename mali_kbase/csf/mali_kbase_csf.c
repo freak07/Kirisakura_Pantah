@@ -2757,9 +2757,14 @@ static void process_csg_interrupts(struct kbase_device *const kbdev,
 			 group->handle, csg_nr);
 
 		/* Check if the scheduling tick can be advanced */
-		if (kbase_csf_scheduler_all_csgs_idle(kbdev) &&
-		    !scheduler->gpu_idle_fw_timer_enabled) {
-			kbase_csf_scheduler_advance_tick_nolock(kbdev);
+                if (kbase_csf_scheduler_all_csgs_idle(kbdev)) {
+			if (!scheduler->gpu_idle_fw_timer_enabled)
+				kbase_csf_scheduler_advance_tick_nolock(kbdev);
+		} else if (atomic_read(&scheduler->non_idle_offslot_grps)) {
+			/* If there are non-idle CSGs waiting for a slot, fire
+			 * a tock for a replacement.
+			 */
+			mod_delayed_work(scheduler->wq, &scheduler->tock_work, 0);
 		}
 	}
 
