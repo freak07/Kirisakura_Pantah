@@ -1887,9 +1887,7 @@ struct kbase_context {
 
 	u64 limited_core_mask;
 
-#if !MALI_USE_CSF
 	void *platform_data;
-#endif
 };
 
 #ifdef CONFIG_MALI_CINSTR_GWT

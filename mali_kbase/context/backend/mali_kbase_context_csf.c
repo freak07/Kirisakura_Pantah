@@ -99,6 +99,8 @@ static const struct kbase_context_init context_init[] = {
 	  "CSF context initialization failed" },
 	{ kbase_context_add_to_dev_list, kbase_context_remove_from_dev_list,
 	  "Adding kctx to device failed" },
+	{ kbasep_platform_context_init, kbasep_platform_context_term,
+	  "Platform callback for kctx initialization failed" },
 };
 
 static void kbase_context_term_partial(

@@ -34,11 +34,9 @@ static void __maybe_unused gpu_sysfs_term(struct kbase_device *kbdev) {}
 #endif
 
 /* Kernel context callbacks */
-#if !MALI_USE_CSF
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 int gpu_dvfs_kctx_init(struct kbase_context *kctx);
 void gpu_dvfs_kctx_term(struct kbase_context *kctx);
-#endif
 #endif
 
 #endif /* _PIXEL_GPU_CONTROL_H_ */

@@ -1153,6 +1153,7 @@ static enum kbase_csf_csg_slot_state update_csg_slot_status(
 			slot_state = CSG_SLOT_RUNNING;
 			atomic_set(&csg_slot->state, slot_state);
 			csg_slot->trigger_jiffies = jiffies;
+			kbasep_platform_event_work_begin(csg_slot->resident_group);
 			KBASE_KTRACE_ADD_CSF_GRP(kbdev, CSG_SLOT_STARTED, csg_slot->resident_group, state);
 			dev_dbg(kbdev->dev, "Group %u running on slot %d\n",
 				csg_slot->resident_group->handle, slot);
@@ -1164,6 +1165,7 @@ static enum kbase_csf_csg_slot_state update_csg_slot_status(
 			slot_state = CSG_SLOT_STOPPED;
 			atomic_set(&csg_slot->state, slot_state);
 			csg_slot->trigger_jiffies = jiffies;
+			kbasep_platform_event_work_end(csg_slot->resident_group);
 			KBASE_KTRACE_ADD_CSF_GRP(kbdev, CSG_SLOT_STOPPED, csg_slot->resident_group, state);
 			dev_dbg(kbdev->dev, "Group %u stopped on slot %d\n",
 				csg_slot->resident_group->handle, slot);
@@ -1848,6 +1850,7 @@ static bool cleanup_csg_slot(struct kbase_queue_group *group)
 
 	/* now marking the slot is vacant */
 	spin_lock_irqsave(&kbdev->csf.scheduler.interrupt_lock, flags);
+
 	kbdev->csf.scheduler.csg_slots[slot].resident_group = NULL;
 	clear_bit(slot, kbdev->csf.scheduler.csg_slots_idle_mask);
 	KBASE_KTRACE_ADD_CSF_GRP(kbdev, CSG_SLOT_IDLE_CLEAR, group,
@@ -1983,6 +1986,7 @@ static void program_csg_slot(struct kbase_queue_group *group, s8 slot,
 	set_bit(slot, kbdev->csf.scheduler.csg_inuse_bitmap);
 	kbdev->csf.scheduler.csg_slots[slot].resident_group = group;
 	group->csg_nr = slot;
+
 	spin_unlock_irqrestore(&kbdev->csf.scheduler.interrupt_lock, flags);
 
 	assign_user_doorbell_to_group(kbdev, group);

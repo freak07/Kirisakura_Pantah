@@ -365,7 +365,11 @@ struct pixel_context {
 			bool last_power_state;
 			int last_level;
 			int *transtab;
-			struct gpu_dvfs_metrics_uid_stats *js_uid_stats[BASE_JM_MAX_NR_SLOTS];
+#if !MALI_USE_CSF
+			struct gpu_dvfs_metrics_uid_stats *work_uid_stats[BASE_JM_MAX_NR_SLOTS];
+#else
+			struct gpu_dvfs_metrics_uid_stats *work_uid_stats[MAX_SUPPORTED_CSGS];
+#endif /* !MALI_USE_CSF */
 			struct list_head uid_stats_list;
 		} metrics;
 

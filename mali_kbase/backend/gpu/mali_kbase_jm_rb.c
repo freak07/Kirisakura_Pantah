@@ -289,8 +289,7 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 		katom->gpu_rb_state = KBASE_ATOM_GPU_RB_READY;
 		kbase_pm_metrics_update(kbdev, end_timestamp);
 
-		/* Inform platform at start/finish of atom */
-		kbasep_platform_event_atom_complete(katom);
+		kbasep_platform_event_work_end(katom);
 
 		if (katom->core_req & BASE_JD_REQ_PERMON)
 			kbase_pm_release_gpu_cycle_counter_nolock(kbdev);
@@ -1004,8 +1003,7 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 				kbase_pm_metrics_update(kbdev,
 						&katom[idx]->start_timestamp);
 
-				/* Inform platform at start/finish of atom */
-				kbasep_platform_event_atom_submit(katom[idx]);
+				kbasep_platform_event_work_begin(katom[idx]);
 
 				break;
 
