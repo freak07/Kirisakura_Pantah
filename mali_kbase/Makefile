@@ -36,15 +36,22 @@ endif
 # Core kbase configuration options
 CONFIG_MALI_EXPERT=y
 CONFIG_MALI_MIDGARD_DVFS=y
-CONFIG_MALI_CSF_SUPPORT?=y
+ifneq ($(CONFIG_SOC_GS101),y)
+CONFIG_MALI_CSF_SUPPORT=y
+endif
 
 # Pixel integration specific configuration options
 CONFIG_MALI_PLATFORM_NAME="pixel"
+ifeq ($(CONFIG_SOC_GS201),y)
+# Temporarily disabled during bringup; delete each line to re-enable
 CONFIG_MALI_PIXEL_GPU_QOS=n
 CONFIG_MALI_PIXEL_GPU_BTS=n
-CONFIG_MALI_PIXEL_GPU_THERMAL=y
 CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING=n
-
+endif
+CONFIG_MALI_PIXEL_GPU_QOS?=y
+CONFIG_MALI_PIXEL_GPU_BTS?=y
+CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING?=y
+CONFIG_MALI_PIXEL_GPU_THERMAL?=y
 
 #
 # Default configuration values
