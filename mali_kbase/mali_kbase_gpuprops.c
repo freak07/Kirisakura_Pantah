@@ -194,7 +194,9 @@ static void kbase_gpuprops_calculate_props(
 	struct base_gpu_props * const gpu_props, struct kbase_device *kbdev)
 {
 	int i;
+#if !MALI_USE_CSF
 	u32 gpu_id;
+#endif
 
 	/* Populate the base_gpu_props structure */
 	kbase_gpuprops_update_core_props_gpu_id(gpu_props);
@@ -250,7 +252,9 @@ static void kbase_gpuprops_calculate_props(
 	/* MIDHARC-2364 was intended for tULx.
 	 * Workaround for the incorrectly applied THREAD_FEATURES to tDUx.
 	 */
+#if !MALI_USE_CSF
 	gpu_id = kbdev->gpu_props.props.raw_props.gpu_id;
+#endif
 
 #if MALI_USE_CSF
 	gpu_props->thread_props.max_registers =
