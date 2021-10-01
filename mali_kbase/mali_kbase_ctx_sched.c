@@ -308,12 +308,18 @@ struct kbase_context *kbase_ctx_sched_as_to_ctx_nolock(
 bool kbase_ctx_sched_inc_refcount_nolock(struct kbase_context *kctx)
 {
 	bool result = false;
+#ifdef CONFIG_MALI_DEBUG
+	int as_nr;
+#endif
 
 	if (WARN_ON(kctx == NULL))
 		return result;
 
 	lockdep_assert_held(&kctx->kbdev->hwaccess_lock);
 
+#ifdef CONFIG_MALI_DEBUG
+	as_nr = kctx->as_nr;
+#endif
 	if (atomic_read(&kctx->refcount) > 0) {
 		KBASE_DEBUG_ASSERT(as_nr >= 0);
 
