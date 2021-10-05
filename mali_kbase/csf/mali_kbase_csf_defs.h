@@ -314,6 +314,10 @@ struct kbase_csf_notification {
  *                  are non-zero
  * @blocked_reason: Value shows if the queue is blocked, and if so,
  *                  the reason why it is blocked
+ * @trace_buffer_base: CS trace buffer base address.
+ * @trace_offset_ptr:  Pointer to the CS trace buffer offset variable.
+ * @trace_buffer_size: CS trace buffer size for the queue.
+ * @trace_cfg:         CS trace configuration parameters.
  * @error:          GPU command queue fatal information to pass to user space.
  * @fatal_event_work: Work item to handle the CS fatal event reported for this
  *                    queue.
@@ -344,6 +348,10 @@ struct kbase_queue {
 	u32 sync_value;
 	u32 sb_status;
 	u32 blocked_reason;
+	u64 trace_buffer_base;
+	u64 trace_offset_ptr;
+	u32 trace_buffer_size;
+	u32 trace_cfg;
 	struct kbase_csf_notification error;
 	struct work_struct fatal_event_work;
 	u64 cs_fatal_info;
@@ -401,6 +409,8 @@ struct kbase_protected_suspend_buffer {
  * @tiler_mask:     Mask of tiler endpoints the group is allowed to use.
  * @fragment_mask:  Mask of fragment endpoints the group is allowed to use.
  * @compute_mask:   Mask of compute endpoints the group is allowed to use.
+ * @group_uid:      32-bit wide unsigned identifier for the group, unique
+ *                  across all kbase devices and contexts.
  * @link:           Link to this queue group in the 'runnable_groups' list of
  *                  the corresponding kctx.
  * @link_to_schedule: Link to this queue group in the list of prepared groups
@@ -448,6 +458,8 @@ struct kbase_queue_group {
 	u64 tiler_mask;
 	u64 fragment_mask;
 	u64 compute_mask;
+
+	u32 group_uid;
 
 	struct list_head link;
 	struct list_head link_to_schedule;
@@ -663,7 +675,7 @@ struct kbase_csf_context {
 	struct vm_area_struct *user_reg_vma;
 	struct kbase_csf_scheduler_context sched;
 	struct list_head error_list;
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	struct kbase_csf_cpu_queue_context cpu_queue;
 #endif
 };
@@ -801,9 +813,6 @@ struct kbase_csf_csg_slot {
  *                          other phases.
  * @non_idle_scanout_grps:  Count on the non-idle groups in the scan-out
  *                          list at the scheduling prepare stage.
- * @apply_async_protm:      Signalling the internal scheduling apply stage to
- *                          act with some special handling for entering the
- *                          protected mode asynchronously.
  * @pm_active_count:        Count indicating if the scheduler is owning a power
  *                          management reference count. Reference is taken when
  *                          the count becomes 1 and is dropped when the count
@@ -853,7 +862,6 @@ struct kbase_csf_scheduler {
 	struct work_struct gpu_idle_work;
 	atomic_t non_idle_offslot_grps;
 	u32 non_idle_scanout_grps;
-	bool apply_async_protm;
 	u32 pm_active_count;
 	unsigned int csg_scheduling_period_ms;
 	bool tick_timer_active;
@@ -1055,7 +1063,7 @@ struct kbase_csf_firmware_interface {
 	struct protected_memory_allocation **pma;
 };
 
-/**
+/*
  * struct kbase_csf_hwcnt - Object containing members for handling the dump of
  *                          HW counters.
  *

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  *
- * (C) COPYRIGHT 2013-2018, 2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2013-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -26,9 +26,6 @@
 #include <mali_kbase.h>
 #include <mali_kbase_pm.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
-#ifdef CONFIG_MALI_NO_MALI
-#include <backend/gpu/mali_kbase_model_dummy.h>
-#endif
 #include <mali_kbase_dummy_job_wa.h>
 
 int kbase_pm_ca_init(struct kbase_device *kbdev)
@@ -102,10 +99,18 @@ u64 kbase_pm_ca_get_core_mask(struct kbase_device *kbdev)
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 #ifdef CONFIG_MALI_DEVFREQ
-	return kbdev->pm.backend.ca_cores_enabled & debug_core_mask;
+	/*
+	 * Although in the init we let the pm_backend->ca_cores_enabled to be
+	 * the max config (it uses the base_gpu_props), at this function we need
+	 * to limit it to be a subgroup of the curr config, otherwise the
+	 * shaders state machine on the PM does not evolve.
+	 */
+	return kbdev->gpu_props.curr_config.shader_present &
+			kbdev->pm.backend.ca_cores_enabled &
+			debug_core_mask;
 #else
-	return kbdev->gpu_props.props.raw_props.shader_present &
-	       debug_core_mask;
+	return kbdev->gpu_props.curr_config.shader_present &
+		debug_core_mask;
 #endif
 }
 
@@ -115,9 +120,7 @@ u64 kbase_pm_ca_get_instr_core_mask(struct kbase_device *kbdev)
 {
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-#ifdef CONFIG_MALI_NO_MALI
-	return (((1ull) << KBASE_DUMMY_MODEL_MAX_SHADER_CORES) - 1);
-#elif MALI_USE_CSF
+#if   MALI_USE_CSF
 	return kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_SHADER);
 #else
 	return kbdev->pm.backend.pm_shaders_core_mask;

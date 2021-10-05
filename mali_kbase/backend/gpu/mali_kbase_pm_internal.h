@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  *
- * (C) COPYRIGHT 2010-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -28,7 +28,7 @@
 
 #include <mali_kbase_hwaccess_pm.h>
 
-#include "mali_kbase_pm_ca.h"
+#include "backend/gpu/mali_kbase_pm_ca.h"
 #include "mali_kbase_pm_policy.h"
 
 
@@ -224,6 +224,7 @@ void kbase_pm_reset_done(struct kbase_device *kbdev);
  *
  * Return: 0 on success, error code on error
  */
+int kbase_pm_wait_for_desired_state(struct kbase_device *kbdev);
 #else
 /**
  * kbase_pm_wait_for_desired_state - Wait for the desired power state to be
@@ -247,8 +248,8 @@ void kbase_pm_reset_done(struct kbase_device *kbdev);
  *
  * Return: 0 on success, error code on error
  */
-#endif
 int kbase_pm_wait_for_desired_state(struct kbase_device *kbdev);
+#endif
 
 /**
  * kbase_pm_wait_for_l2_powered - Wait for the L2 cache to be powered on
@@ -262,8 +263,10 @@ int kbase_pm_wait_for_desired_state(struct kbase_device *kbdev);
  * because this function will take that lock itself.
  *
  * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ *
+ * Return: 0 on success, error code on error
  */
-void kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev);
+int kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev);
 
 /**
  * kbase_pm_update_dynamic_cores_onoff - Update the L2 and shader power state
@@ -534,8 +537,22 @@ void kbase_pm_get_dvfs_metrics(struct kbase_device *kbdev,
 
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 
+#if MALI_USE_CSF
 /**
- * kbase_platform_dvfs_event - Report utilisation to DVFS code
+ * kbase_platform_dvfs_event - Report utilisation to DVFS code for CSF GPU
+ *
+ * Function provided by platform specific code when DVFS is enabled to allow
+ * the power management metrics system to report utilisation.
+ *
+ * @kbdev:         The kbase device structure for the device (must be a
+ *                 valid pointer)
+ * @utilisation:   The current calculated utilisation by the metrics system.
+ * Return:         Returns 0 on failure and non zero on success.
+ */
+int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation);
+#else
+/**
+ * kbase_platform_dvfs_event - Report utilisation to DVFS code for JM GPU
  *
  * Function provided by platform specific code when DVFS is enabled to allow
  * the power management metrics system to report utilisation.
@@ -548,10 +565,6 @@ void kbase_pm_get_dvfs_metrics(struct kbase_device *kbdev,
  *                 group.
  * Return:         Returns 0 on failure and non zero on success.
  */
-
-#if MALI_USE_CSF
-int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation);
-#else
 int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation,
 			      u32 util_gl_share, u32 util_cl_share[2]);
 #endif

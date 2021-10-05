@@ -42,18 +42,6 @@ void kbase_device_vinstr_term(struct kbase_device *kbdev);
 int kbase_device_timeline_init(struct kbase_device *kbdev);
 void kbase_device_timeline_term(struct kbase_device *kbdev);
 
-#if MALI_USE_CSF
-int kbase_device_hwcnt_backend_csf_init(struct kbase_device *kbdev);
-void kbase_device_hwcnt_backend_csf_term(struct kbase_device *kbdev);
-int kbase_device_hwcnt_backend_csf_if_init(struct kbase_device *kbdev);
-void kbase_device_hwcnt_backend_csf_if_term(struct kbase_device *kbdev);
-int kbase_device_hwcnt_backend_csf_metadata_init(struct kbase_device *kbdev);
-void kbase_device_hwcnt_backend_csf_metadata_term(struct kbase_device *kbdev);
-#else
-int kbase_device_hwcnt_backend_jm_init(struct kbase_device *kbdev);
-void kbase_device_hwcnt_backend_jm_term(struct kbase_device *kbdev);
-#endif
-
 int kbase_device_hwcnt_context_init(struct kbase_device *kbdev);
 void kbase_device_hwcnt_context_term(struct kbase_device *kbdev);
 
@@ -84,3 +72,17 @@ int kbase_device_early_init(struct kbase_device *kbdev);
  * @kbdev:	Device pointer
  */
 void kbase_device_early_term(struct kbase_device *kbdev);
+
+/**
+ * kbase_device_late_init - Complete any device-specific initialization.
+ * @kbdev:	Device pointer
+ *
+ * Return: 0 on success, or an error code on failure.
+ */
+int kbase_device_late_init(struct kbase_device *kbdev);
+
+/**
+ * kbase_device_late_term - Complete any device-specific termination.
+ * @kbdev:	Device pointer
+ */
+void kbase_device_late_term(struct kbase_device *kbdev);

@@ -29,13 +29,13 @@
 #include <mali_kbase_hwcnt_context.h>
 
 #include <mali_kbase_pm.h>
-#include <mali_kbase_pm_internal.h>
+#include <backend/gpu/mali_kbase_pm_internal.h>
 
 #ifdef CONFIG_MALI_ARBITER_SUPPORT
 #include <arbiter/mali_kbase_arbiter_pm.h>
 #endif /* CONFIG_MALI_ARBITER_SUPPORT */
 
-#include <mali_kbase_clk_rate_trace_mgr.h>
+#include <backend/gpu/mali_kbase_clk_rate_trace_mgr.h>
 
 int kbase_pm_powerup(struct kbase_device *kbdev, unsigned int flags)
 {
@@ -256,9 +256,15 @@ void kbase_pm_driver_resume(struct kbase_device *kbdev, bool arb_gpu_start)
 	kbase_pm_context_idle(kbdev);
 
 	/* Re-enable GPU hardware counters */
+#if MALI_USE_CSF
+	kbase_csf_scheduler_spin_lock(kbdev, &flags);
+	kbase_hwcnt_context_enable(kbdev->hwcnt_gpu_ctx);
+	kbase_csf_scheduler_spin_unlock(kbdev, flags);
+#else
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	kbase_hwcnt_context_enable(kbdev->hwcnt_gpu_ctx);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+#endif
 
 	/* Resume vinstr */
 	kbase_vinstr_resume(kbdev->vinstr_ctx);

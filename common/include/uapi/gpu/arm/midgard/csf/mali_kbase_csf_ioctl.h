@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef _KBASE_CSF_IOCTL_H_
-#define _KBASE_CSF_IOCTL_H_
+#ifndef _UAPI_KBASE_CSF_IOCTL_H_
+#define _UAPI_KBASE_CSF_IOCTL_H_
 
 #include <asm-generic/ioctl.h>
 #include <linux/types.h>
@@ -34,10 +34,20 @@
  * 1.2:
  * - Add new CSF GPU_FEATURES register into the property structure
  *   returned by KBASE_IOCTL_GET_GPUPROPS
+ * 1.3:
+ * - Add __u32 group_uid member to
+ *   &struct_kbase_ioctl_cs_queue_group_create.out
+ * 1.4:
+ * - Replace padding in kbase_ioctl_cs_get_glb_iface with
+ *   instr_features member of same size
+ * 1.5:
+ * - Add ioctl 40: kbase_ioctl_cs_queue_register_ex, this is a new
+ *   queue registration call with extended format for supporting CS
+ *   trace configurations with CSF trace_command.
  */
 
 #define BASE_UK_VERSION_MAJOR 1
-#define BASE_UK_VERSION_MINOR 2
+#define BASE_UK_VERSION_MINOR 5
 
 /**
  * struct kbase_ioctl_version_check - Check version compatibility between
@@ -63,6 +73,9 @@ struct kbase_ioctl_version_check {
  * @buffer_size: Size of the buffer in bytes
  * @priority: Priority of the queue within a group when run within a process
  * @padding: Currently unused, must be zero
+ *
+ * @Note: There is an identical sub-section in kbase_ioctl_cs_queue_register_ex.
+ *        Any change of this struct should also be mirrored to the latter.
  */
 struct kbase_ioctl_cs_queue_register {
 	__u64 buffer_gpu_addr;
@@ -114,7 +127,42 @@ union kbase_ioctl_cs_queue_bind {
 #define KBASE_IOCTL_CS_QUEUE_BIND \
 	_IOWR(KBASE_IOCTL_TYPE, 39, union kbase_ioctl_cs_queue_bind)
 
-/* ioctl 40 is free to use */
+/**
+ * struct kbase_ioctl_cs_queue_register_ex - Register a GPU command queue with the
+ *                                           base back-end in extended format,
+ *                                           involving trace buffer configuration
+ *
+ * @buffer_gpu_addr: GPU address of the buffer backing the queue
+ * @buffer_size: Size of the buffer in bytes
+ * @priority: Priority of the queue within a group when run within a process
+ * @padding: Currently unused, must be zero
+ * @ex_offset_var_addr: GPU address of the trace buffer write offset variable
+ * @ex_buffer_base: Trace buffer GPU base address for the queue
+ * @ex_buffer_size: Size of the trace buffer in bytes
+ * @ex_event_size: Trace event write size, in log2 designation
+ * @ex_event_state: Trace event states configuration
+ * @ex_padding: Currently unused, must be zero
+ *
+ * @Note: There is an identical sub-section at the start of this struct to that
+ *        of @ref kbase_ioctl_cs_queue_register. Any change of this sub-section
+ *        must also be mirrored to the latter. Following the said sub-section,
+ *        the remaining fields forms the extension, marked with ex_*.
+ */
+struct kbase_ioctl_cs_queue_register_ex {
+	__u64 buffer_gpu_addr;
+	__u32 buffer_size;
+	__u8 priority;
+	__u8 padding[3];
+	__u64 ex_offset_var_addr;
+	__u64 ex_buffer_base;
+	__u32 ex_buffer_size;
+	__u8 ex_event_size;
+	__u8 ex_event_state;
+	__u8 ex_padding[2];
+};
+
+#define KBASE_IOCTL_CS_QUEUE_REGISTER_EX \
+	_IOW(KBASE_IOCTL_TYPE, 40, struct kbase_ioctl_cs_queue_register_ex)
 
 /**
  * struct kbase_ioctl_cs_queue_terminate - Terminate a GPU command queue
@@ -146,6 +194,7 @@ struct kbase_ioctl_cs_queue_terminate {
  * @out:              Output parameters
  * @out.group_handle: Handle of a newly created queue group.
  * @out.padding:      Currently unused, must be zero
+ * @out.group_uid:    UID of the queue group available to base.
  */
 union kbase_ioctl_cs_queue_group_create {
 	struct {
@@ -162,7 +211,8 @@ union kbase_ioctl_cs_queue_group_create {
 	} in;
 	struct {
 		__u8 group_handle;
-		__u8 padding[7];
+		__u8 padding[3];
+		__u32 group_uid;
 	} out;
 };
 
@@ -287,25 +337,26 @@ struct kbase_ioctl_cs_tiler_heap_term {
  * union kbase_ioctl_cs_get_glb_iface - Request the global control block
  *                                        of CSF interface capabilities
  *
- * @in:                Input parameters
- * @in.max_group_num:  The maximum number of groups to be read. Can be 0, in
- *                     which case groups_ptr is unused.
- * @in.max_total_stream_num: The maximum number of CSs to be read. Can be 0, in
- *                     which case streams_ptr is unused.
- * @in.groups_ptr:     Pointer where to store all the group data (sequentially).
- * @in.streams_ptr:    Pointer where to store all the CS data (sequentially).
- * @out:               Output parameters
- * @out.glb_version:   Global interface version.
- * @out.features:      Bit mask of features (e.g. whether certain types of job
- *                     can be suspended).
- * @out.group_num:     Number of CSGs supported.
- * @out.prfcnt_size:   Size of CSF performance counters, in bytes. Bits 31:16
- *                     hold the size of firmware performance counter data
- *                     and 15:0 hold the size of hardware performance counter
- *                     data.
- * @out.total_stream_num: Total number of CSs, summed across all groups.
- * @out.padding:       Will be zeroed.
- *
+ * @in:                    Input parameters
+ * @in.max_group_num:      The maximum number of groups to be read. Can be 0, in
+ *                         which case groups_ptr is unused.
+ * @in.max_total_stream    _num: The maximum number of CSs to be read. Can be 0, in
+ *                         which case streams_ptr is unused.
+ * @in.groups_ptr:         Pointer where to store all the group data (sequentially).
+ * @in.streams_ptr:        Pointer where to store all the CS data (sequentially).
+ * @out:                   Output parameters
+ * @out.glb_version:       Global interface version.
+ * @out.features:          Bit mask of features (e.g. whether certain types of job
+ *                         can be suspended).
+ * @out.group_num:         Number of CSGs supported.
+ * @out.prfcnt_size:       Size of CSF performance counters, in bytes. Bits 31:16
+ *                         hold the size of firmware performance counter data
+ *                         and 15:0 hold the size of hardware performance counter
+ *                         data.
+ * @out.total_stream_num:  Total number of CSs, summed across all groups.
+ * @out.instr_features:    Instrumentation features. Bits 7:4 hold the maximum
+ *                         size of events. Bits 3:0 hold the offset update rate.
+ *                         (csf >= 1.1.0)
  *
  */
 union kbase_ioctl_cs_get_glb_iface {
@@ -321,7 +372,7 @@ union kbase_ioctl_cs_get_glb_iface {
 		__u32 group_num;
 		__u32 prfcnt_size;
 		__u32 total_stream_num;
-		__u32 padding;
+		__u32 instr_features;
 	} out;
 };
 
@@ -379,4 +430,4 @@ union kbase_ioctl_cs_event_memory_read {
 
 #endif /* MALI_UNIT_TEST */
 
-#endif /* _KBASE_CSF_IOCTL_H_ */
+#endif /* _UAPI_KBASE_CSF_IOCTL_H_ */

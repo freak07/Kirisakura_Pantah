@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  *
- * (C) COPYRIGHT 2019-2020 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -151,22 +151,5 @@ int kbase_mmu_bus_fault_interrupt(struct kbase_device *kbdev, u32 status,
  */
 void kbase_mmu_gpu_fault_interrupt(struct kbase_device *kbdev, u32 status,
 		u32 as_nr, u64 address, bool as_valid);
-
-#if MALI_USE_CSF
-/**
- * kbase_mmu_deferred_flush_invalidate() - Perform deferred MMU flush
- *                                         operations for a Kbase context.
- * @kctx:    Pointer to the Kbase context for which MMU flush operations
- *           are pending.
- *
- * This function performs the MMU flush operations that are pending for a Kbase
- * context. The flush operations will be deferred if the context is inactive,
- * i.e. kctx->refcount is zero which happens when all the queue groups of a
- * context have gone off CSG slots.
- * This needs to be called when first queue group of the context is put back
- * on the CSG slot.
- */
-void kbase_mmu_deferred_flush_invalidate(struct kbase_context *kctx);
-#endif
 
 #endif /* _KBASE_MMU_H_ */

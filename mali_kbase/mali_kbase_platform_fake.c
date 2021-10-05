@@ -25,7 +25,6 @@
 #include <linux/platform_device.h>
 #include <linux/string.h>
 
-
 /*
  * This file is included only for type definitions and functions belonging to
  * specific platform folders. Do not add dependencies with symbols that are

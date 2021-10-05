@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef _KBASE_IOCTL_H_
-#define _KBASE_IOCTL_H_
+#ifndef _UAPI_KBASE_IOCTL_H_
+#define _UAPI_KBASE_IOCTL_H_
 
 #ifdef __cpluscplus
 extern "C" {
@@ -64,16 +64,16 @@ struct kbase_ioctl_set_flags {
  * @flags may be used in the future to request a different format for the
  * buffer. With @flags == 0 the following format is used.
  *
- * The buffer will be filled with pairs of values, a u32 key identifying the
+ * The buffer will be filled with pairs of values, a __u32 key identifying the
  * property followed by the value. The size of the value is identified using
  * the bottom bits of the key. The value then immediately followed the key and
  * is tightly packed (there is no padding). All keys and values are
  * little-endian.
  *
- * 00 = u8
- * 01 = u16
- * 10 = u32
- * 11 = u64
+ * 00 = __u8
+ * 01 = __u16
+ * 10 = __u32
+ * 11 = __u64
  */
 struct kbase_ioctl_get_gpuprops {
 	__u64 buffer;
@@ -134,9 +134,9 @@ union kbase_ioctl_mem_query {
 #define KBASE_IOCTL_MEM_QUERY \
 	_IOWR(KBASE_IOCTL_TYPE, 6, union kbase_ioctl_mem_query)
 
-#define KBASE_MEM_QUERY_COMMIT_SIZE	((u64)1)
-#define KBASE_MEM_QUERY_VA_SIZE		((u64)2)
-#define KBASE_MEM_QUERY_FLAGS		((u64)3)
+#define KBASE_MEM_QUERY_COMMIT_SIZE	((__u64)1)
+#define KBASE_MEM_QUERY_VA_SIZE		((__u64)2)
+#define KBASE_MEM_QUERY_FLAGS		((__u64)3)
 
 /**
  * struct kbase_ioctl_mem_free - Free a memory region
@@ -529,7 +529,7 @@ struct kbase_ioctl_mem_profile_add {
 /**
  * struct kbase_ioctl_sticky_resource_map - Permanently map an external resource
  * @count: Number of resources
- * @address: Array of u64 GPU addresses of the external resources to map
+ * @address: Array of __u64 GPU addresses of the external resources to map
  */
 struct kbase_ioctl_sticky_resource_map {
 	__u64 count;
@@ -543,7 +543,7 @@ struct kbase_ioctl_sticky_resource_map {
  * struct kbase_ioctl_sticky_resource_map - Unmap a resource mapped which was
  *                                          previously permanently mapped
  * @count: Number of resources
- * @address: Array of u64 GPU addresses of the external resources to unmap
+ * @address: Array of __u64 GPU addresses of the external resources to unmap
  */
 struct kbase_ioctl_sticky_resource_unmap {
 	__u64 count;
@@ -580,7 +580,6 @@ union kbase_ioctl_mem_find_gpu_start_and_offset {
 
 #define KBASE_IOCTL_MEM_FIND_GPU_START_AND_OFFSET \
 	_IOWR(KBASE_IOCTL_TYPE, 31, union kbase_ioctl_mem_find_gpu_start_and_offset)
-
 
 #define KBASE_IOCTL_CINSTR_GWT_START \
 	_IO(KBASE_IOCTL_TYPE, 33)
@@ -642,7 +641,7 @@ struct kbase_ioctl_mem_exec_init {
  * @out: Output parameters
  * @out.sec:           Integer field of the monotonic time, unit in seconds.
  * @out.nsec:          Fractional sec of the monotonic time, in nano-seconds.
- * @out.padding:       Unused, for u64 alignment
+ * @out.padding:       Unused, for __u64 alignment
  * @out.timestamp:     System wide timestamp (counter) value.
  * @out.cycle_counter: GPU cycle counter value.
  */
@@ -675,6 +674,23 @@ struct kbase_ioctl_context_priority_check {
 #define KBASE_IOCTL_CONTEXT_PRIORITY_CHECK \
 	_IOWR(KBASE_IOCTL_TYPE, 54, struct kbase_ioctl_context_priority_check)
 
+/*
+ * struct kbase_ioctl_set_limited_core_count - Set the limited core count.
+ *
+ * @max_core_count: Maximum core count
+ */
+struct kbase_ioctl_set_limited_core_count {
+	__u8 max_core_count;
+};
+
+#define KBASE_IOCTL_SET_LIMITED_CORE_COUNT \
+	_IOW(KBASE_IOCTL_TYPE, 55, struct kbase_ioctl_set_limited_core_count)
+
+
+/***************
+ * Pixel ioctls *
+ ***************/
+
 /**
  * struct kbase_ioctl_apc_request - GPU asynchronous power control (APC) request
  *
@@ -697,23 +713,6 @@ struct kbase_ioctl_apc_request {
 
 #define KBASE_IOCTL_TEST_TYPE (KBASE_IOCTL_TYPE + 1)
 
-/**
- * struct kbase_ioctl_tlstream_test - Start a timeline stream test
- *
- * @tpw_count: number of trace point writers in each context
- * @msg_delay: time delay between tracepoints from one writer in milliseconds
- * @msg_count: number of trace points written by one writer
- * @aux_msg:   if non-zero aux messages will be included
- */
-struct kbase_ioctl_tlstream_test {
-	__u32 tpw_count;
-	__u32 msg_delay;
-	__u32 msg_count;
-	__u32 aux_msg;
-};
-
-#define KBASE_IOCTL_TLSTREAM_TEST \
-	_IOW(KBASE_IOCTL_TEST_TYPE, 1, struct kbase_ioctl_tlstream_test)
 
 /**
  * struct kbase_ioctl_tlstream_stats - Read tlstream stats for test purposes
@@ -850,4 +849,4 @@ struct kbase_ioctl_tlstream_stats {
 }
 #endif
 
-#endif
+#endif /* _UAPI_KBASE_IOCTL_H_ */

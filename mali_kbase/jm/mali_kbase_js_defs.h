@@ -37,8 +37,8 @@ typedef u32 kbase_context_flags;
  * typedef kbasep_js_ctx_job_cb - Callback function run on all of a context's
  * jobs registered with the Job Scheduler
  */
-typedef void (*kbasep_js_ctx_job_cb)(struct kbase_device *kbdev,
-				     struct kbase_jd_atom *katom);
+typedef void kbasep_js_ctx_job_cb(struct kbase_device *kbdev,
+				  struct kbase_jd_atom *katom);
 
 /*
  * @brief Maximum number of jobs that can be submitted to a job slot whilst
@@ -171,7 +171,8 @@ enum {
  * Internal atom priority defines for kbase_jd_atom::sched_prio
  */
 enum {
-	KBASE_JS_ATOM_SCHED_PRIO_REALTIME = 0,
+	KBASE_JS_ATOM_SCHED_PRIO_FIRST = 0,
+	KBASE_JS_ATOM_SCHED_PRIO_REALTIME = KBASE_JS_ATOM_SCHED_PRIO_FIRST,
 	KBASE_JS_ATOM_SCHED_PRIO_HIGH,
 	KBASE_JS_ATOM_SCHED_PRIO_MED,
 	KBASE_JS_ATOM_SCHED_PRIO_LOW,

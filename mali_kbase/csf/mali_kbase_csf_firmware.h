@@ -23,7 +23,7 @@
 #define _KBASE_CSF_FIRMWARE_H_
 
 #include "device/mali_kbase_device.h"
-#include "mali_gpu_csf_registers.h"
+#include <uapi/gpu/arm/midgard/csf/mali_gpu_csf_registers.h>
 
 /*
  * PAGE_KERNEL_RO was only defined on 32bit ARM in 4.19 in:
@@ -79,7 +79,7 @@
 #define MAX_SUPPORTED_STREAMS_PER_GROUP 32
 
 /* Waiting timeout for status change acknowledgment, in milliseconds */
-#define CSF_FIRMWARE_TIMEOUT_MS (800) /* Relaxed to 800ms from 100ms */
+#define CSF_FIRMWARE_TIMEOUT_MS (3000) /* Relaxed to 3000ms from 800ms due to Android */
 
 struct kbase_device;
 
@@ -266,6 +266,7 @@ u32 kbase_csf_firmware_csg_output(
  * @group_stride: Stride in bytes in JASID0 virtual address between
  *                CSG capability structures.
  * @prfcnt_size: Performance counters size.
+ * @instr_features: Instrumentation features. (csf >= 1.1.0)
  * @groups: Address of an array of CSG capability structures.
  */
 struct kbase_csf_global_iface {
@@ -277,6 +278,7 @@ struct kbase_csf_global_iface {
 	u32 group_num;
 	u32 group_stride;
 	u32 prfcnt_size;
+	u32 instr_features;
 	struct kbase_csf_cmd_stream_group_info *groups;
 };
 
@@ -375,35 +377,53 @@ void kbase_csf_update_firmware_memory(struct kbase_device *kbdev,
 	u32 gpu_addr, u32 value);
 
 /**
+ * kbase_csf_firmware_early_init() - Early initializatin for the firmware.
+ * @kbdev: Kbase device
+ *
+ * Initialize resources related to the firmware. Must be called at kbase probe.
+ *
+ * Return: 0 if successful, negative error code on failure
+ */
+int kbase_csf_firmware_early_init(struct kbase_device *kbdev);
+
+/**
  * kbase_csf_firmware_init() - Load the firmware for the CSF MCU
+ * @kbdev: Kbase device
  *
  * Request the firmware from user space and load it into memory.
  *
  * Return: 0 if successful, negative error code on failure
- *
- * @kbdev: Kbase device
  */
 int kbase_csf_firmware_init(struct kbase_device *kbdev);
 
 /**
  * kbase_csf_firmware_term() - Unload the firmware
+ * @kbdev: Kbase device
  *
  * Frees the memory allocated by kbase_csf_firmware_init()
- *
- * @kbdev: Kbase device
  */
 void kbase_csf_firmware_term(struct kbase_device *kbdev);
 
 /**
  * kbase_csf_firmware_ping - Send the ping request to firmware.
  *
- * The function sends the ping request to firmware to confirm it is alive.
+ * The function sends the ping request to firmware.
+ *
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
+ */
+void kbase_csf_firmware_ping(struct kbase_device *kbdev);
+
+/**
+ * kbase_csf_firmware_ping_wait - Send the ping request to firmware and waits.
+ *
+ * The function sends the ping request to firmware and waits to confirm it is
+ * alive.
  *
  * @kbdev: Instance of a GPU platform device that implements a CSF interface.
  *
  * Return: 0 on success, or negative on failure.
  */
-int kbase_csf_firmware_ping(struct kbase_device *kbdev);
+int kbase_csf_firmware_ping_wait(struct kbase_device *kbdev);
 
 /**
  * kbase_csf_firmware_set_timeout - Set a hardware endpoint progress timeout.
@@ -431,12 +451,8 @@ void kbase_csf_enter_protected_mode(struct kbase_device *kbdev);
 
 static inline bool kbase_csf_firmware_mcu_halted(struct kbase_device *kbdev)
 {
-#ifndef CONFIG_MALI_NO_MALI
 	return (kbase_reg_read(kbdev, GPU_CONTROL_REG(MCU_STATUS)) ==
 		MCU_STATUS_HALTED);
-#else
-	return true;
-#endif
 }
 
 /**
@@ -570,12 +586,15 @@ bool kbase_csf_firmware_core_attr_updated(struct kbase_device *kbdev);
  *                         in bytes. Bits 31:16 hold the size of firmware
  *                         performance counter data and 15:0 hold the size of
  *                         hardware performance counter data.
+ * @instr_features:        Instrumentation features. Bits 7:4 hold the max size
+ *                         of events. Bits 3:0 hold the offset update rate.
+ *                         (csf >= 1,1,0)
  */
-u32 kbase_csf_firmware_get_glb_iface(struct kbase_device *kbdev,
-	struct basep_cs_group_control *group_data, u32 max_group_num,
-	struct basep_cs_stream_control *stream_data, u32 max_total_stream_num,
-	u32 *glb_version, u32 *features, u32 *group_num, u32 *prfcnt_size);
-
+u32 kbase_csf_firmware_get_glb_iface(
+	struct kbase_device *kbdev, struct basep_cs_group_control *group_data,
+	u32 max_group_num, struct basep_cs_stream_control *stream_data,
+	u32 max_total_stream_num, u32 *glb_version, u32 *features,
+	u32 *group_num, u32 *prfcnt_size, u32 *instr_features);
 
 /**
  * Get CSF firmware header timeline metadata content

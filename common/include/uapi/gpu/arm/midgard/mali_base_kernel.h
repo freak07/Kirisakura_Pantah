@@ -23,18 +23,20 @@
  * Base structures shared with the kernel.
  */
 
-#ifndef _BASE_KERNEL_H_
-#define _BASE_KERNEL_H_
+#ifndef _UAPI_BASE_KERNEL_H_
+#define _UAPI_BASE_KERNEL_H_
+
+#include <linux/types.h>
 
 struct base_mem_handle {
 	struct {
-		u64 handle;
+		__u64 handle;
 	} basep;
 };
 
 #include "mali_base_mem_priv.h"
-#include "gpu/mali_kbase_gpu_coherency.h"
 #include "gpu/mali_kbase_gpu_id.h"
+#include "gpu/mali_kbase_gpu_coherency.h"
 
 #define BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS 4
 
@@ -45,16 +47,22 @@ struct base_mem_handle {
 #elif defined(KBASE_DEBUG_ASSERT)
 #define LOCAL_ASSERT KBASE_DEBUG_ASSERT
 #else
+#if defined(__KERNEL__)
 #error assert macro not defined!
+#else
+#define LOCAL_ASSERT(...)	((void)#__VA_ARGS__)
+#endif
 #endif
 
 #if defined(PAGE_MASK) && defined(PAGE_SHIFT)
 #define LOCAL_PAGE_SHIFT PAGE_SHIFT
 #define LOCAL_PAGE_LSB ~PAGE_MASK
 #else
-#include <osu/mali_osu.h>
+#ifndef OSU_CONFIG_CPU_PAGE_SIZE_LOG2
+#define OSU_CONFIG_CPU_PAGE_SIZE_LOG2 12
+#endif
 
-#if defined OSU_CONFIG_CPU_PAGE_SIZE_LOG2
+#if defined(OSU_CONFIG_CPU_PAGE_SIZE_LOG2)
 #define LOCAL_PAGE_SHIFT OSU_CONFIG_CPU_PAGE_SIZE_LOG2
 #define LOCAL_PAGE_LSB ((1ul << OSU_CONFIG_CPU_PAGE_SIZE_LOG2) - 1)
 #else
@@ -82,7 +90,7 @@ struct base_mem_handle {
  * More flags can be added to this list, as long as they don't clash
  * (see BASE_MEM_FLAGS_NR_BITS for the number of the first free bit).
  */
-typedef u32 base_mem_alloc_flags;
+typedef __u32 base_mem_alloc_flags;
 
 /* A mask for all the flags which are modifiable via the base_mem_set_flags
  * interface.
@@ -135,8 +143,8 @@ enum base_mem_import_type {
  */
 
 struct base_mem_import_user_buffer {
-	u64 ptr;
-	u64 length;
+	__u64 ptr;
+	__u64 length;
 };
 
 /* Mask to detect 4GB boundary alignment */
@@ -197,8 +205,8 @@ struct base_fence {
  */
 struct base_mem_aliasing_info {
 	struct base_mem_handle handle;
-	u64 offset;
-	u64 length;
+	__u64 offset;
+	__u64 length;
 };
 
 /* Maximum percentage of just-in-time memory allocation trimming to perform
@@ -220,11 +228,11 @@ struct base_mem_aliasing_info {
  * An array of structures was not supported
  */
 struct base_jit_alloc_info_10_2 {
-	u64 gpu_alloc_addr;
-	u64 va_pages;
-	u64 commit_pages;
-	u64 extension;
-	u8 id;
+	__u64 gpu_alloc_addr;
+	__u64 va_pages;
+	__u64 commit_pages;
+	__u64 extension;
+	__u8 id;
 };
 
 /* base_jit_alloc_info introduced by kernel driver version 11.5, and in use up
@@ -247,16 +255,16 @@ struct base_jit_alloc_info_10_2 {
  * 11.10: Arrays of this structure are supported
  */
 struct base_jit_alloc_info_11_5 {
-	u64 gpu_alloc_addr;
-	u64 va_pages;
-	u64 commit_pages;
-	u64 extension;
-	u8 id;
-	u8 bin_id;
-	u8 max_allocations;
-	u8 flags;
-	u8 padding[2];
-	u16 usage_id;
+	__u64 gpu_alloc_addr;
+	__u64 va_pages;
+	__u64 commit_pages;
+	__u64 extension;
+	__u8 id;
+	__u8 bin_id;
+	__u8 max_allocations;
+	__u8 flags;
+	__u8 padding[2];
+	__u16 usage_id;
 };
 
 /**
@@ -302,17 +310,17 @@ struct base_jit_alloc_info_11_5 {
  * 11.20: added @heap_info_gpu_addr
  */
 struct base_jit_alloc_info {
-	u64 gpu_alloc_addr;
-	u64 va_pages;
-	u64 commit_pages;
-	u64 extension;
-	u8 id;
-	u8 bin_id;
-	u8 max_allocations;
-	u8 flags;
-	u8 padding[2];
-	u16 usage_id;
-	u64 heap_info_gpu_addr;
+	__u64 gpu_alloc_addr;
+	__u64 va_pages;
+	__u64 commit_pages;
+	__u64 extension;
+	__u8 id;
+	__u8 bin_id;
+	__u8 max_allocations;
+	__u8 flags;
+	__u8 padding[2];
+	__u16 usage_id;
+	__u64 heap_info_gpu_addr;
 };
 
 enum base_external_resource_access {
@@ -321,7 +329,7 @@ enum base_external_resource_access {
 };
 
 struct base_external_resource {
-	u64 ext_resource;
+	__u64 ext_resource;
 };
 
 
@@ -339,13 +347,13 @@ struct base_external_resource {
  *                                      sized at allocation time.
  */
 struct base_external_resource_list {
-	u64 count;
+	__u64 count;
 	struct base_external_resource ext_res[1];
 };
 
 struct base_jd_debug_copy_buffer {
-	u64 address;
-	u64 size;
+	__u64 address;
+	__u64 size;
 	struct base_external_resource extres;
 };
 
@@ -457,7 +465,7 @@ struct base_jd_debug_copy_buffer {
  * population count, since faulty cores may be disabled during production,
  * producing a non-contiguous mask.
  *
- * The memory requirements for this algorithm can be determined either by a u64
+ * The memory requirements for this algorithm can be determined either by a __u64
  * population count on the L2_PRESENT mask (a LUT helper already is
  * required for the above), or simple assumption that there can be no more than
  * 16 coherent groups, since core groups are typically 4 cores.
@@ -496,16 +504,16 @@ struct base_jd_debug_copy_buffer {
  * @num_exec_engines: The number of execution engines.
  */
 struct mali_base_gpu_core_props {
-	u32 product_id;
-	u16 version_status;
-	u16 minor_revision;
-	u16 major_revision;
-	u16 padding;
-	u32 gpu_freq_khz_max;
-	u32 log2_program_counter_size;
-	u32 texture_features[BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS];
-	u64 gpu_available_memory_size;
-	u8 num_exec_engines;
+	__u32 product_id;
+	__u16 version_status;
+	__u16 minor_revision;
+	__u16 major_revision;
+	__u16 padding;
+	__u32 gpu_freq_khz_max;
+	__u32 log2_program_counter_size;
+	__u32 texture_features[BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS];
+	__u64 gpu_available_memory_size;
+	__u8 num_exec_engines;
 };
 
 /*
@@ -513,15 +521,15 @@ struct mali_base_gpu_core_props {
  * required by upper-level apis.
  */
 struct mali_base_gpu_l2_cache_props {
-	u8 log2_line_size;
-	u8 log2_cache_size;
-	u8 num_l2_slices; /* Number of L2C slices. 1 or higher */
-	u8 padding[5];
+	__u8 log2_line_size;
+	__u8 log2_cache_size;
+	__u8 num_l2_slices; /* Number of L2C slices. 1 or higher */
+	__u8 padding[5];
 };
 
 struct mali_base_gpu_tiler_props {
-	u32 bin_size_bytes;	/* Max is 4*2^15 */
-	u32 max_active_levels;	/* Max is 2^15 */
+	__u32 bin_size_bytes;	/* Max is 4*2^15 */
+	__u32 max_active_levels;	/* Max is 2^15 */
 };
 
 /**
@@ -543,15 +551,15 @@ struct mali_base_gpu_tiler_props {
  *                          allocated for
  */
 struct mali_base_gpu_thread_props {
-	u32 max_threads;
-	u32 max_workgroup_size;
-	u32 max_barrier_size;
-	u16 max_registers;
-	u8 max_task_queue;
-	u8 max_thread_group_split;
-	u8 impl_tech;
-	u8  padding[3];
-	u32 tls_alloc;
+	__u32 max_threads;
+	__u32 max_workgroup_size;
+	__u32 max_barrier_size;
+	__u16 max_registers;
+	__u8 max_task_queue;
+	__u8 max_thread_group_split;
+	__u8 impl_tech;
+	__u8  padding[3];
+	__u32 tls_alloc;
 };
 
 /**
@@ -570,9 +578,9 @@ struct mali_base_gpu_thread_props {
  * 	wastage.
  */
 struct mali_base_gpu_coherent_group {
-	u64 core_mask;
-	u16 num_cores;
-	u16 padding[3];
+	__u64 core_mask;
+	__u16 num_cores;
+	__u16 padding[3];
 };
 
 /**
@@ -591,17 +599,17 @@ struct mali_base_gpu_coherent_group {
  * @group: Descriptors of coherent groups
  *
  * Note that the sizes of the members could be reduced. However, the \c group
- * member might be 8-byte aligned to ensure the u64 core_mask is 8-byte
+ * member might be 8-byte aligned to ensure the __u64 core_mask is 8-byte
  * aligned, thus leading to wastage if the other members sizes were reduced.
  *
  * The groups are sorted by core mask. The core masks are non-repeating and do
  * not intersect.
  */
 struct mali_base_gpu_coherent_group_info {
-	u32 num_groups;
-	u32 num_core_groups;
-	u32 coherency;
-	u32 padding;
+	__u32 num_groups;
+	__u32 num_core_groups;
+	__u32 coherency;
+	__u32 padding;
 	struct mali_base_gpu_coherent_group group[BASE_MAX_COHERENT_GROUPS];
 };
 
@@ -644,37 +652,37 @@ struct mali_base_gpu_coherent_group_info {
  *
  */
 struct gpu_raw_gpu_props {
-	u64 shader_present;
-	u64 tiler_present;
-	u64 l2_present;
-	u64 stack_present;
-	u32 l2_features;
-	u32 core_features;
-	u32 mem_features;
-	u32 mmu_features;
+	__u64 shader_present;
+	__u64 tiler_present;
+	__u64 l2_present;
+	__u64 stack_present;
+	__u32 l2_features;
+	__u32 core_features;
+	__u32 mem_features;
+	__u32 mmu_features;
 
-	u32 as_present;
+	__u32 as_present;
 
-	u32 js_present;
-	u32 js_features[GPU_MAX_JOB_SLOTS];
-	u32 tiler_features;
-	u32 texture_features[BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS];
+	__u32 js_present;
+	__u32 js_features[GPU_MAX_JOB_SLOTS];
+	__u32 tiler_features;
+	__u32 texture_features[BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS];
 
-	u32 gpu_id;
+	__u32 gpu_id;
 
-	u32 thread_max_threads;
-	u32 thread_max_workgroup_size;
-	u32 thread_max_barrier_size;
-	u32 thread_features;
+	__u32 thread_max_threads;
+	__u32 thread_max_workgroup_size;
+	__u32 thread_max_barrier_size;
+	__u32 thread_features;
 
 	/*
 	 * Note: This is the _selected_ coherency mode rather than the
 	 * available modes as exposed in the coherency_features register.
 	 */
-	u32 coherency_mode;
+	__u32 coherency_mode;
 
-	u32 thread_tls_alloc;
-	u64 gpu_features;
+	__u32 thread_tls_alloc;
+	__u64 gpu_features;
 };
 
 /**
@@ -695,7 +703,7 @@ struct gpu_raw_gpu_props {
 struct base_gpu_props {
 	struct mali_base_gpu_core_props core_props;
 	struct mali_base_gpu_l2_cache_props l2_props;
-	u64 unused_1;
+	__u64 unused_1;
 	struct mali_base_gpu_tiler_props tiler_props;
 	struct mali_base_gpu_thread_props thread_props;
 	struct gpu_raw_gpu_props raw_props;
@@ -717,7 +725,7 @@ struct base_gpu_props {
  *
  * Return: group ID(0~15) extracted from the parameter
  */
-static inline int base_mem_group_id_get(base_mem_alloc_flags flags)
+static __inline__ int base_mem_group_id_get(base_mem_alloc_flags flags)
 {
 	LOCAL_ASSERT((flags & ~BASE_MEM_FLAGS_INPUT_MASK) == 0);
 	return (int)((flags & BASE_MEM_GROUP_ID_MASK) >>
@@ -740,7 +748,7 @@ static inline int base_mem_group_id_get(base_mem_alloc_flags flags)
  * The return value can be combined with other flags against base_mem_alloc
  * to identify a specific memory group.
  */
-static inline base_mem_alloc_flags base_mem_group_id_set(int id)
+static __inline__ base_mem_alloc_flags base_mem_group_id_set(int id)
 {
 	if ((id < 0) || (id >= BASE_MEM_GROUP_COUNT)) {
 		/* Set to default value when id is out of range. */
@@ -765,7 +773,7 @@ static inline base_mem_alloc_flags base_mem_group_id_set(int id)
  *
  * Return: Bitmask of flags to pass to base_context_init.
  */
-static inline base_context_create_flags base_context_mmu_group_id_set(
+static __inline__ base_context_create_flags base_context_mmu_group_id_set(
 	int const group_id)
 {
 	LOCAL_ASSERT(group_id >= 0);
@@ -783,7 +791,7 @@ static inline base_context_create_flags base_context_mmu_group_id_set(
  *
  * Return: Physical memory group ID. Valid range is 0..(BASE_MEM_GROUP_COUNT-1).
  */
-static inline int base_context_mmu_group_id_get(
+static __inline__ int base_context_mmu_group_id_get(
 	base_context_create_flags const flags)
 {
 	LOCAL_ASSERT(flags == (flags & BASEP_CONTEXT_CREATE_ALLOWED_FLAGS));
@@ -815,4 +823,10 @@ static inline int base_context_mmu_group_id_get(
 		BASE_TIMEINFO_KERNEL_SOURCE_FLAG | \
 		BASE_TIMEINFO_USER_SOURCE_FLAG)
 
-#endif				/* _BASE_KERNEL_H_ */
+/* Maximum number of source allocations allowed to create an alias allocation.
+ * This needs to be 4096 * 6 to allow cube map arrays with up to 4096 array
+ * layers, since each cube map in the array will have 6 faces.
+ */
+#define BASE_MEM_ALIAS_MAX_ENTS ((size_t)24576)
+
+#endif /* _UAPI_BASE_KERNEL_H_ */
