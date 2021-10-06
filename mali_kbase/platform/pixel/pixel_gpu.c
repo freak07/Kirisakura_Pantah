@@ -25,6 +25,7 @@
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
+#include "pixel_gpu_sscd.h"
 
 #define CREATE_TRACE_POINTS
 #include "pixel_gpu_trace.h"
@@ -158,6 +159,12 @@ static int gpu_pixel_init(struct kbase_device *kbdev)
 		dev_err(kbdev->dev, "sysfs init failed\n");
 		goto done;
 	}
+
+	ret = gpu_sscd_init(kbdev);
+	if (ret) {
+		dev_err(kbdev->dev, "SSCD init failed\n");
+		goto done;
+	}
 	ret = 0;
 
 done:
@@ -173,6 +180,7 @@ static void gpu_pixel_term(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
+	gpu_sscd_term(kbdev);
 	gpu_sysfs_term(kbdev);
 	gpu_dvfs_term(kbdev);
 	gpu_pm_term(kbdev);
@@ -188,4 +196,5 @@ struct kbase_platform_funcs_conf platform_funcs = {
 	.platform_handler_context_term_func = &gpu_dvfs_kctx_term,
 	.platform_handler_work_begin_func = &gpu_dvfs_metrics_work_begin,
 	.platform_handler_work_end_func = &gpu_dvfs_metrics_work_end,
+	.platform_handler_core_dump_func = &gpu_sscd_dump,
 };

@@ -1224,6 +1224,8 @@ static void handle_internal_firmware_fatal(struct kbase_device *const kbdev)
 {
 	int as;
 
+	kbasep_platform_event_core_dump(kbdev, "Internal firmware error");
+
 	for (as = 0; as < kbdev->nr_hw_address_spaces; as++) {
 		unsigned long flags;
 		struct kbase_context *kctx;

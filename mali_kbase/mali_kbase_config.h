@@ -157,6 +157,18 @@ struct kbase_platform_funcs_conf {
 	 *  - If job manager: Function must be runnable in an interrupt context.
 	 */
 	void (*platform_handler_work_end_func)(void* param);
+	/**
+	 * platform_handler_core_dump_func - Platform specific handler for triggering a core dump.
+	 *
+	 * @kbdev: kbase_device pointer
+	 * @reason: A null terminated string containing a dump reason
+	 *
+	 * Function pointer for platform specific handling at the point an internal error
+	 * has occurred, to dump debug info about the error. Or set to NULL if not required.
+	 *
+	 * Context: The caller must hold the hwaccess lock
+	 */
+	void (*platform_handler_core_dump_func)(struct kbase_device *kbdev, const char* reason);
 };
 
 /*
@@ -587,6 +599,17 @@ void kbasep_platform_event_work_begin(void *param);
  *
  */
 void kbasep_platform_event_work_end(void *param);
+
+/**
+ * kbasep_platform_event_core_dump - Platform specific callback to act on a firmware error.
+ *
+ * @kbdev - kbase_device pointer
+ * @reason: A null terminated string containing a dump reason
+ *
+ * Function calls a platform defined routine if specified in the configuration attributes.
+ *
+ */
+void kbasep_platform_event_core_dump(struct kbase_device *kbdev, const char* reason);
 
 #ifndef CONFIG_OF
 /**
