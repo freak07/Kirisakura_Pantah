@@ -41,7 +41,10 @@
 
 #define FIRMWARE_PING_INTERVAL_MS (4000) /* 4 seconds */
 
-#define FIRMWARE_IDLE_HYSTERESIS_TIME_MS (10) /* Default 10 milliseconds */
+/* TODO(b/201222260): revisit value once interframe power off support is
+ *                    enabled.
+ */
+#define FIRMWARE_IDLE_HYSTERESIS_TIME_MS (100)
 
 /**
  * enum kbase_csf_event_callback_action - return type for CSF event callbacks.
