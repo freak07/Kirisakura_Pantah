@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-2.0
+# SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 #
 # (C) COPYRIGHT 2010-2021 ARM Limited. All rights reserved.
 #
@@ -57,6 +57,7 @@ CONFIG_MALI_MIDGARD ?= m
 ifeq ($(CONFIG_MALI_MIDGARD),m)
     CONFIG_MALI_GATOR_SUPPORT ?= y
     CONFIG_MALI_ARBITRATION ?= n
+    CONFIG_MALI_PARTITION_MANAGER ?= n
 
     ifneq ($(CONFIG_MALI_NO_MALI),y)
         # Prevent misuse when CONFIG_MALI_NO_MALI=y
@@ -73,6 +74,12 @@ ifeq ($(CONFIG_MALI_MIDGARD),m)
     ifeq ($(CONFIG_MALI_DMA_BUF_MAP_ON_DEMAND), y)
         # Prevent misuse when CONFIG_MALI_DMA_BUF_MAP_ON_DEMAND=y
         CONFIG_MALI_DMA_BUF_LEGACY_COMPAT = n
+    endif
+
+    ifeq ($(CONFIG_BSP_HAS_HYPERVISOR),y)
+        ifneq ($(CONFIG_MALI_ARBITRATION), n)
+            CONFIG_MALI_XEN ?= m
+        endif
     endif
 
     #
@@ -189,7 +196,8 @@ CONFIGS := \
     CONFIG_MALI_FENCE_DEBUG \
     CONFIG_MALI_KUTF \
     CONFIG_MALI_KUTF_IRQ_TEST \
-    CONFIG_MALI_KUTF_CLK_RATE_TRACE
+    CONFIG_MALI_KUTF_CLK_RATE_TRACE \
+    CONFIG_MALI_XEN
 
 # Pixel integration CONFIG options
 CONFIGS += \

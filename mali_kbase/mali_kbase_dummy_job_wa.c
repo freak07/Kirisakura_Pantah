@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
  * (C) COPYRIGHT 2019-2021 ARM Limited. All rights reserved.
@@ -260,11 +260,6 @@ static bool wa_blob_load_needed(struct kbase_device *kbdev)
 {
 	if (of_machine_is_compatible("arm,juno"))
 		return false;
-
-	/* TODO: b/162413384 Bypassing check for now
-	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TTRX_3485))
-		return true;
-	*/
 
 	return false;
 }
