@@ -10,6 +10,10 @@ extern struct platform_driver memory_group_manager_driver;
 extern struct platform_driver priority_control_manager_driver;
 #endif
 
+#ifdef CONFIG_MALI_PROTECTED_MEMORY_ALLOCATOR
+extern struct platform_driver protected_memory_allocator_driver;
+#endif
+
 #ifdef CONFIG_MALI_PIXEL_STATS
 extern int mali_pixel_init_pixel_stats(void);
 #endif

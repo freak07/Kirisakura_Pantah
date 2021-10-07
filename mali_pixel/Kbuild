@@ -23,6 +23,7 @@ src:=$(if $(patsubst /%,,$(src)),$(srctree)/$(src),$(src))
 
 CONFIG_MALI_MEMORY_GROUP_MANAGER ?= m
 CONFIG_MALI_PRIORITY_CONTROL_MANAGER ?= m
+CONFIG_MALI_PROTECTED_MEMORY_ALLOCATOR ?= m
 CONFIG_MALI_PIXEL_STATS ?= m
 
 mali_pixel-objs :=
@@ -39,6 +40,10 @@ endif
 ifeq ($(CONFIG_MALI_PRIORITY_CONTROL_MANAGER),m)
 	DEFINES += -DCONFIG_MALI_PRIORITY_CONTROL_MANAGER
 	mali_pixel-objs += priority_control_manager.o
+endif
+ifeq ($(CONFIG_MALI_PROTECTED_MEMORY_ALLOCATOR),m)
+	DEFINES += -DCONFIG_MALI_PROTECTED_MEMORY_ALLOCATOR
+	mali_pixel-objs += protected_memory_allocator.o
 endif
 
 # Use our defines when compiling, and include mali platform module headers

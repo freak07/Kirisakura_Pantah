@@ -30,7 +30,18 @@ static int __init mali_pixel_init(void)
 	if (ret)
 		goto fail_pcm;
 
+#ifdef CONFIG_MALI_PROTECTED_MEMORY_ALLOCATOR
+	ret = platform_driver_register(&protected_memory_allocator_driver);
+#endif
+	if (ret)
+		goto fail_pma;
+
 	goto exit;
+
+fail_pma:
+#ifdef CONFIG_MALI_PRIORITY_CONTROL_MANAGER
+	platform_driver_unregister(&priority_control_manager_driver);
+#endif
 
 fail_pcm:
 #ifdef CONFIG_MALI_MEMORY_GROUP_MANAGER
@@ -49,6 +60,9 @@ module_init(mali_pixel_init);
 
 static void __exit mali_pixel_exit(void)
 {
+#ifdef CONFIG_MALI_PROTECTED_MEMORY_ALLOCATOR
+	platform_driver_unregister(&protected_memory_allocator_driver);
+#endif
 #ifdef CONFIG_MALI_PRIORITY_CONTROL_MANAGER
 	platform_driver_unregister(&priority_control_manager_driver);
 #endif
