@@ -1455,8 +1455,7 @@ bool kbase_backend_soft_hard_stop_slot(struct kbase_device *kbdev,
 		katom_idx0_valid = (katom_idx0 &&
 				(!kctx || katom_idx0->kctx == kctx));
 		katom_idx1_valid = (katom_idx1 &&
-				(!kctx || katom_idx1->kctx == kctx) &&
-				prio_idx0 == prio_idx1);
+				(!kctx || katom_idx1->kctx == kctx));
 	}
 
 	if (katom_idx0_valid)

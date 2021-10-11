@@ -47,12 +47,16 @@ static const char * const GPU_PM_DOMAIN_NAMES[GPU_PM_DOMAIN_COUNT] = {
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
- * Powers on the shader cores and issues trace points and events.
+ * Powers on the CORES domain and issues trace points and events. Also powers on TOP and cancels
+ * any pending suspend operations on it.
  *
- * Context: Process context.
+ * Context: Process context. Takes and releases PM lock.
+ *
+ * Return: If GPU state has been lost, 1 is returned. Otherwise 0 is returned.
  */
-static void gpu_pm_power_on_cores(struct kbase_device *kbdev)
+static int gpu_pm_power_on_cores(struct kbase_device *kbdev)
 {
+	int ret;
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
@@ -72,11 +76,25 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev)
 	mutex_unlock(&pc->pm.domain->access_lock);
 	mutex_unlock(&pc->dvfs.lock);
 
+	ret = 0;
 #else
+	mutex_lock(&pc->pm.lock);
 
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
 
+	/*
+	 * We determine whether GPU state was lost by detecting whether the GPU state reached
+	 * GPU_POWER_LEVEL_OFF before we entered this function. The GPU state is set to be
+	 * GPU_POWER_LEVEL_OFF in the gpu_pm_callback_power_runtime_suspend callback which is run
+	 * when autosuspend for TOP is triggered.
+	 *
+	 * As such, GPU state is only checked at this point in the code (and not at the start) as it
+	 * is after pm_runtime_get_sync() on the TOP domain has been called. If there was an
+	 * autosuspend in progress for TOP, then the call to pm_runtime_get_sync() would have
+	 * blocked until it completed ensuring that the value of pc->pm.state is up-to-date.
+	 */
+	ret = (pc->pm.state == GPU_POWER_LEVEL_OFF);
 #endif
 
 	trace_gpu_power_state(ktime_get_ns() - start_ns,
@@ -88,6 +106,14 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev)
 	if (pc->pm.bcl_dev)
 		google_init_gpu_ratio(pc->pm.bcl_dev);
 #endif
+
+#if !IS_ENABLED(CONFIG_SOC_GS201)
+	pc->pm.state = GPU_POWER_LEVEL_STACKS;
+
+	mutex_unlock(&pc->pm.lock);
+#endif
+
+	return ret;
 }
 
 /**
@@ -96,9 +122,14 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev)
  * @kbdev: The &struct kbase_device for the GPU.
  *
  * Powers off the CORES domain and issues trace points and events. Also marks the TOP domain for
- * delayed suspend.
+ * delayed suspend. Complete power down of all GPU domains will only occur after this delayed
+ * suspend, and the kernel notifies of this change via the &gpu_pm_callback_power_runtime_suspend
+ * callback.
  *
- * Context: Process context.
+ * Note: If the we have already performed these operations without an intervening call to
+ *       &gpu_pm_power_on_cores, then we take no action.
+ *
+ * Context: Process context. Takes and releases the PM lock.
  */
 static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
 {
@@ -118,17 +149,28 @@ static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
 
 #else
 
-	pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
+	mutex_lock(&pc->pm.lock);
 
-	pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
-	pm_runtime_put_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
+	if (pc->pm.state > GPU_POWER_LEVEL_GLOBAL) {
+		pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
+		pc->pm.state = GPU_POWER_LEVEL_GLOBAL;
 
+
+		pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
+		pm_runtime_put_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 #endif
 
-	trace_gpu_power_state(ktime_get_ns() - start_ns,
-		GPU_POWER_LEVEL_STACKS, GPU_POWER_LEVEL_GLOBAL);
+		trace_gpu_power_state(ktime_get_ns() - start_ns,
+			GPU_POWER_LEVEL_STACKS, GPU_POWER_LEVEL_GLOBAL);
+
 #ifdef CONFIG_MALI_MIDGARD_DVFS
-	gpu_dvfs_event_power_off(kbdev);
+		gpu_dvfs_event_power_off(kbdev);
+#endif
+
+#if !IS_ENABLED(CONFIG_SOC_GS201)
+	}
+
+	mutex_unlock(&pc->pm.lock);
 #endif
 }
 
@@ -140,7 +182,7 @@ static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
  * This callback is called by the core Mali driver when it identifies that the GPU is about to
  * become active.
  *
- * Since we are using idle hints to power down the GPU in &pm_callback_power_off we will need to
+ * Since we are using idle hints to power down the GPU in &gpu_pm_callback_power_off we will need to
  * power up the GPU when we receive this callback.
  *
  * If we detect that we are being called after TOP has been powered off, we indicate to the caller
@@ -150,25 +192,12 @@ static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
  */
 static int gpu_pm_callback_power_on(struct kbase_device *kbdev)
 {
+	dev_dbg(kbdev->dev, "%s\n", __func__);
+
 #if IS_ENABLED(CONFIG_SOC_GS201)
-
-	dev_dbg(kbdev->dev, "%s\n", __func__);
-
 	return 0;
-
 #else
-
-	struct pixel_context *pc = kbdev->platform_context;
-	int ret = (pc->pm.state_lost ? 1 : 0);
-
-	dev_dbg(kbdev->dev, "%s\n", __func__);
-
-	if (pc->pm.state_lost)
-		pc->pm.state_lost = false;
-
-	gpu_pm_power_on_cores(kbdev);
-
-	return ret;
+	return gpu_pm_power_on_cores(kdev);
 #endif
 }
 
@@ -254,7 +283,9 @@ static void gpu_pm_callback_power_resume(struct kbase_device *kbdev)
  */
 static void gpu_pm_callback_power_suspend(struct kbase_device *kbdev)
 {
+#if IS_ENABLED(CONFIG_SOC_GS201)
 	struct pixel_context *pc = kbdev->platform_context;
+#endif
 
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
@@ -270,13 +301,7 @@ static void gpu_pm_callback_power_suspend(struct kbase_device *kbdev)
 
 #else
 
-	if (pc->pm.state_lost)
-		return;
-
-	if (gpu_pm_get_power_state(kbdev))
-		gpu_pm_power_off_cores(kbdev);
-
-	pc->pm.state_lost = true;
+	gpu_pm_power_off_cores(kbdev);
 
 #endif
 }
@@ -292,6 +317,11 @@ static void gpu_pm_callback_power_suspend(struct kbase_device *kbdev)
  * the TOP domain of GPU is about to enter runtime suspend. At this point we take the opportunity
  * to store that state will be lost and disable DVFS metrics gathering.
  *
+ * Note: This function doesn't take the PM lock prior to updating GPU state as it doesn't explicitly
+ *       attempt to update GPU power domain state. The caller of this function (or another function
+ *       further up the callstack) will hold &power.lock for the TOP domain's &struct device and
+ *       that is sufficient for ensuring serialization of the GPU power state.
+ *
  * Return: Always returns 0.
  */
 static int gpu_pm_callback_power_runtime_suspend(struct device *dev)
@@ -301,9 +331,8 @@ static int gpu_pm_callback_power_runtime_suspend(struct device *dev)
 
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
-	WARN_ON(pc->pm.state_lost);
-
-	pc->pm.state_lost = true;
+	WARN_ON(pc->pm.state > GPU_POWER_LEVEL_GLOBAL);
+	pc->pm.state = GPU_POWER_LEVEL_OFF;
 
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 	kbase_pm_metrics_stop(kbdev);
@@ -482,6 +511,9 @@ int gpu_pm_init(struct kbase_device *kbdev)
 	int ret = 0;
 
 #if !IS_ENABLED(CONFIG_SOC_GS201)
+
+	/* Initialize lock */
+	mutex_init(&pc->pm.lock);
 
 	num_pm_domains = of_count_phandle_with_args(np, "power-domains", "#power-domain-cells");
 	if (num_pm_domains != GPU_PM_DOMAIN_COUNT) {

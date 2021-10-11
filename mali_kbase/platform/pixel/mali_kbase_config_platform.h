@@ -110,6 +110,26 @@ extern struct protected_mode_ops pixel_protected_ops;
 #define OF_DATA_NUM_MAX 128
 #define CPU_FREQ_MAX INT_MAX
 
+enum gpu_power_state {
+	/*
+	 * Mali GPUs have a hierarchy of power domains, which must be powered up
+	 * in order and powered down in reverse order. Individual architectures
+	 * and implementations may not allow each domain to be powered up or
+	 * down independently of the others.
+	 *
+	 * The power state can thus be defined as the highest-level domain that
+	 * is currently powered on.
+	 *
+	 * GLOBAL: The frontend (JM, CSF), including registers.
+	 * COREGROUP: The L2 and AXI interface, Tiler, and MMU.
+	 * STACKS: The shader cores.
+	 */
+	GPU_POWER_LEVEL_OFF       = 0,
+	GPU_POWER_LEVEL_GLOBAL    = 1,
+	GPU_POWER_LEVEL_COREGROUP = 2,
+	GPU_POWER_LEVEL_STACKS    = 3,
+};
+
 /**
  * enum gpu_pm_domain - Power domains on the GPU.
  *
@@ -206,9 +226,12 @@ struct gpu_dvfs_metrics_uid_stats;
  *
  * @kbdev:                      The &struct kbase_device for the GPU.
  *
+ * @pm.lock:                    &struct mutex used to ensure serialization of calls to kernel power
+ *                              management functions on the GPU power domain devices held in
+ *                              &pm.domain_devs.
+ * @pm.state:                   Holds the current power state of the GPU.
  * @pm.domain_devs              Virtual pm domain devices.
  * @pm.domain_links             Links from pm domain devices to the real device.
- * @pm.state_lost:              Stores whether the TOP domain has been powered off and state lost.
  * @pm.domain:                  The power domain the GPU is in.
  * @pm.status_reg_offset:       Register offset to the G3D status in the PMU. Set via DT.
  * @pm.status_local_power_mask: Mask to extract power status of the GPU. Set via DT.
@@ -280,10 +303,11 @@ struct pixel_context {
 
 	struct {
 #if !IS_ENABLED(CONFIG_SOC_GS201)
+		struct mutex lock;
+		enum gpu_power_state state;
+
 		struct device *domain_devs[GPU_PM_DOMAIN_COUNT];
 		struct device_link *domain_links[GPU_PM_DOMAIN_COUNT];
-
-		bool state_lost;
 #endif
 		struct exynos_pm_domain *domain;
 		unsigned int status_reg_offset;
