@@ -283,7 +283,7 @@ struct kbase_kcpu_command {
 struct kbase_kcpu_command_queue {
 	struct kbase_context *kctx;
 	struct kbase_kcpu_command commands[KBASEP_KCPU_QUEUE_SIZE];
-	struct work_struct work;
+	struct kthread_work work;
 	u8 start_offset;
 	u8 id;
 	u16 num_pending_cmds;

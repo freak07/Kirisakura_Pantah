@@ -488,7 +488,9 @@ struct kbase_queue_group {
  * @lock:   Lock preventing concurrent access to @array and the @in_use bitmap.
  * @array:  Array of pointers to kernel CPU command queues.
  * @in_use: Bitmap which indicates which kernel CPU command queues are in use.
- * @wq:     Dedicated workqueue for processing kernel CPU command queues.
+ * @csf_kcpu_worker:    Dedicated worker for processing kernel CPU command
+ *                      queues.
+ * @csf_kcpu_thread:    The kthread used to process kernel CPU command queues.
  * @num_cmds:           The number of commands that have been enqueued across
  *                      all the KCPU command queues. This could be used as a
  *                      timestamp to determine the command's enqueueing time.
@@ -504,7 +506,8 @@ struct kbase_csf_kcpu_queue_context {
 	struct mutex lock;
 	struct kbase_kcpu_command_queue *array[KBASEP_MAX_KCPU_QUEUES];
 	DECLARE_BITMAP(in_use, KBASEP_MAX_KCPU_QUEUES);
-	struct workqueue_struct *wq;
+	struct kthread_worker csf_kcpu_worker;
+	struct task_struct *csf_kcpu_thread;
 	u64 num_cmds;
 
 	struct list_head jit_cmds_head;
