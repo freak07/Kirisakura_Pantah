@@ -144,13 +144,13 @@ void gpu_dvfs_governor_term(struct kbase_device *kbdev);
  * @uid:               The UID for this stats block.
  * @active_work_count: Count of currently executing units of work on the GPU from this UID. Should
  *                     only be accessed while holding the hwaccess lock if using a job manager GPU,
- *                     CSF GPUs require holding the csf.scheduler.interrupt_lock.
+ *                     CSF GPUs require holding the csf.scheduler.lock.
  * @period_start:      The time (in nanoseconds) that the current active period for this UID began.
  *                     Should only be accessed while holding the hwaccess lock if using a job
- *                     manager GPU, CSF GPUs require holding the csf.scheduler.interrupt_lock.
+ *                     manager GPU, CSF GPUs require holding the csf.scheduler.lock.
  * @tis_stats:         &struct gpu_dvfs_opp_metrics block storing time in state data for this UID.
  *                     Should only be accessed while holding the hwaccess lock if using a job
- *                     manager GPU, CSF GPUs require holding the csf.scheduler.interrupt_lock.
+ *                     manager GPU, CSF GPUs require holding the csf.scheduler.lock.
  */
 struct gpu_dvfs_metrics_uid_stats {
 	struct list_head uid_list_link;
@@ -184,10 +184,8 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_
  *                                 the GPU
  *
  * @param:
- * - If job manager GPU: The &struct kbase_jd_atom that has just been submitted
- *   to the GPU.
- * - If CSF GPU: The &struct kbase_queue_group that has just become resident on
- *   the GPU.
+ * - If job manager GPU: The &struct kbase_jd_atom that has just been submitted to the GPU.
+ * - If CSF GPU: The &struct kbase_queue_group that has just been submitted to the GPU.
  *
  * For job manager GPUs:
  * This function is called when an atom is submitted to the GPU by way of writing to the
@@ -197,9 +195,8 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_
  * This function is called when an group resident in a CSG slot starts executing.
  *
  * Context:
- *  - May be in IRQ context
- *  - If job manager GPU: Assumes that the hwaccess lock is held
- *  - If CSF GPU: Assumes that the csf.scheduler.interrupt_lock is held
+ *  - If job manager GPU: Assumes that the hwaccess lock is held. May be in IRQ context
+ *  - If CSF GPU: Assumes that the csf.scheduler.lock is held
  */
 void gpu_dvfs_metrics_work_begin(void *param);
 
@@ -208,10 +205,8 @@ void gpu_dvfs_metrics_work_begin(void *param);
  *                               running on the GPU
  *
  * @param:
- * - If job manager GPU: The &struct kbase_jd_atom that has just stopped running
- *   on the GPU
- * - If CSF GPU: The &struct kbase_queue_group that has just been evicted from
- *   the GPU
+ * - If job manager GPU: The &struct kbase_jd_atom that has just stopped running on the GPU
+ * - If CSF GPU: The &struct kbase_queue_group that has just stopped running on the GPU
  *
  * This function is called when a unit of work is no longer running on the GPU,
  * either due to successful completion, failure, preemption, or GPU reset.
@@ -221,12 +216,10 @@ void gpu_dvfs_metrics_work_begin(void *param);
  * For CSF GPUs, it refers to a group resident in a CSG slot, and so this
  * function is called when a that CSG slot completes or suspends execution of
  * the group.
- * Completion is usually indicated via an CSG_IDLE interrupt.
  *
  * Context:
- *  - May be in IRQ context
- *  - If job manager GPU: Assumes that the hwaccess lock is held
- *  - If CSF GPU: Assumes that the csf.scheduler.interrupt_lock is held
+ *  - If job manager GPU: Assumes that the hwaccess lock is held. May be in IRQ context
+ *  - If CSF GPU: Assumes that the csf.scheduler.lock is held
  */
 void gpu_dvfs_metrics_work_end(void *param);
 
