@@ -574,8 +574,10 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 
 	pc->dvfs.level_max = 0;
 	pc->dvfs.level_min = dvfs_table_row_num - 1;
+	mutex_lock(&pc->dvfs.lock);
 	gpu_dvfs_update_level_lock(kbdev, GPU_DVFS_LEVEL_LOCK_DEVICETREE,
 		scaling_level_min, scaling_level_max);
+	mutex_unlock(&pc->dvfs.lock);
 
 	return dvfs_table_row_num;
 
