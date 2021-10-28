@@ -556,12 +556,9 @@ void kbasep_js_devdata_halt(struct kbase_device *kbdev)
 
 void kbasep_js_devdata_term(struct kbase_device *kbdev)
 {
-	struct kbasep_js_device_data *js_devdata;
 	s8 zero_ctx_attr_ref_count[KBASEP_JS_CTX_ATTR_COUNT] = { 0, };
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
-
-	js_devdata = &kbdev->js_data;
 
 	/* The caller must de-register all contexts before calling this
 	 */
@@ -575,13 +572,11 @@ void kbasep_js_devdata_term(struct kbase_device *kbdev)
 
 int kbasep_js_kctx_init(struct kbase_context *const kctx)
 {
-	struct kbase_device *kbdev;
 	struct kbasep_js_kctx_info *js_kctx_info;
 	int i, j;
 
 	KBASE_DEBUG_ASSERT(kctx != NULL);
 
-	kbdev = kctx->kbdev;
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 
 	for (i = 0; i < BASE_JM_MAX_NR_SLOTS; ++i)
@@ -621,7 +616,6 @@ int kbasep_js_kctx_init(struct kbase_context *const kctx)
 void kbasep_js_kctx_term(struct kbase_context *kctx)
 {
 	struct kbase_device *kbdev;
-	struct kbasep_js_kctx_info *js_kctx_info;
 	int js;
 	bool update_ctx_count = false;
 	unsigned long flags;
@@ -630,8 +624,6 @@ void kbasep_js_kctx_term(struct kbase_context *kctx)
 
 	kbdev = kctx->kbdev;
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
-
-	js_kctx_info = &kctx->jctx.sched_info;
 
 	/* The caller must de-register all jobs before calling this */
 	KBASE_DEBUG_ASSERT(!kbase_ctx_flag(kctx, KCTX_SCHEDULED));
@@ -1591,7 +1583,6 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 
 	kbasep_js_release_result release_result = 0u;
 	bool runpool_ctx_attr_change = false;
-	int kctx_as_nr;
 	int new_ref_count;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
@@ -1602,7 +1593,6 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 	/* Ensure context really is scheduled in */
 	KBASE_DEBUG_ASSERT(kbase_ctx_flag(kctx, KCTX_SCHEDULED));
 
-	kctx_as_nr = kctx->as_nr;
 	KBASE_DEBUG_ASSERT(kctx_as_nr != KBASEP_AS_NR_INVALID);
 	KBASE_DEBUG_ASSERT(atomic_read(&kctx->refcount) > 0);
 
@@ -1974,10 +1964,8 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 #else
 	if (kbase_pm_is_suspending(kbdev)) {
 #endif
-		/* Cause it to leave at some later point */
-		bool retained;
 
-		retained = kbase_ctx_sched_inc_refcount_nolock(kctx);
+		kbase_ctx_sched_inc_refcount_nolock(kctx);
 		KBASE_DEBUG_ASSERT(retained);
 
 		kbasep_js_clear_submit_allowed(js_devdata, kctx);
@@ -3797,7 +3785,6 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 		mutex_unlock(&kctx->jctx.lock);
 	} else {
 		unsigned long flags;
-		bool was_retained;
 
 		/* Case c: didn't evict, but it is scheduled - it's in the Run
 		 * Pool
@@ -3814,7 +3801,7 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 		 * disallowed from submitting jobs - ensures that someone
 		 * somewhere will be removing the context later on
 		 */
-		was_retained = kbase_ctx_sched_inc_refcount_nolock(kctx);
+		kbase_ctx_sched_inc_refcount_nolock(kctx);
 
 		/* Since it's scheduled and we have the jsctx_mutex, it must be
 		 * retained successfully

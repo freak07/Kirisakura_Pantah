@@ -25,6 +25,7 @@
 #include <asm/cacheflush.h>
 #if defined(CONFIG_SYNC) || defined(CONFIG_SYNC_FILE)
 #include <mali_kbase_sync.h>
+#include <mali_kbase_fence.h>
 #endif
 #include <linux/dma-mapping.h>
 #include <uapi/gpu/arm/midgard/mali_base_kernel.h>
@@ -39,6 +40,7 @@
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/cache.h>
+#include <linux/file.h>
 
 #if !MALI_USE_CSF
 /**
@@ -1633,6 +1635,7 @@ int kbase_prepare_soft_job(struct kbase_jd_atom *katom)
 	case BASE_JD_REQ_SOFT_FENCE_TRIGGER:
 		{
 			struct base_fence fence;
+			struct sync_file *sync_file;
 			int fd;
 
 			if (copy_from_user(&fence,
@@ -1640,19 +1643,28 @@ int kbase_prepare_soft_job(struct kbase_jd_atom *katom)
 					   sizeof(fence)) != 0)
 				return -EINVAL;
 
-			fd = kbase_sync_fence_out_create(katom,
+			sync_file = kbase_sync_fence_out_create(katom,
 							 fence.basep.stream_fd);
-			if (fd < 0)
-				return -EINVAL;
+			if (!sync_file)
+				return -ENOMEM;
+
+			fd = get_unused_fd_flags(O_CLOEXEC);
+			if (fd < 0) {
+				fput(sync_file->file);
+				kbase_fence_out_remove(katom);
+				return fd;
+			}
 
 			fence.basep.fd = fd;
 			if (copy_to_user((__user void *)(uintptr_t)katom->jc,
 					 &fence, sizeof(fence)) != 0) {
 				kbase_sync_fence_out_remove(katom);
-				kbase_sync_fence_close_fd(fd);
+				put_unused_fd(fd);
+				fput(sync_file->file);
 				fence.basep.fd = -EINVAL;
 				return -EINVAL;
 			}
+			fd_install(fd, sync_file->file);
 		}
 		break;
 	case BASE_JD_REQ_SOFT_FENCE_WAIT:
