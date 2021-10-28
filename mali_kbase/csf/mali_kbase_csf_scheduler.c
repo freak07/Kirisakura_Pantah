@@ -1153,6 +1153,7 @@ static enum kbase_csf_csg_slot_state update_csg_slot_status(
 			slot_state = CSG_SLOT_RUNNING;
 			atomic_set(&csg_slot->state, slot_state);
 			csg_slot->trigger_jiffies = jiffies;
+			kbasep_platform_event_work_begin(csg_slot->resident_group);
 			KBASE_KTRACE_ADD_CSF_GRP(kbdev, CSG_SLOT_STARTED, csg_slot->resident_group, state);
 			dev_dbg(kbdev->dev, "Group %u running on slot %d\n",
 				csg_slot->resident_group->handle, slot);
@@ -1164,6 +1165,7 @@ static enum kbase_csf_csg_slot_state update_csg_slot_status(
 			slot_state = CSG_SLOT_STOPPED;
 			atomic_set(&csg_slot->state, slot_state);
 			csg_slot->trigger_jiffies = jiffies;
+			kbasep_platform_event_work_end(csg_slot->resident_group);
 			KBASE_KTRACE_ADD_CSF_GRP(kbdev, CSG_SLOT_STOPPED, csg_slot->resident_group, state);
 			dev_dbg(kbdev->dev, "Group %u stopped on slot %d\n",
 				csg_slot->resident_group->handle, slot);
@@ -1838,8 +1840,6 @@ static bool cleanup_csg_slot(struct kbase_queue_group *group)
 
 	unassign_user_doorbell_from_group(kbdev, group);
 
-	kbasep_platform_event_work_end(group);
-
 	/* The csg does not need cleanup other than drop its AS */
 	spin_lock_irqsave(&kctx->kbdev->hwaccess_lock, flags);
 	as_fault = kbase_ctx_flag(kctx, KCTX_AS_DISABLED_ON_FAULT);
@@ -2076,8 +2076,6 @@ static void program_csg_slot(struct kbase_queue_group *group, s8 slot,
 				(state & (CSG_REQ_STATE_MASK >> CS_REQ_STATE_SHIFT)));
 
 	kbase_csf_ring_csg_doorbell(kbdev, slot);
-
-	kbasep_platform_event_work_begin(group);
 
 	/* Programming a slot consumes a group from scanout */
 	update_offslot_non_idle_cnt_for_onslot_grp(group);

@@ -122,42 +122,36 @@ static void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, int old_lev
  * Context:
  *  - Called in process context, invokes an IRQ context
  *  - If job manager GPU: Takes the hwaccess lock
- *  - If CSF GPU: Takes the csf.scheduler.lock
+ *  - If CSF GPU: Takes the csf.scheduler.interrupt_lock
  */
 static void gpu_dvfs_metrics_uid_level_change(struct kbase_device *kbdev, u64 event_time)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 	struct gpu_dvfs_metrics_uid_stats *stats;
-	int i;
 #if !MALI_USE_CSF
-	unsigned long flags;
+	spinlock_t* lock = &kbdev->hwaccess_lock;
 	int const nr_slots = BASE_JM_MAX_NR_SLOTS;
 #else
+	spinlock_t* lock = &kbdev->csf.scheduler.interrupt_lock;
 	int const nr_slots = MAX_SUPPORTED_CSGS;
 #endif
+	unsigned long flags;
+	int i;
 
 	lockdep_assert_held(&pc->dvfs.lock);
-#if !MALI_USE_CSF
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-#else
-	mutex_lock(&kbdev->csf.scheduler.lock);
-#endif
+	spin_lock_irqsave(lock, flags);
 
 	for (i = 0; i < nr_slots; i++) {
 		stats = pc->dvfs.metrics.work_uid_stats[i];
 		if (stats && stats->period_start != event_time) {
-			WARN_ON_ONCE(stats->period_start == 0);
+			WARN_ON(stats->period_start == 0);
 			stats->tis_stats[pc->dvfs.level].time_total +=
 				(event_time - stats->period_start);
 			stats->period_start = event_time;
 		}
 	}
 
-#if !MALI_USE_CSF
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-#else
-	mutex_unlock(&kbdev->csf.scheduler.lock);
-#endif
+	spin_unlock_irqrestore(lock, flags);
 }
 
 void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_level,
@@ -234,11 +228,11 @@ void gpu_dvfs_metrics_work_begin(void* param)
 #if !MALI_USE_CSF
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 #else
-	lockdep_assert_held(&kbdev->csf.scheduler.lock);
+	lockdep_assert_held(&kbdev->csf.scheduler.interrupt_lock);
 #endif
 
 	/* Nothing should be mapped to this slot */
-	WARN_ON_ONCE(*work_stats != NULL);
+	WARN_ON(*work_stats != NULL);
 
 	/*
 	 * First new work associated with this UID, start tracking the per UID
@@ -250,7 +244,7 @@ void gpu_dvfs_metrics_work_begin(void* param)
 		 * This is the start of a new period, the start time shouldn't have
 		 * been set or should have been cleared.
 		 */
-		WARN_ON_ONCE(uid_stats->period_start != 0);
+		WARN_ON(uid_stats->period_start != 0);
 		uid_stats->period_start = curr;
 	}
 	++uid_stats->active_work_count;
@@ -280,18 +274,24 @@ void gpu_dvfs_metrics_work_end(void *param)
 #if !MALI_USE_CSF
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 #else
-	lockdep_assert_held(&kbdev->csf.scheduler.lock);
+	/*
+	 * Guard against ending the same work twice, this can happen due to an early
+	 * callback occurring when the CSF fires a CSG_IDLE_INTERRUPT, before the
+	 * standard update_csg_slot_status callback.
+	 */
+	if (*work_stats == NULL)
+		return;
+	lockdep_assert_held(&kbdev->csf.scheduler.interrupt_lock);
 #endif
 
-	/* We should have something mapped to this slot */
-	WARN_ON_ONCE(*work_stats == NULL);
 	/* Should be the same stats */
-	WARN_ON_ONCE(uid_stats != *work_stats);
+	WARN_ON(uid_stats != *work_stats);
 	/* Forgot to init the start time? */
-	WARN_ON_ONCE(uid_stats->period_start == 0);
+	WARN_ON(uid_stats->period_start == 0);
 	/* No jobs so how could have something have completed? */
-	if (!WARN_ON_ONCE(uid_stats->active_work_count == 0))
-		--uid_stats->active_work_count;
+	WARN_ON(uid_stats->active_work_count == 0);
+
+	--uid_stats->active_work_count;
 	/*
 	 * We could only update this when the work count equals zero, and
 	 * avoid updating the period_start often. However we get more timely

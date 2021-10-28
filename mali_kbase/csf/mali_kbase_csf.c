@@ -2750,6 +2750,7 @@ static void process_csg_interrupts(struct kbase_device *const kbdev,
 			CSG_REQ_IDLE_MASK);
 
 		set_bit(csg_nr, scheduler->csg_slots_idle_mask);
+		kbasep_platform_event_work_end(group);
 		KBASE_KTRACE_ADD_CSF_GRP(kbdev, CSG_SLOT_IDLE_SET, group,
 					 scheduler->csg_slots_idle_mask[0]);
 		KBASE_KTRACE_ADD_CSF_GRP(kbdev,  CSG_IDLE_INTERRUPT, group, req ^ ack);

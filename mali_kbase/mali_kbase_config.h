@@ -135,10 +135,9 @@ struct kbase_platform_funcs_conf {
 	 * of work starts running on the GPU or set to NULL if not required. The
 	 * function cannot assume that it is running in a process context.
 	 *
-	 * Context:
-	 *  - If job manager GPU: The caller must hold the hwaccess lock.
-	 *    Function must be runnable in an interrupt context.
-	 *  - If CSF GPU: The caller must hold the csf.scheduler.lock
+	 * Context: Function must be runnable in an interrupt context.
+	 *  - If job manager GPU: The caller must hold the hwaccess lock
+	 *  - If CSF GPU: The caller must hold the csf.scheduler.interrupt_lock
 	 */
 	void (*platform_handler_work_begin_func)(void* param);
 	/**
@@ -149,16 +148,15 @@ struct kbase_platform_funcs_conf {
 	 *    to the atom that just completed.
 	 *  - If CSF GPU: Param is a pointer of type struct kbase_queue_group*, to
 	 *    the group resident in a CSG slot which just completed or suspended
-	 *    execution.
+     *    execution.
 	 *
 	 * Function pointer for platform specific handling at the point when a unit
 	 * of work stops running on the GPU or set to NULL if not required. The
 	 * function cannot assume that it is running in a process context.
 	 *
-	 * Context:
-	 *  - If job manager GPU: The caller must hold the hwaccess lock.
-	 *    Function must be runnable in an interrupt context.
-	 *  - If CSF GPU: The caller must hold the csf.scheduler.lock
+	 * Context: Function must be runnable in an interrupt context.
+	 *  - If job manager GPU: The caller must hold the hwaccess lock
+	 *  - If CSF GPU: The caller must hold the csf.scheduler.interrupt_lock
 	 */
 	void (*platform_handler_work_end_func)(void* param);
 };
