@@ -82,6 +82,8 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
  * taking into account the priority levels of each level lock. It ensures that votes on minimum and
  * maximum levels originating from different level lock types are supported.
  *
+ * Context: Expects the caller to hold the DVFS lock
+ *
  * Note: This is the only function that should write to &level_scaling_max or &level_scaling_min.
  */
 static void gpu_dvfs_process_level_locks(struct kbase_device *kbdev)
@@ -449,6 +451,8 @@ static int find_voltage_for_freq(struct kbase_device *kbdev, unsigned int clock,
  *
  * This function will fail if the required data is not present in the GPU's device tree entry.
  *
+ * Context: Expects the caller to hold the DVFS lock
+ *
  * Return: Returns the size of the DVFS table on success, -EINVAL on failure.
  */
 static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
@@ -471,6 +475,8 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 	int scaling_freq_min_compute = 0;
 
 	bool use_asv_v1 = false;
+
+	lockdep_assert_held(&pc->dvfs.lock);
 
 	/* Get frequency -> voltage mapping */
 	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
