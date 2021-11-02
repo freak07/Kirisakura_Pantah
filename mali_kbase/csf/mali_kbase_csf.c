@@ -2764,7 +2764,7 @@ static void process_csg_interrupts(struct kbase_device *const kbdev,
 			/* If there are non-idle CSGs waiting for a slot, fire
 			 * a tock for a replacement.
 			 */
-			mod_delayed_work(scheduler->wq, &scheduler->tock_work, 0);
+			kthread_mod_delayed_work(&scheduler->csf_worker, &scheduler->tock_work, 0);
 		}
 	}
 
