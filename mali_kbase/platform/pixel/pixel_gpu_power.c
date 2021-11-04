@@ -197,7 +197,7 @@ static int gpu_pm_callback_power_on(struct kbase_device *kbdev)
 #if IS_ENABLED(CONFIG_SOC_GS201)
 	return 0;
 #else
-	return gpu_pm_power_on_cores(kdev);
+	return gpu_pm_power_on_cores(kbdev);
 #endif
 }
 
