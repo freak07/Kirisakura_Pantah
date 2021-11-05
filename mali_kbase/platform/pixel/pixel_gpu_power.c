@@ -195,6 +195,12 @@ static int gpu_pm_callback_power_on(struct kbase_device *kbdev)
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
 #if IS_ENABLED(CONFIG_SOC_GS201)
+	/*
+	 * TODO: This is a temporary fix for b/204168567
+	 * This should be replaced by gpu_pm_power_on_cores when IFPO is working correctly
+	 * b/194627756 - Enable Interframe Power support
+	 */
+	kbase_pm_metrics_start(kbdev);
 	return 0;
 #else
 	return gpu_pm_power_on_cores(kbdev);
@@ -216,8 +222,14 @@ static void gpu_pm_callback_power_off(struct kbase_device *kbdev)
 {
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
-#if !IS_ENABLED(CONFIG_SOC_GS201)
-
+#if IS_ENABLED(CONFIG_SOC_GS201)
+	/*
+	 * TODO: This is a temporary fix for b/204168567
+	 * This should be replaced by gpu_pm_power_off_cores when IFPO is working correctly
+	 * b/194627756 - Enable Interframe Power support
+	 */
+	kbase_pm_metrics_stop(kbdev);
+#else
 	gpu_pm_power_off_cores(kbdev);
 
 #endif
