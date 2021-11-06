@@ -29,7 +29,6 @@
 #include "pixel_gpu_control.h"
 #include "pixel_gpu_trace.h"
 
-#if !IS_ENABLED(CONFIG_SOC_GS201)
 /*
  * GPU_PM_DOMAIN_NAMES - names for GPU power domains.
  *
@@ -40,7 +39,6 @@
 static const char * const GPU_PM_DOMAIN_NAMES[GPU_PM_DOMAIN_COUNT] = {
 	"top", "cores"
 };
-#endif
 
 /**
  * gpu_pm_power_on_cores() - Powers on the GPU shader cores.
@@ -60,24 +58,6 @@ static int gpu_pm_power_on_cores(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
-#if IS_ENABLED(CONFIG_SOC_GS201)
-
-	mutex_lock(&pc->dvfs.lock);
-	mutex_lock(&pc->pm.domain->access_lock);
-
-	/* We restore to dvfs.level rather than dvfs.level_target because this is just an on/off
-	 * switch and that's the frequency we were at when we turned shaders off; the dvfs system
-	 * will change to dvfs.level_target (possibly after re-evaluating it) as part of its normal
-	 * operation.
-	 */
-	cal_dfs_set_rate(pc->dvfs.clks[GPU_DVFS_CLK_SHADERS].cal_id,
-			 pc->dvfs.table[pc->dvfs.level].clk[GPU_DVFS_CLK_SHADERS]);
-
-	mutex_unlock(&pc->pm.domain->access_lock);
-	mutex_unlock(&pc->dvfs.lock);
-
-	ret = 0;
-#else
 	mutex_lock(&pc->pm.lock);
 
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
@@ -95,7 +75,6 @@ static int gpu_pm_power_on_cores(struct kbase_device *kbdev)
 	 * blocked until it completed ensuring that the value of pc->pm.state is up-to-date.
 	 */
 	ret = (pc->pm.state == GPU_POWER_LEVEL_OFF);
-#endif
 
 	trace_gpu_power_state(ktime_get_ns() - start_ns,
 		GPU_POWER_LEVEL_GLOBAL, GPU_POWER_LEVEL_STACKS);
@@ -107,11 +86,9 @@ static int gpu_pm_power_on_cores(struct kbase_device *kbdev)
 		google_init_gpu_ratio(pc->pm.bcl_dev);
 #endif
 
-#if !IS_ENABLED(CONFIG_SOC_GS201)
 	pc->pm.state = GPU_POWER_LEVEL_STACKS;
 
 	mutex_unlock(&pc->pm.lock);
-#endif
 
 	return ret;
 }
@@ -136,19 +113,6 @@ static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
-#if IS_ENABLED(CONFIG_SOC_GS201)
-
-	mutex_lock(&pc->dvfs.lock);
-	mutex_lock(&pc->pm.domain->access_lock);
-
-	/* Setting a frequency of 0 is a backdoor request to ACPM to power off the shader cores. */
-	cal_dfs_set_rate(pc->dvfs.clks[GPU_DVFS_CLK_SHADERS].cal_id, 0);
-
-	mutex_unlock(&pc->pm.domain->access_lock);
-	mutex_unlock(&pc->dvfs.lock);
-
-#else
-
 	mutex_lock(&pc->pm.lock);
 
 	if (pc->pm.state > GPU_POWER_LEVEL_GLOBAL) {
@@ -158,7 +122,6 @@ static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
 
 		pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 		pm_runtime_put_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
-#endif
 
 		trace_gpu_power_state(ktime_get_ns() - start_ns,
 			GPU_POWER_LEVEL_STACKS, GPU_POWER_LEVEL_GLOBAL);
@@ -167,11 +130,9 @@ static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
 		gpu_dvfs_event_power_off(kbdev);
 #endif
 
-#if !IS_ENABLED(CONFIG_SOC_GS201)
 	}
 
 	mutex_unlock(&pc->pm.lock);
-#endif
 }
 
 /**
@@ -194,17 +155,7 @@ static int gpu_pm_callback_power_on(struct kbase_device *kbdev)
 {
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
-#if IS_ENABLED(CONFIG_SOC_GS201)
-	/*
-	 * TODO: This is a temporary fix for b/204168567
-	 * This should be replaced by gpu_pm_power_on_cores when IFPO is working correctly
-	 * b/194627756 - Enable Interframe Power support
-	 */
-	kbase_pm_metrics_start(kbdev);
-	return 0;
-#else
 	return gpu_pm_power_on_cores(kbdev);
-#endif
 }
 
 /**
@@ -222,49 +173,8 @@ static void gpu_pm_callback_power_off(struct kbase_device *kbdev)
 {
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
-#if IS_ENABLED(CONFIG_SOC_GS201)
-	/*
-	 * TODO: This is a temporary fix for b/204168567
-	 * This should be replaced by gpu_pm_power_off_cores when IFPO is working correctly
-	 * b/194627756 - Enable Interframe Power support
-	 */
-	kbase_pm_metrics_stop(kbdev);
-#else
 	gpu_pm_power_off_cores(kbdev);
-
-#endif
 }
-
-#if IS_ENABLED(CONFIG_SOC_GS201)
-/**
- * gpu_pm_callback_power_resume() - Called when the system is resuming from suspend
- *
- * @kbdev: The &struct kbase_device for the GPU.
- *
- * This callback is called by the core Mali driver when it is notified that the system is resuming
- * from suspend. The driver does not require that the GPU is powered on immediately.
- *
- * Since our current policy is to keep the GPU fully powered on whenever we're not in suspend, we
- * do restore power to both the frontend and shader cores here.
- */
-static void gpu_pm_callback_power_resume(struct kbase_device *kbdev)
-{
-	struct pixel_context *pc = kbdev->platform_context;
-	int ret;
-
-	dev_dbg(kbdev->dev, "%s\n", __func__);
-
-	if ((ret = exynos_pd_power_on(pc->pm.domain)) < 0)
-		dev_warn(kbdev->dev, "failed to power on domain: %d\n", ret);
-
-	gpu_pm_power_on_cores(kbdev);
-
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
-	if (pc->pm.bcl_dev)
-		google_init_gpu_ratio(pc->pm.bcl_dev);
-#endif
-}
-#endif
 
 /**
  * gpu_pm_callback_power_suspend() - Called when the system is going to suspend
@@ -295,30 +205,12 @@ static void gpu_pm_callback_power_resume(struct kbase_device *kbdev)
  */
 static void gpu_pm_callback_power_suspend(struct kbase_device *kbdev)
 {
-#if IS_ENABLED(CONFIG_SOC_GS201)
-	struct pixel_context *pc = kbdev->platform_context;
-#endif
-
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
-#if IS_ENABLED(CONFIG_SOC_GS201)
-
 	gpu_pm_power_off_cores(kbdev);
-
-	{
-		int ret;
-		if ((ret = exynos_pd_power_off(pc->pm.domain)) < 0)
-			dev_warn(kbdev->dev, "failed to power off domain: %d\n", ret);
-	}
-
-#else
-
-	gpu_pm_power_off_cores(kbdev);
-
-#endif
 }
 
-#if IS_ENABLED(KBASE_PM_RUNTIME) && !IS_ENABLED(CONFIG_SOC_GS201)
+#if IS_ENABLED(KBASE_PM_RUNTIME)
 
 /**
  * gpu_pm_callback_power_runtime_suspend() - Called when a TOP domain is going to runtime suspend
@@ -425,7 +317,7 @@ static void gpu_pm_callback_power_runtime_term(struct kbase_device *kbdev)
 	pm_runtime_disable(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 }
 
-#endif /* IS_ENABLED(KBASE_PM_RUNTIME) && !IS_ENABLED(CONFIG_SOC_GS201) */
+#endif /* IS_ENABLED(KBASE_PM_RUNTIME) */
 
 /*
  * struct pm_callbacks - Callbacks for linking to core Mali KMD power management
@@ -460,12 +352,8 @@ struct kbase_pm_callback_conf pm_callbacks = {
 	.power_off_callback = gpu_pm_callback_power_off,
 	.power_on_callback = gpu_pm_callback_power_on,
 	.power_suspend_callback = gpu_pm_callback_power_suspend,
-#if IS_ENABLED(CONFIG_SOC_GS201)
-	.power_resume_callback = gpu_pm_callback_power_resume,
-#else
 	.power_resume_callback = NULL,
-#endif
-#if IS_ENABLED(KBASE_PM_RUNTIME) && !IS_ENABLED(CONFIG_SOC_GS201)
+#if IS_ENABLED(KBASE_PM_RUNTIME)
 	.power_runtime_init_callback = gpu_pm_callback_power_runtime_init,
 	.power_runtime_term_callback = gpu_pm_callback_power_runtime_term,
 	.power_runtime_off_callback = NULL,
@@ -517,12 +405,8 @@ int gpu_pm_init(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	struct device_node *np = kbdev->dev->of_node;
 	const char *g3d_power_domain_name;
-#if !IS_ENABLED(CONFIG_SOC_GS201)
 	int i, num_pm_domains;
-#endif
 	int ret = 0;
-
-#if !IS_ENABLED(CONFIG_SOC_GS201)
 
 	/* Initialize lock */
 	mutex_init(&pc->pm.lock);
@@ -573,8 +457,6 @@ int gpu_pm_init(struct kbase_device *kbdev)
 	pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]->pm_domain->ops.runtime_resume =
 		&gpu_pm_callback_power_runtime_resume;
 
-#endif
-
 	if (of_property_read_u32(np, "gpu_pm_autosuspend_delay", &pc->pm.autosuspend_delay)) {
 		pc->pm.autosuspend_delay = AUTO_SUSPEND_DELAY;
 		dev_info(kbdev->dev, "autosuspend delay not set in DT, using default of %dms\n",
@@ -607,10 +489,6 @@ int gpu_pm_init(struct kbase_device *kbdev)
 		return -ENODEV;
 	}
 
-#if IS_ENABLED(CONFIG_SOC_GS201)
-	exynos_pd_power_on(pc->pm.domain);
-#endif
-
 #if IS_ENABLED(CONFIG_GOOGLE_BCL)
 	pc->pm.bcl_dev = google_retrieve_bcl_handle();
 #endif
@@ -632,8 +510,6 @@ error:
  */
 void gpu_pm_term(struct kbase_device *kbdev)
 {
-#if !IS_ENABLED(CONFIG_SOC_GS201)
-
 	struct pixel_context *pc = kbdev->platform_context;
 	int i;
 
@@ -644,6 +520,4 @@ void gpu_pm_term(struct kbase_device *kbdev)
 			dev_pm_domain_detach(pc->pm.domain_devs[i], true);
 		}
 	}
-
-#endif
 }

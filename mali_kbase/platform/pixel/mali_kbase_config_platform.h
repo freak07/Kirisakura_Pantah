@@ -302,13 +302,11 @@ struct pixel_context {
 	struct kbase_device *kbdev;
 
 	struct {
-#if !IS_ENABLED(CONFIG_SOC_GS201)
 		struct mutex lock;
 		enum gpu_power_state state;
 
 		struct device *domain_devs[GPU_PM_DOMAIN_COUNT];
 		struct device_link *domain_links[GPU_PM_DOMAIN_COUNT];
-#endif
 		struct exynos_pm_domain *domain;
 		unsigned int status_reg_offset;
 		unsigned int status_local_power_mask;
