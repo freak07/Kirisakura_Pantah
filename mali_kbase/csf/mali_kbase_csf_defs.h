@@ -578,31 +578,33 @@ struct kbase_csf_tiler_heap_context {
  * struct kbase_csf_scheduler_context - Object representing the scheduler's
  *                                      context for a GPU address space.
  *
- * @runnable_groups:    Lists of runnable GPU command queue groups in the kctx,
- *                      one per queue group  relative-priority level.
- * @num_runnable_grps:  Total number of runnable groups across all priority
- *                      levels in @runnable_groups.
- * @idle_wait_groups:   A list of GPU command queue groups in which all enabled
- *                      GPU command queues are idle and at least one of them
- *                      is blocked on a sync wait operation.
- * @num_idle_wait_grps: Length of the @idle_wait_groups list.
- * @sync_update_wq:     Dedicated workqueue to process work items corresponding
- *                      to the sync_update events by sync_set/sync_add
- *                      instruction execution on CSs bound to groups
- *                      of @idle_wait_groups list.
- * @sync_update_work:   work item to process the sync_update events by
- *                      sync_set / sync_add instruction execution on command
- *                      streams bound to groups of @idle_wait_groups list.
- * @ngrp_to_schedule:	Number of groups added for the context to the
- *                      'groups_to_schedule' list of scheduler instance.
+ * @runnable_groups:         Lists of runnable GPU command queue groups in the kctx,
+ *                           one per queue group  relative-priority level.
+ * @num_runnable_grps:       Total number of runnable groups across all priority
+ *                           levels in @runnable_groups.
+ * @idle_wait_groups:        A list of GPU command queue groups in which all enabled
+ *                           GPU command queues are idle and at least one of them
+ *                           is blocked on a sync wait operation.
+ * @num_idle_wait_grps:      Length of the @idle_wait_groups list.
+ * @sync_update_worker:      Dedicated workqueue to process work items corresponding
+ *                           to the sync_update events by sync_set/sync_add
+ *                           instruction execution on CSs bound to groups
+ *                           of @idle_wait_groups list.
+ * @sync_update_orker_thread: Task struct for @csf_worker.
+ * @sync_update_work:        work item to process the sync_update events by
+ *                           sync_set / sync_add instruction execution on command
+ *                           streams bound to groups of @idle_wait_groups list.
+ * @ngrp_to_schedule:	     Number of groups added for the context to the
+ *                           'groups_to_schedule' list of scheduler instance.
  */
 struct kbase_csf_scheduler_context {
 	struct list_head runnable_groups[KBASE_QUEUE_GROUP_PRIORITY_COUNT];
 	u32 num_runnable_grps;
 	struct list_head idle_wait_groups;
 	u32 num_idle_wait_grps;
-	struct workqueue_struct *sync_update_wq;
-	struct work_struct sync_update_work;
+	struct kthread_worker sync_update_worker;
+	struct task_struct *sync_update_worker_thread;
+	struct kthread_work sync_update_work;
 	u32 ngrp_to_schedule;
 };
 

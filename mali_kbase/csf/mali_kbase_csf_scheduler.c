@@ -4812,7 +4812,7 @@ static bool check_sync_update_for_idle_groups_protm(struct kbase_device *kbdev)
  * runnable groups so that Scheduler can consider scheduling the group
  * in next tick or exit protected mode.
  */
-static void check_group_sync_update_worker(struct work_struct *work)
+static void check_group_sync_update_worker(struct kthread_work *work)
 {
 	struct kbase_context *const kctx = container_of(work,
 		struct kbase_context, csf.sched.sync_update_work);
@@ -4852,7 +4852,7 @@ enum kbase_csf_event_callback_action check_group_sync_update_cb(void *param)
 	struct kbase_context *const kctx = param;
 
 	KBASE_KTRACE_ADD(kctx->kbdev, SYNC_UPDATE_EVENT, kctx, 0u);
-	queue_work(kctx->csf.sched.sync_update_wq,
+	kthread_queue_work(&kctx->csf.sched.sync_update_worker,
 		&kctx->csf.sched.sync_update_work);
 
 	return KBASE_CSF_EVENT_CALLBACK_KEEP;
@@ -4873,16 +4873,19 @@ int kbase_csf_scheduler_context_init(struct kbase_context *kctx)
 	kctx->csf.sched.num_idle_wait_grps = 0;
 	kctx->csf.sched.ngrp_to_schedule = 0;
 
-	kctx->csf.sched.sync_update_wq =
-		alloc_ordered_workqueue("mali_kbase_csf_sync_update_wq",
-			WQ_HIGHPRI);
-	if (!kctx->csf.sched.sync_update_wq) {
+	kthread_init_worker(&kctx->csf.sched.sync_update_worker);
+	kctx->csf.sched.sync_update_worker_thread = kbase_create_realtime_thread(
+		kctx->kbdev,
+		kthread_worker_fn,
+		&kctx->csf.sched.sync_update_worker,
+		"mali_kbase_csf_sync_update");
+	if (IS_ERR(kctx->csf.sched.sync_update_worker_thread)) {
 		dev_err(kctx->kbdev->dev,
 			"Failed to initialize scheduler context workqueue");
 		return -ENOMEM;
 	}
 
-	INIT_WORK(&kctx->csf.sched.sync_update_work,
+	kthread_init_work(&kctx->csf.sched.sync_update_work,
 		check_group_sync_update_worker);
 
 	err = kbase_csf_event_wait_add(kctx, check_group_sync_update_cb, kctx);
@@ -4890,7 +4893,8 @@ int kbase_csf_scheduler_context_init(struct kbase_context *kctx)
 	if (err) {
 		dev_err(kctx->kbdev->dev,
 			"Failed to register a sync update callback");
-		destroy_workqueue(kctx->csf.sched.sync_update_wq);
+		kthread_flush_worker(&kctx->csf.sched.sync_update_worker);
+		kthread_stop(kctx->csf.sched.sync_update_worker_thread);
 	}
 
 	return err;
@@ -4899,8 +4903,9 @@ int kbase_csf_scheduler_context_init(struct kbase_context *kctx)
 void kbase_csf_scheduler_context_term(struct kbase_context *kctx)
 {
 	kbase_csf_event_wait_remove(kctx, check_group_sync_update_cb, kctx);
-	cancel_work_sync(&kctx->csf.sched.sync_update_work);
-	destroy_workqueue(kctx->csf.sched.sync_update_wq);
+	kthread_cancel_work_sync(&kctx->csf.sched.sync_update_work);
+	kthread_flush_worker(&kctx->csf.sched.sync_update_worker);
+	kthread_stop(kctx->csf.sched.sync_update_worker_thread);
 }
 
 int kbase_csf_scheduler_init(struct kbase_device *kbdev)
