@@ -47,7 +47,10 @@ ifeq ($(CONFIG_MALI_PROTECTED_MEMORY_ALLOCATOR),m)
 endif
 
 # Use our defines when compiling, and include mali platform module headers
-ccflags-y += $(DEFINES) -I$(src)/../common/include
+ccflags-y += \
+    $(DEFINES) \
+    -I$(src)/../common/include \
+    -I$(srctree)/include/linux
 
 # Add kernel module target if any of our config options is enabled
 ifneq ($(mali_pixel-objs),)
