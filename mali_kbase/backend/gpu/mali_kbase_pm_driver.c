@@ -1648,8 +1648,6 @@ static bool kbase_pm_is_in_desired_state(struct kbase_device *kbdev)
 	unsigned long flags;
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	/* Let the state machine latch the most recent desired state. */
-	kbase_pm_update_state(kbdev);
 	in_desired_state = kbase_pm_is_in_desired_state_nolock(kbdev);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
@@ -1663,8 +1661,6 @@ static bool kbase_pm_is_in_desired_state_with_l2_powered(
 	unsigned long flags;
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	/* Let the state machine latch the most recent desired state. */
-	kbase_pm_update_state(kbdev);
 	if (kbase_pm_is_in_desired_state_nolock(kbdev) &&
 			(kbdev->pm.backend.l2_state == KBASE_L2_ON))
 		in_desired_state = true;
@@ -1943,28 +1939,29 @@ static void kbase_pm_timed_out(struct kbase_device *kbdev)
 
 int kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev)
 {
-	long remaining = 0;
-	/* Wait for 1ms in each iteration */
-	const unsigned int max_iterations = PM_TIMEOUT_MS;
-	unsigned int iter = 0;
-
-#if MALI_USE_CSF
-	long timeout = kbase_csf_timeout_in_jiffies(1);
-#else
-	long timeout = msecs_to_jiffies(1);
-#endif
+	unsigned long flags;
+	unsigned long timeout;
+	long remaining;
 	int err = 0;
 
-	for (iter = 0; iter < max_iterations && remaining == 0; iter++) {
-		/* Wait for L2 cache */
-#if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
-		remaining = wait_event_killable_timeout(
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbase_pm_update_state(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+#if MALI_USE_CSF
+	timeout = kbase_csf_timeout_in_jiffies(PM_TIMEOUT_MS);
 #else
-		remaining = wait_event_timeout(
+	timeout = msecs_to_jiffies(PM_TIMEOUT_MS);
 #endif
-			kbdev->pm.backend.gpu_in_desired_state_wait,
-			kbase_pm_is_in_desired_state_with_l2_powered(kbdev), timeout);
-	}
+
+	/* Wait for cores */
+#if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
+	remaining = wait_event_killable_timeout(
+#else
+	remaining = wait_event_timeout(
+#endif
+		kbdev->pm.backend.gpu_in_desired_state_wait,
+		kbase_pm_is_in_desired_state_with_l2_powered(kbdev), timeout);
 
 	if (!remaining) {
 		kbase_pm_timed_out(kbdev);
@@ -1972,8 +1969,7 @@ int kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev)
 	} else if (remaining < 0) {
 		dev_info(
 			kbdev->dev,
-			"Wait for desired PM state with L2 powered got interrupted at iteration %u",
-			iter);
+			"Wait for desired PM state with L2 powered got interrupted");
 		err = (int)remaining;
 	}
 
@@ -1982,37 +1978,37 @@ int kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev)
 
 int kbase_pm_wait_for_desired_state(struct kbase_device *kbdev)
 {
-	long remaining = 0;
-	/* Wait for 1ms in each iteration */
-	const unsigned int max_iterations = PM_TIMEOUT_MS;
-	unsigned int iter = 0;
-
+	unsigned long flags;
+	long remaining;
 #if MALI_USE_CSF
-	long timeout = kbase_csf_timeout_in_jiffies(1);
+	long timeout = kbase_csf_timeout_in_jiffies(PM_TIMEOUT_MS);
 #else
-	long timeout = msecs_to_jiffies(1);
+	long timeout = msecs_to_jiffies(PM_TIMEOUT_MS);
 #endif
 	int err = 0;
 
-	for (iter = 0; iter < max_iterations && remaining == 0; iter++) {
-		/* Wait for cores */
+	/* Let the state machine latch the most recent desired state. */
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbase_pm_update_state(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	/* Wait for cores */
 #if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
-		remaining = wait_event_killable_timeout(
-			kbdev->pm.backend.gpu_in_desired_state_wait,
-			kbase_pm_is_in_desired_state(kbdev), timeout);
+	remaining = wait_event_killable_timeout(
+		kbdev->pm.backend.gpu_in_desired_state_wait,
+		kbase_pm_is_in_desired_state(kbdev), timeout);
 #else
-		remaining = wait_event_timeout(
-			kbdev->pm.backend.gpu_in_desired_state_wait,
-			kbase_pm_is_in_desired_state(kbdev), timeout);
+	remaining = wait_event_timeout(
+		kbdev->pm.backend.gpu_in_desired_state_wait,
+		kbase_pm_is_in_desired_state(kbdev), timeout);
 #endif
-	}
 
 	if (!remaining) {
 		kbase_pm_timed_out(kbdev);
 		err = -ETIMEDOUT;
 	} else if (remaining < 0) {
-		dev_info(kbdev->dev, "Wait for desired PM state got interrupted at iteration %u",
-			 iter);
+		dev_info(kbdev->dev,
+			 "Wait for desired PM state got interrupted");
 		err = (int)remaining;
 	}
 

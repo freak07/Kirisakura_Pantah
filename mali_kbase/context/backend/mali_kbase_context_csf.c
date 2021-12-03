@@ -31,7 +31,6 @@
 #include <mali_kbase_mem_pool_group.h>
 #include <mmu/mali_kbase_mmu.h>
 #include <tl/mali_kbase_timeline.h>
-#include <backend/gpu/mali_kbase_pm_internal.h>
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 #include <csf/mali_kbase_csf_csg_debugfs.h>
@@ -174,7 +173,6 @@ KBASE_EXPORT_SYMBOL(kbase_create_context);
 void kbase_destroy_context(struct kbase_context *kctx)
 {
 	struct kbase_device *kbdev;
-	int err;
 
 	if (WARN_ON(!kctx))
 		return;
@@ -194,13 +192,6 @@ void kbase_destroy_context(struct kbase_context *kctx)
 			 "Suspend in progress when destroying context");
 		wait_event(kbdev->pm.resume_wait,
 			   !kbase_pm_is_suspending(kbdev));
-	}
-
-	/* Make sure L2 cache is powered up */
-	err = kbase_pm_wait_for_l2_powered(kbdev);
-	if (err) {
-		dev_err(kbdev->dev, "Wait for L2 power up failed on term of ctx %d_%d",
-			kctx->tgid, kctx->id);
 	}
 
 	kbase_mem_pool_group_mark_dying(&kctx->mem_pools);
