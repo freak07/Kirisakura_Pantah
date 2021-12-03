@@ -5161,9 +5161,16 @@ void kbase_csf_scheduler_pm_active(struct kbase_device *kbdev)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	/* On 0 => 1, make a pm_ctx_active request */
-	if (!prev_count)
+	if (!prev_count) {
 		kbase_pm_context_active(kbdev);
-	else
+		/* Invoke the PM state machines again as the change in MCU
+		 * desired status, due to the update of scheduler.pm_active_count,
+		 * may be missed by the thread that called pm_wait_for_desired_state()
+		 */
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbase_pm_update_state(kbdev);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	} else
 		WARN_ON(prev_count == U32_MAX);
 }
 KBASE_EXPORT_TEST_API(kbase_csf_scheduler_pm_active);
@@ -5177,9 +5184,16 @@ void kbase_csf_scheduler_pm_idle(struct kbase_device *kbdev)
 	prev_count = kbdev->csf.scheduler.pm_active_count--;
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
-	if (prev_count == 1)
+	if (prev_count == 1) {
 		kbase_pm_context_idle(kbdev);
-	else
+		/* Invoke the PM state machines again as the change in MCU
+		 * desired status, due to the update of scheduler.pm_active_count,
+		 * may be missed by the thread that called pm_wait_for_desired_state()
+		 */
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbase_pm_update_state(kbdev);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	} else
 		WARN_ON(prev_count == 0);
 }
 KBASE_EXPORT_TEST_API(kbase_csf_scheduler_pm_idle);

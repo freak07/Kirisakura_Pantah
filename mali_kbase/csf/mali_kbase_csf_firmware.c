@@ -271,8 +271,10 @@ static void wait_ready(struct kbase_device *kbdev)
 	while (--max_loops && (val & AS_STATUS_AS_ACTIVE))
 		val = kbase_reg_read(kbdev, MMU_AS_REG(MCU_AS_NR, AS_STATUS));
 
-	if (max_loops == 0)
-		dev_err(kbdev->dev, "AS_ACTIVE bit stuck, might be caused by slow/unstable GPU clock or possible faulty FPGA connector\n");
+	if (max_loops == 0) {
+		dev_err(kbdev->dev, "AS_ACTIVE bit stuck when enabling AS0 for MCU, might be caused by slow/unstable GPU clock or possible faulty FPGA connector\n");
+		dump_stack();
+	}
 }
 
 static void unload_mmu_tables(struct kbase_device *kbdev)
