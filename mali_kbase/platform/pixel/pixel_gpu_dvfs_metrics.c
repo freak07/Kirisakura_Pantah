@@ -119,10 +119,7 @@ static void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, int old_lev
  * called when the operating point is changing _and_ the GPU is powered on.
  * This is because no work will be active when the GPU is powered down.
  *
- * Context:
- *  - Called in process context, invokes an IRQ context
- *  - If job manager GPU: Takes the hwaccess lock
- *  - If CSF GPU: Takes the csf.scheduler.lock
+ * Context: Called in process context. Requires the dvfs.lock & dvfs.metrics.lock to be held.
  */
 static void gpu_dvfs_metrics_uid_level_change(struct kbase_device *kbdev, u64 event_time)
 {
@@ -130,18 +127,13 @@ static void gpu_dvfs_metrics_uid_level_change(struct kbase_device *kbdev, u64 ev
 	struct gpu_dvfs_metrics_uid_stats *stats;
 	int i;
 #if !MALI_USE_CSF
-	unsigned long flags;
 	int const nr_slots = BASE_JM_MAX_NR_SLOTS;
 #else
 	int const nr_slots = MAX_SUPPORTED_CSGS;
 #endif
 
 	lockdep_assert_held(&pc->dvfs.lock);
-#if !MALI_USE_CSF
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-#else
-	mutex_lock(&kbdev->csf.scheduler.lock);
-#endif
+	lockdep_assert_held(&pc->dvfs.metrics.lock);
 
 	for (i = 0; i < nr_slots; i++) {
 		stats = pc->dvfs.metrics.work_uid_stats[i];
@@ -152,12 +144,6 @@ static void gpu_dvfs_metrics_uid_level_change(struct kbase_device *kbdev, u64 ev
 			stats->period_start = event_time;
 		}
 	}
-
-#if !MALI_USE_CSF
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-#else
-	mutex_unlock(&kbdev->csf.scheduler.lock);
-#endif
 }
 
 void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_level,
@@ -166,8 +152,10 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_
 	struct pixel_context *pc = kbdev->platform_context;
 	const u64 prev = pc->dvfs.metrics.last_time;
 	u64 curr = ktime_get_ns();
+	unsigned long flags;
 
 	lockdep_assert_held(&pc->dvfs.lock);
+	spin_lock_irqsave(&pc->dvfs.metrics.lock, flags);
 
 	if (pc->dvfs.metrics.last_power_state) {
 		if (power_state) {
@@ -209,6 +197,7 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_
 	pc->dvfs.metrics.last_power_state = power_state;
 	pc->dvfs.metrics.last_time = curr;
 	pc->dvfs.metrics.last_level = new_level;
+	spin_unlock_irqrestore(&pc->dvfs.metrics.lock, flags);
 
 	gpu_dvfs_metrics_trace_clock(kbdev, old_level, new_level, power_state);
 }
@@ -228,14 +217,11 @@ void gpu_dvfs_metrics_work_begin(void* param)
 	struct gpu_dvfs_metrics_uid_stats* uid_stats = kctx->platform_data;
 	struct gpu_dvfs_metrics_uid_stats** work_stats = &pc->dvfs.metrics.work_uid_stats[slot];
 	const u64 curr = ktime_get_ns();
+	unsigned long flags;
 
 	dev_dbg(kbdev->dev, "work_begin, slot: %d, uid: %d", slot, uid_stats->uid.val);
 
-#if !MALI_USE_CSF
-	lockdep_assert_held(&kbdev->hwaccess_lock);
-#else
-	lockdep_assert_held(&kbdev->csf.scheduler.lock);
-#endif
+	spin_lock_irqsave(&pc->dvfs.metrics.lock, flags);
 
 	/* Nothing should be mapped to this slot */
 	WARN_ON_ONCE(*work_stats != NULL);
@@ -257,6 +243,8 @@ void gpu_dvfs_metrics_work_begin(void* param)
 
 	/* Link the UID stats to the stream slot */
 	*work_stats = uid_stats;
+
+	spin_unlock_irqrestore(&pc->dvfs.metrics.lock, flags);
 }
 
 void gpu_dvfs_metrics_work_end(void *param)
@@ -274,14 +262,11 @@ void gpu_dvfs_metrics_work_end(void *param)
 	struct gpu_dvfs_metrics_uid_stats* uid_stats = kctx->platform_data;
 	struct gpu_dvfs_metrics_uid_stats** work_stats = &pc->dvfs.metrics.work_uid_stats[slot];
 	const u64 curr = ktime_get_ns();
+	unsigned long flags;
 
 	dev_dbg(kbdev->dev, "work_end, slot: %d, uid: %d", slot, uid_stats->uid.val);
 
-#if !MALI_USE_CSF
-	lockdep_assert_held(&kbdev->hwaccess_lock);
-#else
-	lockdep_assert_held(&kbdev->csf.scheduler.lock);
-#endif
+	spin_lock_irqsave(&pc->dvfs.metrics.lock, flags);
 
 	/* We should have something mapped to this slot */
 	WARN_ON_ONCE(*work_stats == NULL);
@@ -307,6 +292,8 @@ void gpu_dvfs_metrics_work_end(void *param)
 
 	/* Unlink the UID stats from the slot stats */
 	*work_stats = NULL;
+
+	spin_unlock_irqrestore(&pc->dvfs.metrics.lock, flags);
 }
 
 /**

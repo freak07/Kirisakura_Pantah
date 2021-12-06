@@ -174,7 +174,7 @@ struct gpu_dvfs_metrics_uid_stats {
  * after changing the level of a powered on GPU. It will update the metrics for each of the GPU
  * DVFS level metrics and the power metrics as appropriate.
  *
- * Context: Expects the caller to hold the DVFS lock.
+ * Context: Expects the caller to hold the dvfs.lock & dvfs.metrics.lock.
  */
 void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_level,
 	bool power_state);
@@ -194,9 +194,7 @@ void gpu_dvfs_metrics_update(struct kbase_device *kbdev, int old_level, int new_
  * For CSF GPUs:
  * This function is called when an group resident in a CSG slot starts executing.
  *
- * Context:
- *  - If job manager GPU: Assumes that the hwaccess lock is held. May be in IRQ context
- *  - If CSF GPU: Assumes that the csf.scheduler.lock is held
+ * Context: Acquires the dvfs.metrics.lock. May be in IRQ context
  */
 void gpu_dvfs_metrics_work_begin(void *param);
 
@@ -217,9 +215,7 @@ void gpu_dvfs_metrics_work_begin(void *param);
  * function is called when a that CSG slot completes or suspends execution of
  * the group.
  *
- * Context:
- *  - If job manager GPU: Assumes that the hwaccess lock is held. May be in IRQ context
- *  - If CSF GPU: Assumes that the csf.scheduler.lock is held
+ * Context: Acquires the dvfs.metrics.lock. May be in IRQ context
  */
 void gpu_dvfs_metrics_work_end(void *param);
 

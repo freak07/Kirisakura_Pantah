@@ -136,9 +136,7 @@ struct kbase_platform_funcs_conf {
 	 * function cannot assume that it is running in a process context.
 	 *
 	 * Context:
-	 *  - If job manager GPU: The caller must hold the hwaccess lock.
-	 *    Function must be runnable in an interrupt context.
-	 *  - If CSF GPU: The caller must hold the csf.scheduler.lock
+	 *  - If job manager: Function must be runnable in an interrupt context.
 	 */
 	void (*platform_handler_work_begin_func)(void* param);
 	/**
@@ -156,9 +154,7 @@ struct kbase_platform_funcs_conf {
 	 * function cannot assume that it is running in a process context.
 	 *
 	 * Context:
-	 *  - If job manager GPU: The caller must hold the hwaccess lock.
-	 *    Function must be runnable in an interrupt context.
-	 *  - If CSF GPU: The caller must hold the csf.scheduler.lock
+	 *  - If job manager: Function must be runnable in an interrupt context.
 	 */
 	void (*platform_handler_work_end_func)(void* param);
 };
