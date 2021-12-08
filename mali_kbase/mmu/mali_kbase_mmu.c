@@ -1552,6 +1552,9 @@ static void kbase_mmu_flush_invalidate_noretain(struct kbase_context *kctx,
 	int err;
 	u32 op;
 
+	lockdep_assert_held(&kbdev->mmu_hw_mutex);
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
 	/* Early out if there is nothing to do */
 	if (nr == 0)
 		return;
@@ -1561,7 +1564,7 @@ static void kbase_mmu_flush_invalidate_noretain(struct kbase_context *kctx,
 	else
 		op = AS_COMMAND_FLUSH_PT;
 
-	err = kbase_mmu_hw_do_operation(kbdev,
+	err = kbase_mmu_hw_do_operation_locked(kbdev,
 				&kbdev->as[kctx->as_nr],
 				vpfn, nr, op, 0);
 	if (err) {

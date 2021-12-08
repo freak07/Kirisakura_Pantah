@@ -177,12 +177,37 @@ int kbase_mmu_hw_do_operation(struct kbase_device *kbdev, struct kbase_as *as,
 		unsigned int handling_irq)
 {
 	int ret;
+	unsigned long flags;
 
 	lockdep_assert_held(&kbdev->mmu_hw_mutex);
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	ret = kbase_mmu_hw_do_operation_locked(kbdev, as, vpfn, nr, op, handling_irq);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	return ret;
+}
+
+int kbase_mmu_hw_do_operation_locked(struct kbase_device *kbdev, struct kbase_as *as,
+		u64 vpfn, u32 nr, u32 op,
+		unsigned int handling_irq)
+{
+	int ret;
+
+	lockdep_assert_held(&kbdev->mmu_hw_mutex);
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	if (op == AS_COMMAND_UNLOCK) {
 		/* Unlock doesn't require a lock first */
 		ret = write_cmd(kbdev, as->number, AS_COMMAND_UNLOCK);
+		if (ret)
+			return ret;
+		/* Wait for the unlock to complete */
+		ret = wait_ready(kbdev, as->number);
+		if (ret) {
+			dev_err(kbdev->dev, "AS_ACTIVE bit stuck after sending UNLOCK command");
+			dump_as_active_bit_error(kbdev);
+		}
 	} else {
 		u64 lock_addr;
 

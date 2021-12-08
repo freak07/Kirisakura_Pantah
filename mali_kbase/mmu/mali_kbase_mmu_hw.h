@@ -64,6 +64,27 @@ void kbase_mmu_hw_configure(struct kbase_device *kbdev,
 		struct kbase_as *as);
 
 /**
+ * kbase_mmu_hw_do_operation_locked - Issue an operation to the MMU.
+ * @kbdev:         kbase device to issue the MMU operation on.
+ * @as:            address space to issue the MMU operation on.
+ * @vpfn:          MMU Virtual Page Frame Number to start the operation on.
+ * @nr:            Number of pages to work on.
+ * @type:          Operation type (written to ASn_COMMAND).
+ * @handling_irq:  Is this operation being called during the handling
+ *                 of an interrupt?
+ *
+ * Issue an operation (MMU invalidate, MMU flush, etc) on the address space that
+ * is associated with the provided kbase_context over the specified range
+ *
+ * Context: Expects the caller to hold the hwaccess_lock and the mmu_hw_mutex
+ *
+ * Return: Zero if the operation was successful, non-zero otherwise.
+ */
+int kbase_mmu_hw_do_operation_locked(struct kbase_device *kbdev, struct kbase_as *as,
+		u64 vpfn, u32 nr, u32 type,
+		unsigned int handling_irq);
+
+/**
  * kbase_mmu_hw_do_operation - Issue an operation to the MMU.
  * @kbdev:         kbase device to issue the MMU operation on.
  * @as:            address space to issue the MMU operation on.
@@ -75,6 +96,8 @@ void kbase_mmu_hw_configure(struct kbase_device *kbdev,
  *
  * Issue an operation (MMU invalidate, MMU flush, etc) on the address space that
  * is associated with the provided kbase_context over the specified range
+ *
+ * Context: Acquires the hwaccess_lock, expects the caller to hold the mmu_hw_mutex
  *
  * Return: Zero if the operation was successful, non-zero otherwise.
  */
