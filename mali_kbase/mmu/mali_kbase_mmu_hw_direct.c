@@ -206,7 +206,6 @@ int kbase_mmu_hw_do_operation_locked(struct kbase_device *kbdev, struct kbase_as
 		ret = wait_ready(kbdev, as->number);
 		if (ret) {
 			dev_err(kbdev->dev, "AS_ACTIVE bit stuck after sending UNLOCK command");
-			dump_as_active_bit_error(kbdev);
 		}
 	} else {
 		u64 lock_addr;
