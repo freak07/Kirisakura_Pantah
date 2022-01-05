@@ -44,6 +44,47 @@
 #include <backend/gpu/mali_kbase_pm_internal.h>
 
 #include <mali_kbase_trace_gpu_mem.h>
+#include <backend/gpu/mali_kbase_pm_internal.h>
+
+static void mmu_hw_operation_begin(struct kbase_device *kbdev)
+{
+#if MALI_USE_CSF
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_GPU2019_3878)) {
+		unsigned long flags;
+
+		lockdep_assert_held(&kbdev->mmu_hw_mutex);
+
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		WARN_ON_ONCE(kbdev->mmu_hw_operation_in_progress);
+		kbdev->mmu_hw_operation_in_progress = true;
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	}
+#else
+	CSTD_UNUSED(kbdev);
+#endif
+}
+
+static void mmu_hw_operation_end(struct kbase_device *kbdev)
+{
+#if MALI_USE_CSF
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_GPU2019_3878)) {
+		unsigned long flags;
+
+		lockdep_assert_held(&kbdev->mmu_hw_mutex);
+
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		WARN_ON_ONCE(!kbdev->mmu_hw_operation_in_progress);
+		kbdev->mmu_hw_operation_in_progress = false;
+		/* Invoke the PM state machine, the L2 power off may have been
+		 * skipped due to the MMU command.
+		 */
+		kbase_pm_update_state(kbdev);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	}
+#else
+	CSTD_UNUSED(kbdev);
+#endif
+}
 
 /**
  * kbase_mmu_flush_invalidate() - Flush and invalidate the GPU caches.
@@ -245,7 +286,10 @@ static void kbase_gpu_mmu_handle_write_faulting_as(struct kbase_device *kbdev,
 		.kctx_id = kctx_id,
 		.mmu_sync_info = mmu_sync_info,
 	};
+
+	mmu_hw_operation_begin(kbdev);
 	kbase_mmu_hw_do_operation(kbdev, faulting_as, &op_param);
+	mmu_hw_operation_end(kbdev);
 
 	mutex_unlock(&kbdev->mmu_hw_mutex);
 
@@ -792,7 +836,9 @@ page_fault_retry:
 			.kctx_id = kctx->id,
 			.mmu_sync_info = mmu_sync_info,
 		};
+		mmu_hw_operation_begin(kbdev);
 		kbase_mmu_hw_do_operation(kbdev, faulting_as, &op_param);
+		mmu_hw_operation_end(kbdev);
 
 		mutex_unlock(&kbdev->mmu_hw_mutex);
 
@@ -827,7 +873,9 @@ page_fault_retry:
 			.kctx_id = kctx->id,
 			.mmu_sync_info = mmu_sync_info,
 		};
+		mmu_hw_operation_begin(kbdev);
 		kbase_mmu_hw_do_operation(kbdev, faulting_as, &op_param);
+		mmu_hw_operation_end(kbdev);
 
 		mutex_unlock(&kbdev->mmu_hw_mutex);
 
@@ -935,7 +983,16 @@ page_fault_retry:
 			.kctx_id = kctx->id,
 			.mmu_sync_info = mmu_sync_info,
 		};
-		kbase_mmu_hw_do_operation(kbdev, faulting_as, &op_param);
+
+		mmu_hw_operation_begin(kbdev);
+		err = kbase_mmu_hw_do_operation(kbdev, faulting_as, &op_param);
+		mmu_hw_operation_end(kbdev);
+
+		if (err) {
+			dev_err(kbdev->dev,
+				"Flush for GPU page table update did not complete on handling page fault @ 0x%llx",
+				fault->addr);
+		}
 
 		mutex_unlock(&kbdev->mmu_hw_mutex);
 		/* AS transaction end */
@@ -1670,8 +1727,8 @@ static void kbase_mmu_flush_invalidate_noretain(struct kbase_context *kctx,
 	 */
 	const enum kbase_caller_mmu_sync_info mmu_sync_info = CALLER_MMU_ASYNC;
 
-	lockdep_assert_held(&kbdev->mmu_hw_mutex);
-	lockdep_assert_held(&kbdev->hwaccess_lock);
+	lockdep_assert_held(&kctx->kbdev->hwaccess_lock);
+	lockdep_assert_held(&kctx->kbdev->mmu_hw_mutex);
 
 	/* Early out if there is nothing to do */
 	if (nr == 0)
@@ -1734,13 +1791,6 @@ kbase_mmu_flush_invalidate_as(struct kbase_device *kbdev, struct kbase_as *as,
 		return;
 	}
 
-	/* Make sure L2 cache is powered up */
-	err = kbase_pm_wait_for_l2_powered(kbdev);
-	if (err) {
-		dev_err(kbdev->dev, "Wait for L2 power up failed on MMU flush for as %d sync %d",
-			as->number, sync);
-	}
-
 	/* AS transaction begin */
 	mutex_lock(&kbdev->mmu_hw_mutex);
 
@@ -1756,7 +1806,9 @@ kbase_mmu_flush_invalidate_as(struct kbase_device *kbdev, struct kbase_as *as,
 	else
 		op_param.op = KBASE_MMU_OP_FLUSH_PT;
 
+	mmu_hw_operation_begin(kbdev);
 	err = kbase_mmu_hw_do_operation(kbdev, as, &op_param);
+	mmu_hw_operation_end(kbdev);
 
 	if (err) {
 		/* Flush failed to complete, assume the GPU has hung and

@@ -900,6 +900,13 @@ struct kbase_process {
  *                         backend specific data for HW access layer.
  * @faults_pending:        Count of page/bus faults waiting for bottom half processing
  *                         via workqueues.
+ * @mmu_hw_operation_in_progress: Set before sending the MMU command and is
+ *                         cleared after the command is complete. Whilst this
+ *                         flag is set, the write to L2_PWROFF register will be
+ *                         skipped which is needed to workaround the HW issue
+ *                         GPU2019-3878. PM state machine is invoked after
+ *                         clearing this flag and @hwaccess_lock is used to
+ *                         serialize the access.
  * @poweroff_pending:      Set when power off operation for GPU is started, reset when
  *                         power on for GPU is started.
  * @infinite_cache_active_default: Set to enable using infinite cache for all the
@@ -1165,6 +1172,9 @@ struct kbase_device {
 
 	atomic_t faults_pending;
 
+#if MALI_USE_CSF
+	bool mmu_hw_operation_in_progress;
+#endif
 	bool poweroff_pending;
 
 #if (KERNEL_VERSION(4, 4, 0) <= LINUX_VERSION_CODE)

@@ -602,15 +602,13 @@ static int scheduler_pm_active_handle_suspend(struct kbase_device *kbdev,
 	if (!prev_count) {
 		ret = kbase_pm_context_active_handle_suspend(kbdev,
 							suspend_handler);
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		if (ret) {
-			kbdev->csf.scheduler.pm_active_count--;
-		}
 		/* Invoke the PM state machines again as the change in MCU
-		 * desired status, due to the update of
-		 * scheduler.pm_active_count, may be missed by the thread that
-		 * called pm_wait_for_desired_state()
+		 * desired status, due to the update of scheduler.pm_active_count,
+		 * may be missed by the thread that called pm_wait_for_desired_state()
 		 */
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		if (ret)
+			kbdev->csf.scheduler.pm_active_count--;
 		kbase_pm_update_state(kbdev);
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 	}
@@ -694,11 +692,10 @@ static void scheduler_pm_idle(struct kbase_device *kbdev)
 
 	if (prev_count == 1) {
 		kbase_pm_context_idle(kbdev);
-
 		/* Invoke the PM state machines again as the change in MCU
-		* desired status, due to the update of scheduler.pm_active_count,
-		* may be missed by the thread that called pm_wait_for_desired_state()
-		*/
+		 * desired status, due to the update of scheduler.pm_active_count,
+		 * may be missed by the thread that called pm_wait_for_desired_state()
+		 */
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 		kbase_pm_update_state(kbdev);
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
@@ -731,8 +728,16 @@ static void scheduler_pm_idle_before_sleep(struct kbase_device *kbdev)
 	kbdev->pm.backend.exit_gpu_sleep_mode = false;
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
-	if (prev_count == 1)
+	if (prev_count == 1) {
 		kbase_pm_context_idle(kbdev);
+		/* Invoke the PM state machines again as the change in MCU
+		 * desired status, due to the update of scheduler.pm_active_count,
+		 * may be missed by the thread that called pm_wait_for_desired_state()
+		 */
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbase_pm_update_state(kbdev);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	}
 }
 #endif
 

@@ -925,6 +925,18 @@ static const char *kbase_l2_core_state_to_string(enum kbase_l2_core_state state)
 		return strings[state];
 }
 
+static bool can_power_down_l2(struct kbase_device *kbdev)
+{
+#if MALI_USE_CSF
+	/* Due to the HW issue GPU2019-3878, need to prevent L2 power off
+	 * whilst MMU command is in progress.
+	 */
+	return !kbdev->mmu_hw_operation_in_progress;
+#else
+	return true;
+#endif
+}
+
 static int kbase_pm_l2_update_state(struct kbase_device *kbdev)
 {
 	struct kbase_pm_backend_data *backend = &kbdev->pm.backend;
@@ -1203,27 +1215,30 @@ static int kbase_pm_l2_update_state(struct kbase_device *kbdev)
 			break;
 
 		case KBASE_L2_POWER_DOWN:
-			if (!backend->l2_always_on)
-				/* Powering off the L2 will also power off the
-				 * tiler.
-				 */
-				kbase_pm_invoke(kbdev, KBASE_PM_CORE_L2,
-						l2_present,
-						ACTION_PWROFF);
-			else
-				/* If L2 cache is powered then we must flush it
-				 * before we power off the GPU. Normally this
-				 * would have been handled when the L2 was
-				 * powered off.
-				 */
-				kbase_gpu_start_cache_clean_nolock(
-						kbdev);
+			if (kbase_pm_is_l2_desired(kbdev))
+				backend->l2_state = KBASE_L2_PEND_ON;
+			else if (can_power_down_l2(kbdev)) {
+				if (!backend->l2_always_on)
+					/* Powering off the L2 will also power off the
+					 * tiler.
+					 */
+					kbase_pm_invoke(kbdev, KBASE_PM_CORE_L2,
+							l2_present,
+							ACTION_PWROFF);
+				else
+					/* If L2 cache is powered then we must flush it
+					 * before we power off the GPU. Normally this
+					 * would have been handled when the L2 was
+					 * powered off.
+					 */
+					kbase_gpu_start_cache_clean_nolock(kbdev);
 #if !MALI_USE_CSF
-			KBASE_KTRACE_ADD(kbdev, PM_CORES_CHANGE_AVAILABLE_TILER, NULL, 0u);
+				KBASE_KTRACE_ADD(kbdev, PM_CORES_CHANGE_AVAILABLE_TILER, NULL, 0u);
 #else
-			KBASE_KTRACE_ADD(kbdev, PM_CORES_CHANGE_AVAILABLE_L2, NULL, 0u);
+				KBASE_KTRACE_ADD(kbdev, PM_CORES_CHANGE_AVAILABLE_L2, NULL, 0u);
 #endif
-			backend->l2_state = KBASE_L2_PEND_OFF;
+				backend->l2_state = KBASE_L2_PEND_OFF;
+			}
 			break;
 
 		case KBASE_L2_PEND_OFF:
