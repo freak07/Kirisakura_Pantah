@@ -339,6 +339,24 @@ struct kbase_pm_callback_conf {
 	 * this feature.
 	 */
 	void (*power_runtime_gpu_active_callback)(struct kbase_device *kbdev);
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	/*
+	 * This callback will be invoked by the Kbase when GPU becomes active
+	 * to turn on the shader core power rails.
+	 * This callback is invoked from process context and the power rails
+	 * must be turned on before the completion of callback.
+	 */
+	void (*power_on_sc_rails_callback)(struct kbase_device *kbdev);
+
+	/*
+	 * This callback will be invoked by the Kbase when GPU becomes idle
+	 * to turn off the shader core power rails.
+	 * This callback is invoked from process context and the power rails
+	 * must be turned off before the completion of callback.
+	 */
+	void (*power_off_sc_rails_callback)(struct kbase_device *kbdev);
+#endif
 };
 
 /* struct kbase_gpu_clk_notifier_data - Data for clock rate change notifier.

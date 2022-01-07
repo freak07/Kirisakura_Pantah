@@ -879,6 +879,21 @@ struct kbase_csf_csg_slot {
  *                          when scheduling tick needs to be advanced from
  *                          interrupt context, without actually deactivating
  *                          the @tick_timer first and then enqueing @tick_work.
+ * @sc_rails_off_work:     Work item enqueued on GPU idle notification to
+ *                          turn off the shader core power rails.
+ * @sc_power_rails_off:     Flag to keep a track of the status of shader core
+ *                          power rails, set to true when power rails are
+ *                          turned off.
+ * @gpu_idle_work_pending:  Flag to indicate that the power down of GPU is
+ *                          pending and it is set after turning off the
+ *                          shader core power rails. The power down is skipped
+ *                          if the flag is cleared. @lock is used to serialize
+ *                          the access. Scheduling actions are skipped whilst
+ *                          this flag is set.
+ * @keep_gpu_idle_timer_disabled: Flag used to keep the GPU idle event reporting
+ *                                disabled for the power policy where the power
+ *                                managment of shader cores needs to be done by
+ *                                the Host.
  */
 struct kbase_csf_scheduler {
 	struct mutex lock;
@@ -912,12 +927,18 @@ struct kbase_csf_scheduler {
 	bool tock_pending_request;
 	struct kbase_queue_group *active_protm_grp;
 	bool gpu_idle_fw_timer_enabled;
-	struct work_struct gpu_idle_work;
+	struct delayed_work gpu_idle_work;
 	atomic_t non_idle_offslot_grps;
 	u32 non_idle_scanout_grps;
 	u32 pm_active_count;
 	unsigned int csg_scheduling_period_ms;
 	bool tick_timer_active;
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	struct work_struct sc_rails_off_work;
+	bool sc_power_rails_off;
+	bool gpu_idle_work_pending;
+	bool keep_gpu_idle_timer_disabled;
+#endif
 };
 
 /*

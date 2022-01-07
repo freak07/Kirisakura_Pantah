@@ -2042,6 +2042,13 @@ static void kbase_queue_oom_event(struct kbase_queue *const queue)
 
 	kbase_csf_scheduler_lock(kbdev);
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	if (kbdev->csf.scheduler.sc_power_rails_off) {
+		dev_warn(kctx->kbdev->dev, "SC power rails off unexpectedly when handling OoM event");
+		goto unlock;
+	}
+#endif
+
 	slot_num = kbase_csf_scheduler_group_get_slot(group);
 
 	/* The group could have gone off slot before this work item got
@@ -2813,7 +2820,6 @@ void kbase_csf_interrupt(struct kbase_device *kbdev, u32 val)
 	if (val & JOB_IRQ_GLOBAL_IF) {
 		const struct kbase_csf_global_iface *const global_iface =
 			&kbdev->csf.global_iface;
-		struct kbase_csf_scheduler *scheduler =	&kbdev->csf.scheduler;
 
 		kbdev->csf.interrupt_received = true;
 		remaining &= ~JOB_IRQ_GLOBAL_IF;
@@ -2837,31 +2843,20 @@ void kbase_csf_interrupt(struct kbase_device *kbdev, u32 val)
 
 			/* Handle IDLE Hysteresis notification event */
 			if ((glb_req ^ glb_ack) & GLB_REQ_IDLE_EVENT_MASK) {
-				int non_idle_offslot_grps;
-				bool can_suspend_on_idle;
-
 				dev_dbg(kbdev->dev, "Idle-hysteresis event flagged");
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+				if (kbase_csf_scheduler_process_gpu_idle_event(kbdev)) {
+					kbase_csf_firmware_global_input_mask(
+						global_iface, GLB_REQ, glb_ack,
+						GLB_REQ_IDLE_EVENT_MASK);
+				}
+#else
 				kbase_csf_firmware_global_input_mask(
 						global_iface, GLB_REQ, glb_ack,
 						GLB_REQ_IDLE_EVENT_MASK);
 
-				non_idle_offslot_grps = atomic_read(&scheduler->non_idle_offslot_grps);
-				can_suspend_on_idle = kbase_pm_idle_groups_sched_suspendable(kbdev);
-				KBASE_KTRACE_ADD(kbdev, SCHEDULER_CAN_IDLE, NULL,
-					((u64)(u32)non_idle_offslot_grps) | (((u64)can_suspend_on_idle) << 32));
-
-				if (!non_idle_offslot_grps) {
-					if (can_suspend_on_idle)
-						queue_work(system_highpri_wq,
-							   &scheduler->gpu_idle_work);
-				} else {
-					/* Advance the scheduling tick to get
-					 * the non-idle suspended groups loaded
-					 * soon.
-					 */
-					kbase_csf_scheduler_advance_tick_nolock(
-						kbdev);
-				}
+				kbase_csf_scheduler_process_gpu_idle_event(kbdev);
+#endif
 			}
 
 			process_prfcnt_interrupts(kbdev, glb_req, glb_ack);

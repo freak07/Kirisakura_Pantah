@@ -28,6 +28,7 @@
 #include <tl/mali_kbase_tracepoints.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <linux/export.h>
+#include <linux/delay.h>
 #include <uapi/gpu/arm/midgard/csf/mali_gpu_csf_registers.h>
 #include <uapi/gpu/arm/midgard/mali_base_kernel.h>
 #include <mali_kbase_hwaccess_time.h>
@@ -97,8 +98,111 @@ static int suspend_active_queue_groups(struct kbase_device *kbdev,
 static int suspend_active_groups_on_powerdown(struct kbase_device *kbdev,
 					      bool system_suspend);
 static void schedule_in_cycle(struct kbase_queue_group *group, bool force);
+static bool evaluate_sync_update(struct kbase_queue *queue);
 
 #define kctx_as_enabled(kctx) (!kbase_ctx_flag(kctx, KCTX_AS_DISABLED_ON_FAULT))
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+/**
+ * turn_on_sc_power_rails - Turn on the shader core power rails.
+ *
+ * @kbdev: Pointer to the device.
+ *
+ * This function is called to synchronously turn on the shader core power rails,
+ * before execution is resumed on the cores.
+ */
+static void turn_on_sc_power_rails(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->csf.scheduler.lock);
+
+	WARN_ON(kbdev->csf.scheduler.state == SCHED_SUSPENDED);
+
+	if (kbdev->csf.scheduler.sc_power_rails_off) {
+		if (kbdev->pm.backend.callback_power_on_sc_rails)
+			kbdev->pm.backend.callback_power_on_sc_rails(kbdev);
+		kbdev->csf.scheduler.sc_power_rails_off = false;
+	}
+}
+
+/**
+ * turn_off_sc_power_rails - Turn off the shader core power rails.
+ *
+ * @kbdev: Pointer to the device.
+ *
+ * This function is called to synchronously turn off the shader core power rails.
+  */
+static void turn_off_sc_power_rails(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->csf.scheduler.lock);
+
+	WARN_ON(kbdev->csf.scheduler.state == SCHED_SUSPENDED);
+
+	if (!kbdev->csf.scheduler.sc_power_rails_off) {
+		if (kbdev->pm.backend.callback_power_off_sc_rails)
+			kbdev->pm.backend.callback_power_off_sc_rails(kbdev);
+		kbdev->csf.scheduler.sc_power_rails_off = true;
+	}
+}
+
+/**
+ * ack_gpu_idle_event - Acknowledge the GPU idle event
+ *
+ * @kbdev: Pointer to the device.
+ *
+ * This function is called to acknowledge the GPU idle event. It is expected
+ * that firmware will re-enable the User submission only when it receives a
+ * CSI kernel doorbell after the idle event acknowledgement.
+ */
+static void ack_gpu_idle_event(struct kbase_device *kbdev)
+{
+	struct kbase_csf_global_iface *global_iface = &kbdev->csf.global_iface;
+	u32 glb_req, glb_ack;
+	unsigned long flags;
+
+	lockdep_assert_held(&kbdev->csf.scheduler.lock);
+
+	spin_lock_irqsave(&kbdev->csf.scheduler.interrupt_lock, flags);
+	glb_req = kbase_csf_firmware_global_input_read(global_iface, GLB_REQ);
+	glb_ack = kbase_csf_firmware_global_output(global_iface, GLB_ACK);
+	if ((glb_req ^ glb_ack) & GLB_REQ_IDLE_EVENT_MASK) {
+		kbase_csf_firmware_global_input_mask(
+			global_iface, GLB_REQ, glb_ack,
+			GLB_REQ_IDLE_EVENT_MASK);
+	}
+	spin_unlock_irqrestore(&kbdev->csf.scheduler.interrupt_lock, flags);
+}
+
+static void cancel_gpu_idle_work(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->csf.scheduler.lock);
+
+	kbdev->csf.scheduler.gpu_idle_work_pending = false;
+	cancel_delayed_work(&kbdev->csf.scheduler.gpu_idle_work);
+}
+
+static bool queue_empty_or_blocked(struct kbase_queue *queue)
+{
+	bool empty = false;
+	bool blocked = false;
+
+	if (CS_STATUS_WAIT_SYNC_WAIT_GET(queue->status_wait)) {
+		if (!evaluate_sync_update(queue))
+			blocked = true;
+		else
+			queue->status_wait = 0;
+	}
+
+	if (!blocked) {
+		u64 *input_addr = (u64 *)queue->user_io_addr;
+		u64 *output_addr = (u64 *)(queue->user_io_addr + PAGE_SIZE);
+
+		empty = (input_addr[CS_INSERT_LO / sizeof(u64)] ==
+			 output_addr[CS_EXTRACT_LO / sizeof(u64)]);
+	}
+
+	return (empty || blocked);
+}
+#endif
 
 #ifdef KBASE_PM_RUNTIME
 /**
@@ -406,6 +510,53 @@ static void scheduler_doorbell_init(struct kbase_device *kbdev)
 	WARN_ON(doorbell_nr != CSF_KERNEL_DOORBELL_NR);
 }
 
+static void enqueue_gpu_idle_work(struct kbase_csf_scheduler *const scheduler,
+			unsigned long delay)
+{
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	lockdep_assert_held(&scheduler->lock);
+
+	scheduler->gpu_idle_work_pending = true;
+#endif
+	mod_delayed_work(system_highpri_wq, &scheduler->gpu_idle_work, delay);
+}
+
+bool kbase_csf_scheduler_process_gpu_idle_event(struct kbase_device *kbdev)
+{
+	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
+	int non_idle_offslot_grps;
+	bool can_suspend_on_idle;
+	bool ack_gpu_idle_event = true;
+
+	lockdep_assert_held(&scheduler->interrupt_lock);
+
+	non_idle_offslot_grps = atomic_read(&scheduler->non_idle_offslot_grps);
+	can_suspend_on_idle = kbase_pm_idle_groups_sched_suspendable(kbdev);
+	KBASE_KTRACE_ADD(kbdev, SCHEDULER_CAN_IDLE, NULL,
+			 ((u64)(u32)non_idle_offslot_grps) | (((u64)can_suspend_on_idle) << 32));
+
+	if (!non_idle_offslot_grps) {
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+		/* If FW is managing the cores then we need to turn off the
+		 * the power rails.
+		 */
+		if (!kbase_pm_no_mcu_core_pwroff(kbdev)) {
+			queue_work(system_highpri_wq,
+				   &scheduler->sc_rails_off_work);
+			ack_gpu_idle_event = false;
+		}
+#else
+		if (can_suspend_on_idle)
+			enqueue_gpu_idle_work(scheduler, 0);
+#endif
+	} else {
+		/* Advance the scheduling tick to get the non-idle suspended groups loaded soon */
+		kbase_csf_scheduler_advance_tick_nolock(kbdev);
+	}
+
+	return ack_gpu_idle_event;
+}
+
 u32 kbase_csf_scheduler_get_nr_active_csgs_locked(struct kbase_device *kbdev)
 {
 	u32 nr_active_csgs;
@@ -560,6 +711,11 @@ static void enable_gpu_idle_fw_timer(struct kbase_device *kbdev)
 
 	if (scheduler->gpu_idle_fw_timer_enabled)
 		return;
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	if (scheduler->keep_gpu_idle_timer_disabled)
+		return;
+#endif
 
 	spin_lock_irqsave(&scheduler->interrupt_lock, flags);
 
@@ -770,6 +926,41 @@ static void scheduler_pm_idle_before_sleep(struct kbase_device *kbdev)
 }
 #endif
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+/**
+ * update_gpu_idle_timer_on_scheduler_wakeup() - Update the GPU idle state
+ *                                reporting as per the power policy in use.
+ *
+ * @kbdev: Pointer to the device
+ *
+ * This function disables the GPU idle state reporting in FW if as per the
+ * power policy the power managment of shader cores needs to be done by the
+ * Host. This prevents the needless disabling of User submissions in FW on
+ * reporting the GPU idle event to Host.
+ * Scheduler is suspended when switching and out of such power policy, so on
+ * the wakeup of Scheduler can enable or disable the GPU idle state reporting.
+ */
+static void update_gpu_idle_timer_on_scheduler_wakeup(struct kbase_device *kbdev)
+{
+	struct kbase_csf_scheduler *const scheduler = &kbdev->csf.scheduler;
+	unsigned long flags;
+
+	lockdep_assert_held(&scheduler->lock);
+
+	WARN_ON(scheduler->state != SCHED_SUSPENDED);
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	if (kbase_pm_no_mcu_core_pwroff(kbdev)) {
+		disable_gpu_idle_fw_timer(kbdev);
+		scheduler->keep_gpu_idle_timer_disabled = true;
+	} else
+		scheduler->keep_gpu_idle_timer_disabled = false;
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	return;
+}
+#endif
+
 static void scheduler_wakeup(struct kbase_device *kbdev, bool kick)
 {
 	struct kbase_csf_scheduler *const scheduler = &kbdev->csf.scheduler;
@@ -807,6 +998,10 @@ static void scheduler_wakeup(struct kbase_device *kbdev, bool kick)
 			"Couldn't wakeup Scheduler due to system suspend");
 		return;
 	}
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	update_gpu_idle_timer_on_scheduler_wakeup(kbdev);
+#endif
 
 	scheduler->state = SCHED_INACTIVE;
 
@@ -1440,6 +1635,45 @@ static void program_cs(struct kbase_device *kbdev,
 	update_hw_active(queue, true);
 }
 
+static void start_stream_sync(struct kbase_queue *queue)
+{
+	struct kbase_queue_group *group = queue->group;
+	struct kbase_device *kbdev = queue->kctx->kbdev;
+	struct kbase_csf_global_iface *global_iface = &kbdev->csf.global_iface;
+	struct kbase_csf_cmd_stream_group_info *ginfo;
+	struct kbase_csf_cmd_stream_info *stream;
+	int csi_index = queue->csi_index;
+	long remaining = kbase_csf_timeout_in_jiffies(kbdev->csf.fw_timeout_ms);
+
+	lockdep_assert_held(&kbdev->csf.scheduler.lock);
+
+	if (WARN_ON(!group) ||
+	    WARN_ON(!kbasep_csf_scheduler_group_is_on_slot_locked(group)))
+		return;
+
+	ginfo = &global_iface->groups[group->csg_nr];
+	stream = &ginfo->streams[csi_index];
+
+	program_cs(kbdev, queue, true);
+
+	/* Timed wait */
+	remaining = wait_event_timeout(kbdev->csf.event_wait,
+		(CS_ACK_STATE_GET(kbase_csf_firmware_cs_output(stream, CS_ACK))
+		 == CS_ACK_STATE_START), remaining);
+
+	if (!remaining) {
+		dev_warn(kbdev->dev, "[%llu] Timeout (%d ms) waiting for queue to start on csi %d bound to group %d on slot %d",
+			 kbase_backend_get_cycle_cnt(kbdev), kbdev->csf.fw_timeout_ms,
+			 csi_index, group->handle, group->csg_nr);
+
+		/* TODO GPUCORE-25328: The CSG can't be terminated, the GPU
+		 * will be reset as a work-around.
+		 */
+		if (kbase_prepare_to_reset_gpu(kbdev, RESET_FLAGS_NONE))
+			kbase_reset_gpu(kbdev);
+	}
+}
+
 int kbase_csf_scheduler_queue_start(struct kbase_queue *queue)
 {
 	struct kbase_queue_group *group = queue->group;
@@ -1473,7 +1707,22 @@ int kbase_csf_scheduler_queue_start(struct kbase_queue *queue)
 
 		if (!err) {
 			queue->enabled = true;
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+			/* If the kicked GPU queue can make progress, then only
+			 * need to abort the GPU power down.
+			 */
+			if (!queue_empty_or_blocked(queue))
+				cancel_gpu_idle_work(kbdev);
+#endif
 			if (kbasep_csf_scheduler_group_is_on_slot_locked(group)) {
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+				/* The shader core power rails need to be turned
+				 * on before FW resumes the execution on HW and
+				 * that would happen when the CSI kernel doorbell
+				 * is rung from the following code.
+				 */
+				turn_on_sc_power_rails(kbdev);
+#endif
 				if (cs_enabled) {
 					/* In normal situation, when a queue is
 					 * already running, the queue update
@@ -1485,11 +1734,14 @@ int kbase_csf_scheduler_queue_start(struct kbase_queue *queue)
 					 * kernel as the hw_active flag is yet
 					 * to be set. The sheduler needs to
 					 * give a kick to the corresponding
-					 * user door-bell on such a case.
+					 * CSI door-bell on such a case.
 					 */
-					kbase_csf_ring_cs_user_doorbell(kbdev, queue);
-				} else
-					program_cs(kbdev, queue, true);
+					kbase_csf_ring_cs_kernel_doorbell(kbdev,
+						queue->csi_index, group->csg_nr,
+						true);
+				} else {
+					start_stream_sync(queue);
+				}
 			}
 			queue_delayed_work(system_long_wq,
 				&kbdev->csf.scheduler.ping_work,
@@ -1967,7 +2219,7 @@ void remove_group_from_runnable(struct kbase_csf_scheduler *const scheduler,
 		cancel_tick_timer(kctx->kbdev);
 		WARN_ON(atomic_read(&scheduler->non_idle_offslot_grps));
 		if (scheduler->state != SCHED_SUSPENDED)
-			queue_work(system_wq, &scheduler->gpu_idle_work);
+			enqueue_gpu_idle_work(scheduler, 0);
 	}
 	KBASE_KTRACE_ADD_CSF_GRP(kctx->kbdev, SCHEDULER_TOP_GRP, scheduler->top_grp,
 			scheduler->num_active_address_spaces |
@@ -4148,6 +4400,11 @@ static bool scheduler_suspend_on_idle(struct kbase_device *kbdev)
 		return false;
 	}
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	turn_off_sc_power_rails(kbdev);
+	ack_gpu_idle_event(kbdev);
+#endif
+
 	dev_dbg(kbdev->dev, "Scheduler to be suspended on GPU becoming idle");
 	scheduler_suspend(kbdev);
 	cancel_tick_timer(kbdev);
@@ -4157,7 +4414,7 @@ static bool scheduler_suspend_on_idle(struct kbase_device *kbdev)
 static void gpu_idle_worker(struct work_struct *work)
 {
 	struct kbase_device *kbdev = container_of(
-		work, struct kbase_device, csf.scheduler.gpu_idle_work);
+		work, struct kbase_device, csf.scheduler.gpu_idle_work.work);
 	struct kbase_csf_scheduler *const scheduler = &kbdev->csf.scheduler;
 	bool scheduler_is_idle_suspendable = false;
 	bool all_groups_suspended = false;
@@ -4175,6 +4432,13 @@ static void gpu_idle_worker(struct work_struct *work)
 	}
 	mutex_lock(&scheduler->lock);
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	if (!scheduler->gpu_idle_work_pending)
+		goto unlock;
+
+	scheduler->gpu_idle_work_pending = false;
+#endif
+
 	/* Cycle completed, disable the firmware idle timer */
 	disable_gpu_idle_fw_timer(kbdev);
 	scheduler_is_idle_suspendable = scheduler_idle_suspendable(kbdev);
@@ -4190,6 +4454,9 @@ static void gpu_idle_worker(struct work_struct *work)
 			all_groups_suspended = scheduler_suspend_on_idle(kbdev);
 	}
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+unlock:
+#endif
 	mutex_unlock(&scheduler->lock);
 	kbase_reset_gpu_allow(kbdev);
 	KBASE_KTRACE_ADD(kbdev, IDLE_WORKER_END, NULL,
@@ -4198,6 +4465,232 @@ static void gpu_idle_worker(struct work_struct *work)
 					      all_groups_suspended));
 #undef __ENCODE_KTRACE_INFO
 }
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+/**
+ * wait_csg_db_ack - Wait for the previously sent CSI kernel DBs for a CSG to
+ *                   get acknowledged.
+ *
+ * @kbdev:  Pointer to the device.
+ * @csg_nr: The CSG number.
+ *
+ * This function is called to wait for the previously sent CSI kernel DBs
+ * for a CSG to get acknowledged before acknowledging the GPU idle event.
+ * This is to ensure when @sc_rails_off_worker is doing the GPU idleness
+ * reevaluation the User submissions remain disabled.
+ * For firmware to re-enable User submission, two conditions are required to
+ * be met.
+ * 1. GLB_IDLE_EVENT acknowledgement
+ * 2. CSI kernel DB ring
+ *
+ * If GLB_IDLE_EVENT is acknowledged and FW notices the previously rung CS kernel
+ * DB, then it would re-enable the User submission and @sc_rails_off_worker might
+ * end up turning off the SC rails.
+ */
+static void wait_csg_db_ack(struct kbase_device *kbdev, int csg_nr)
+{
+#define WAIT_TIMEOUT 10 /* 1ms timeout */
+#define DELAY_TIME_IN_US 100
+	struct kbase_csf_cmd_stream_group_info *const ginfo =
+		&kbdev->csf.global_iface.groups[csg_nr];
+	const int max_iterations = WAIT_TIMEOUT;
+	int loop;
+
+	for (loop = 0; loop < max_iterations; loop++) {
+		if (kbase_csf_firmware_csg_input_read(ginfo, CSG_DB_REQ) ==
+		    kbase_csf_firmware_csg_output(ginfo, CSG_DB_ACK))
+			break;
+
+		udelay(DELAY_TIME_IN_US);
+	}
+
+	if (loop == max_iterations) {
+		dev_err(kbdev->dev,
+			"Timeout for csg %d CSG_DB_REQ %x != CSG_DB_ACK %x",
+			csg_nr,
+			kbase_csf_firmware_csg_input_read(ginfo, CSG_DB_REQ),
+			kbase_csf_firmware_csg_output(ginfo, CSG_DB_ACK));
+	}
+}
+
+/**
+ * recheck_gpu_idleness - Recheck the idleness of the GPU before turning off
+ *                        the SC power rails.
+ *
+ * @kbdev: Pointer to the device.
+ *
+ * This function is called on the GPU idle notification to recheck the idleness
+ * of GPU before turning off the SC power rails. The reevaluation of idleness
+ * is done by sending CSG status update requests. An additional check is done
+ * for the CSGs that are reported as idle that whether the associated queues
+ * are empty or blocked.
+ *
+ * Return: true if the GPU was reevaluated as idle.
+ */
+static bool recheck_gpu_idleness(struct kbase_device *kbdev)
+{
+	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
+	DECLARE_BITMAP(csg_bitmap, MAX_SUPPORTED_CSGS) = { 0 };
+	long wt = kbase_csf_timeout_in_jiffies(kbdev->csf.fw_timeout_ms);
+	u32 num_groups = kbdev->csf.global_iface.group_num;
+	unsigned long flags, i;
+	bool gpu_idle = true;
+
+	lockdep_assert_held(&scheduler->lock);
+
+	spin_lock_irqsave(&scheduler->interrupt_lock, flags);
+	for_each_set_bit(i, scheduler->csg_slots_idle_mask, num_groups) {
+		struct kbase_csf_cmd_stream_group_info *const ginfo =
+			&kbdev->csf.global_iface.groups[i];
+		u32 csg_req = kbase_csf_firmware_csg_output(ginfo, CSG_ACK);
+
+		csg_req ^= CSG_REQ_STATUS_UPDATE_MASK;
+		kbase_csf_firmware_csg_input_mask(ginfo, CSG_REQ, csg_req,
+						  CSG_REQ_STATUS_UPDATE_MASK);
+		set_bit(i, csg_bitmap);
+		wait_csg_db_ack(kbdev, i);
+	}
+	spin_unlock_irqrestore(&scheduler->interrupt_lock, flags);
+
+	/* Acknowledge the GPU idle event before inquiring the status of CSGs.
+	 * This is because in case FW reports CSGs as non-idle it doesn't miss
+	 * out on sending the next GPU idle event as it might see that previous
+	 * one hasn't been acknowledged.
+	 */
+	ack_gpu_idle_event(kbdev);
+	kbase_csf_ring_csg_slots_doorbell(kbdev, csg_bitmap[0]);
+
+	if (wait_csg_slots_handshake_ack(kbdev,
+			CSG_REQ_STATUS_UPDATE_MASK, csg_bitmap, wt)) {
+		dev_warn(
+			kbdev->dev,
+			"[%llu] Timeout (%d ms) on STATUS_UPDATE, treat GPU as not idle: slot mask=0x%lx",
+			kbase_backend_get_cycle_cnt(kbdev),
+			kbdev->csf.fw_timeout_ms,
+			csg_bitmap[0]);
+		return false;
+	}
+
+	for_each_set_bit(i, scheduler->csg_slots_idle_mask, num_groups) {
+		struct kbase_csf_cmd_stream_group_info *const ginfo =
+			&kbdev->csf.global_iface.groups[i];
+		struct kbase_csf_csg_slot *csg_slot = &scheduler->csg_slots[i];
+		struct kbase_queue_group *group = csg_slot->resident_group;
+		bool group_idle = true;
+
+		if (!group_on_slot_is_idle(kbdev, i))
+			group_idle = false;
+
+		for (i = 0; i < ginfo->stream_num; i++) {
+			struct kbase_queue *const queue =
+					group->bound_queues[i];
+
+			if (!queue || !queue->enabled)
+				continue;
+#ifdef CONFIG_MALI_DEBUG
+			else {
+				u64 *output_addr =
+					(u64 *)(queue->user_io_addr + PAGE_SIZE);
+
+				if (output_addr[CS_ACTIVE / sizeof(u64)])
+					dev_warn(kbdev->dev,
+						"queue %d bound to group %d on slot %d active unexpectedly",
+						queue->csi_index, queue->group->handle,
+						queue->group->csg_nr);
+			}
+#endif
+
+			if (group_idle) {
+				if (!save_slot_cs(ginfo, queue) &&
+				    !confirm_cmd_buf_empty(queue))
+					group_idle = false;
+			}
+
+			if (!group_idle)
+				kbase_csf_ring_cs_kernel_doorbell(kbdev,
+					queue->csi_index, group->csg_nr, false);
+		}
+
+		if (!group_idle) {
+			kbase_csf_ring_csg_doorbell(kbdev, group->csg_nr);
+			gpu_idle = false;
+		}
+	}
+
+	return gpu_idle;
+}
+
+/**
+ * can_turn_off_sc_rails - Check if the conditions are met to turn off the
+ *                         SC power rails.
+ *
+ * @kbdev: Pointer to the device.
+ *
+ * This function checks both the on-slots and off-slots groups idle status and
+ * if firmware is managing the cores. If the groups are not idle or Host is
+ * managing the cores then the rails need to be kept on.
+ *
+ * Return: true if the SC power rails can be turned off.
+ */
+static bool can_turn_off_sc_rails(struct kbase_device *kbdev)
+{
+	struct kbase_csf_scheduler *const scheduler = &kbdev->csf.scheduler;
+	bool turn_off_sc_rails;
+	unsigned long flags;
+
+	lockdep_assert_held(&scheduler->lock);
+
+	if (scheduler->state == SCHED_SUSPENDED)
+		return false;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	spin_lock(&scheduler->interrupt_lock);
+	turn_off_sc_rails = kbase_csf_scheduler_all_csgs_idle(kbdev) &&
+			    !atomic_read(&scheduler->non_idle_offslot_grps) &&
+			    !kbase_pm_no_mcu_core_pwroff(kbdev);
+	spin_unlock(&scheduler->interrupt_lock);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	return turn_off_sc_rails;
+}
+
+static void sc_rails_off_worker(struct work_struct *work)
+{
+	struct kbase_device *kbdev = container_of(
+		work, struct kbase_device, csf.scheduler.sc_rails_off_work);
+	struct kbase_csf_scheduler *const scheduler = &kbdev->csf.scheduler;
+
+	if (kbase_reset_gpu_try_prevent(kbdev)) {
+		dev_warn(kbdev->dev, "Skip SC rails off for failing to prevent gpu reset");
+		return;
+	}
+
+	mutex_lock(&scheduler->lock);
+	/* All the previously sent CSG/CSI level requests are expected to have
+	 * completed at this point.
+	 */
+
+	if (can_turn_off_sc_rails(kbdev)) {
+		if (recheck_gpu_idleness(kbdev)) {
+			/* The GPU idle work, enqueued after previous idle
+			 * notification, could already be pending if GPU became
+			 * active momentarily after the previous idle notification
+			 * and all CSGs were reported as idle.
+			 */
+			if (!scheduler->gpu_idle_work_pending)
+				WARN_ON(scheduler->sc_power_rails_off);
+			turn_off_sc_power_rails(kbdev);
+			enqueue_gpu_idle_work(scheduler,
+					kbdev->csf.gpu_idle_hysteresis_ms);
+		}
+	} else {
+		ack_gpu_idle_event(kbdev);
+	}
+
+	mutex_unlock(&scheduler->lock);
+	kbase_reset_gpu_allow(kbdev);
+}
+#endif
 
 static int scheduler_prepare(struct kbase_device *kbdev)
 {
@@ -4319,7 +4812,11 @@ static bool keep_lru_on_slots(struct kbase_device *kbdev)
 		 */
 		keep_lru = kbase_csf_scheduler_all_csgs_idle(kbdev);
 
-		if (keep_lru && !scheduler->gpu_idle_fw_timer_enabled) {
+		if (keep_lru && !scheduler->gpu_idle_fw_timer_enabled
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+		    && !scheduler->keep_gpu_idle_timer_disabled
+#endif
+		    ) {
 			scheduler->gpu_idle_fw_timer_enabled = true;
 			kbase_csf_firmware_enable_gpu_idle_timer(kbdev);
 		}
@@ -4392,12 +4889,21 @@ static void schedule_actions(struct kbase_device *kbdev, bool is_tick)
 	kbase_reset_gpu_assert_prevented(kbdev);
 	lockdep_assert_held(&scheduler->lock);
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	if (scheduler->gpu_idle_work_pending)
+		return;
+#endif
+
 	ret = kbase_csf_scheduler_wait_mcu_active(kbdev);
 	if (ret) {
 		dev_err(kbdev->dev,
 			"Wait for MCU power on failed on scheduling tick/tock");
 		return;
 	}
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	turn_on_sc_power_rails(kbdev);
+#endif
 
 	spin_lock_irqsave(&scheduler->interrupt_lock, flags);
 	skip_idle_slots_update = kbase_csf_scheduler_protected_mode_in_use(kbdev);
@@ -4601,7 +5107,7 @@ static void schedule_on_tock(struct kthread_work *work)
 
 	scheduler->state = SCHED_INACTIVE;
 	if (!scheduler->total_runnable_grps)
-		queue_work(system_wq, &scheduler->gpu_idle_work);
+		enqueue_gpu_idle_work(scheduler, 0);
 	mutex_unlock(&scheduler->lock);
 	kbase_reset_gpu_allow(kbdev);
 
@@ -4653,7 +5159,7 @@ static void schedule_on_tick(struct kthread_work *work)
 			"scheduling for next tick, num_runnable_groups:%u\n",
 			scheduler->total_runnable_grps);
 	} else if (!scheduler->total_runnable_grps)
-		queue_work(system_wq, &scheduler->gpu_idle_work);
+		enqueue_gpu_idle_work(scheduler, 0);
 
 	scheduler->state = SCHED_INACTIVE;
 	mutex_unlock(&scheduler->lock);
@@ -4923,7 +5429,7 @@ static void scheduler_inner_reset(struct kbase_device *kbdev)
 	WARN_ON(kbase_csf_scheduler_get_nr_active_csgs(kbdev));
 
 	/* Cancel any potential queued delayed work(s) */
-	cancel_work_sync(&kbdev->csf.scheduler.gpu_idle_work);
+	cancel_delayed_work_sync(&scheduler->gpu_idle_work);
 	cancel_tick_timer(kbdev);
 	kthread_cancel_work_sync(&scheduler->tick_work);
 	cancel_tock_work(scheduler);
@@ -5297,6 +5803,13 @@ static struct kbase_queue_group *scheduler_get_protm_enter_async_group(
 		input_grp = NULL;
 	}
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	if (input_grp && kbdev->csf.scheduler.sc_power_rails_off) {
+		dev_warn(kbdev->dev, "SC power rails unexpectedly off in async protm enter");
+		return NULL;
+	}
+#endif
+
 	return input_grp;
 }
 
@@ -5388,6 +5901,8 @@ static bool check_sync_update_for_on_slot_group(
 			if (!evaluate_sync_update(queue))
 				continue;
 
+			queue->status_wait = 0;
+
 			/* Update csg_slots_idle_mask and group's run_state */
 			if (group->run_state != KBASE_CSF_GROUP_RUNNABLE) {
 				/* Only clear the group's idle flag if it has been dealt
@@ -5408,6 +5923,19 @@ static bool check_sync_update_for_on_slot_group(
 
 			KBASE_KTRACE_ADD_CSF_GRP(kbdev, GROUP_SYNC_UPDATE_DONE, group, 0u);
 			sync_update_done = true;
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+			/* As the queue of an on-slot group has become unblocked,
+			 * the power rails can be turned on and the execution can
+			 * be resumed on HW.
+			 */
+			if (kbdev->csf.scheduler.sc_power_rails_off) {
+				cancel_gpu_idle_work(kbdev);
+				turn_on_sc_power_rails(kbdev);
+				kbase_csf_ring_cs_kernel_doorbell(kbdev,
+					queue->csi_index, group->csg_nr, true);
+			}
+#endif
 		}
 	}
 
@@ -5488,6 +6016,28 @@ static void check_sync_update_in_sleep_mode(struct kbase_device *kbdev)
 	}
 }
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+static void check_sync_update_after_sc_power_down(struct kbase_device *kbdev)
+{
+	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
+	u32 const num_groups = kbdev->csf.global_iface.group_num;
+	u32 csg_nr;
+
+	lockdep_assert_held(&scheduler->lock);
+
+	for (csg_nr = 0; csg_nr < num_groups; csg_nr++) {
+		struct kbase_queue_group *const group =
+			kbdev->csf.scheduler.csg_slots[csg_nr].resident_group;
+
+		if (!group)
+			continue;
+
+		if (check_sync_update_for_on_slot_group(group))
+			return;
+	}
+}
+#endif
+
 /**
  * check_group_sync_update_worker() - Check the sync wait condition for all the
  *                                    blocked queue groups
@@ -5526,6 +6076,14 @@ static void check_group_sync_update_worker(struct kthread_work *work)
 				 */
 				update_idle_suspended_group_state(group);
 				KBASE_KTRACE_ADD_CSF_GRP(kbdev, GROUP_SYNC_UPDATE_DONE, group, 0u);
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+				cancel_gpu_idle_work(kbdev);
+				/* As an off-slot group has become runnable,
+				 * the rails will be turned on and the CS
+				 * kernel doorbell will be rung from the
+				 * scheduling tick.
+				 */
+#endif
 			}
 		}
 	} else {
@@ -5542,6 +6100,15 @@ static void check_group_sync_update_worker(struct kthread_work *work)
 	 */
 	if (!sync_updated && (scheduler->state == SCHED_SLEEPING))
 		check_sync_update_in_sleep_mode(kbdev);
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	/* Check if the sync update happened for a blocked on-slot group,
+	 * after the shader core power rails were turned off and reactivate
+	 * the GPU if the wait condition is met for the blocked group.
+	 */
+	if (!sync_updated && scheduler->sc_power_rails_off)
+		check_sync_update_after_sc_power_down(kbdev);
+#endif
 
 	KBASE_KTRACE_ADD(kbdev, GROUP_SYNC_UPDATE_WORKER_END, kctx, 0u);
 
@@ -5676,7 +6243,13 @@ int kbase_csf_scheduler_early_init(struct kbase_device *kbdev)
 	scheduler->csg_scheduling_period_ms = CSF_SCHEDULER_TIME_TICK_MS;
 	scheduler_doorbell_init(kbdev);
 
-	INIT_WORK(&scheduler->gpu_idle_work, gpu_idle_worker);
+	INIT_DEFERRABLE_WORK(&scheduler->gpu_idle_work, gpu_idle_worker);
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	INIT_WORK(&scheduler->sc_rails_off_work, sc_rails_off_worker);
+	scheduler->sc_power_rails_off = true;
+	scheduler->gpu_idle_work_pending = false;
+	scheduler->keep_gpu_idle_timer_disabled = false;
+#endif
 	atomic_set(&scheduler->non_idle_offslot_grps, 0);
 
 	hrtimer_init(&scheduler->tick_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
@@ -5696,7 +6269,10 @@ void kbase_csf_scheduler_term(struct kbase_device *kbdev)
 		 * to be active at the time of Driver unload.
 		 */
 		WARN_ON(kbase_csf_scheduler_get_nr_active_csgs(kbdev));
-		flush_work(&kbdev->csf.scheduler.gpu_idle_work);
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+		flush_work(&kbdev->csf.scheduler.sc_rails_off_work);
+#endif
+		flush_delayed_work(&kbdev->csf.scheduler.gpu_idle_work);
 		mutex_lock(&kbdev->csf.scheduler.lock);
 
 		if (kbdev->csf.scheduler.state != SCHED_SUSPENDED) {
@@ -5753,7 +6329,7 @@ static void scheduler_enable_tick_timer_nolock(struct kbase_device *kbdev)
 		enqueue_tick_work(kbdev);
 		dev_dbg(kbdev->dev, "Re-enabling the scheduler timer\n");
 	} else if (scheduler->state != SCHED_SUSPENDED) {
-		queue_work(system_wq, &scheduler->gpu_idle_work);
+		enqueue_gpu_idle_work(scheduler, 0);
 	}
 }
 

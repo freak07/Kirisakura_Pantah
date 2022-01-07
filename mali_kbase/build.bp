@@ -133,6 +133,9 @@ bob_defaults {
     mali_hw_errata_1485982_use_clock_alternative: {
         kbuild_options: ["CONFIG_MALI_HW_ERRATA_1485982_USE_CLOCK_ALTERNATIVE=y"],
     },
+    mali_host_controls_sc_rails: {
+        kbuild_options: ["CONFIG_MALI_HOST_CONTROLS_SC_RAILS=y"],
+    },
     kbuild_options: [
         "CONFIG_MALI_PLATFORM_NAME={{.mali_platform_name}}",
         "MALI_CUSTOMER_RELEASE={{.release}}",

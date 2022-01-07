@@ -1515,6 +1515,12 @@ static void kbase_csf_firmware_reload_worker(struct work_struct *work)
 
 	kbase_csf_tl_reader_reset(&kbdev->timeline->csf_tl_reader);
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	err = kbase_csf_firmware_cfg_enable_host_ctrl_sc_rails(kbdev);
+	if (WARN_ON(err))
+		return;
+#endif
+
 	/* Reboot the firmware */
 	kbase_csf_firmware_enable_mcu(kbdev);
 }
@@ -1798,9 +1804,16 @@ int kbase_csf_firmware_init(struct kbase_device *kbdev)
 	kbdev->csf.gpu_idle_dur_count = convert_dur_to_idle_count(
 		kbdev, kbdev->csf.gpu_idle_hysteresis_ms);
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	/* Set to the lowest posssible value for FW to immediately write
+	 * to the power off register to disable the cores.
+	 */
+	kbdev->csf.mcu_core_pwroff_dur_count = 1;
+#else
 	kbdev->csf.mcu_core_pwroff_dur_us = DEFAULT_GLB_PWROFF_TIMEOUT_US;
 	kbdev->csf.mcu_core_pwroff_dur_count = convert_dur_to_core_pwroff_count(
 		kbdev, DEFAULT_GLB_PWROFF_TIMEOUT_US);
+#endif
 
 	ret = kbase_mcu_shared_interface_region_tracker_init(kbdev);
 	if (ret != 0) {
@@ -1888,6 +1901,14 @@ int kbase_csf_firmware_init(struct kbase_device *kbdev)
 		dev_err(kbdev->dev, "Failed to initialize trace buffers\n");
 		goto error;
 	}
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	ret = kbase_csf_firmware_cfg_enable_host_ctrl_sc_rails(kbdev);
+	if (ret != 0) {
+		dev_err(kbdev->dev, "Failed to enable SC PM WA");
+		goto error;
+	}
+#endif
 
 	/* Make sure L2 cache is powered up */
 	kbase_pm_wait_for_l2_powered(kbdev);

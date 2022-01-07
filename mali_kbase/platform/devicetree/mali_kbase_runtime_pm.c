@@ -261,6 +261,18 @@ static void pm_callback_suspend(struct kbase_device *kbdev)
 	pm_callback_runtime_off(kbdev);
 }
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+static void pm_callback_sc_rails_on(struct kbase_device *kbdev)
+{
+	dev_dbg(kbdev->dev, "SC rails are on");
+}
+
+static void pm_callback_sc_rails_off(struct kbase_device *kbdev)
+{
+	dev_dbg(kbdev->dev, "SC rails are off");
+}
+#endif
+
 struct kbase_pm_callback_conf pm_callbacks = {
 	.power_on_callback = pm_callback_power_on,
 	.power_off_callback = pm_callback_power_off,
@@ -284,6 +296,11 @@ struct kbase_pm_callback_conf pm_callbacks = {
 #else
 	.power_runtime_gpu_idle_callback = NULL,
 	.power_runtime_gpu_active_callback = NULL,
+#endif
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	.power_on_sc_rails_callback = pm_callback_sc_rails_on,
+	.power_off_sc_rails_callback = pm_callback_sc_rails_off,
 #endif
 };
 

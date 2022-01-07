@@ -286,6 +286,10 @@ union kbase_pm_policy_data {
  *                                     @callback_power_runtime_gpu_idle was
  *                                     called previously.
  *                                     See &struct kbase_pm_callback_conf.
+ * @callback_power_on_sc_rails: Callback invoked to turn on the shader core
+ *                              power rails. See &struct kbase_pm_callback_conf.
+ * @callback_power_off_sc_rails: Callback invoked to turn off the shader core
+ *                               power rails. See &struct kbase_pm_callback_conf.
  * @ca_cores_enabled: Cores that are currently available
  * @mcu_state: The current state of the micro-control unit, only applicable
  *             to GPUs that have such a component
@@ -446,6 +450,10 @@ struct kbase_pm_backend_data {
 	int (*callback_soft_reset)(struct kbase_device *kbdev);
 	void (*callback_power_runtime_gpu_idle)(struct kbase_device *kbdev);
 	void (*callback_power_runtime_gpu_active)(struct kbase_device *kbdev);
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	void (*callback_power_on_sc_rails)(struct kbase_device *kbdev);
+	void (*callback_power_off_sc_rails)(struct kbase_device *kbdev);
+#endif
 
 	u64 ca_cores_enabled;
 

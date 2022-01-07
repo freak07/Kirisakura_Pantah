@@ -625,4 +625,15 @@ void kbase_csf_scheduler_force_wakeup(struct kbase_device *kbdev);
 void kbase_csf_scheduler_force_sleep(struct kbase_device *kbdev);
 #endif
 
+/**
+ * kbase_csf_scheduler_process_gpu_idle_event() - Process GPU idle event
+ *
+ * @kbdev: Pointer to the device
+ *
+ * This function is called when a IRQ for GPU idle event has been raised.
+ *
+ * Return: true if the GPU idle event can be acknowledged.
+ */
+bool kbase_csf_scheduler_process_gpu_idle_event(struct kbase_device *kbdev);
+
 #endif /* _KBASE_CSF_SCHEDULER_H_ */
