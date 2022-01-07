@@ -446,6 +446,7 @@ int gpu_dvfs_metrics_init(struct kbase_device *kbdev)
 	int c;
 
 	mutex_lock(&pc->dvfs.lock);
+	spin_lock_init(&pc->dvfs.metrics.lock);
 
 	pc->dvfs.metrics.last_time = ktime_get_ns();
 	pc->dvfs.metrics.last_power_state = gpu_pm_get_power_state(kbdev);
