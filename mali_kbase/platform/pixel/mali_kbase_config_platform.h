@@ -120,14 +120,14 @@ enum gpu_power_state {
 	 * The power state can thus be defined as the highest-level domain that
 	 * is currently powered on.
 	 *
-	 * GLOBAL: The frontend (JM, CSF), including registers.
-	 * COREGROUP: The L2 and AXI interface, Tiler, and MMU.
-	 * STACKS: The shader cores.
+	 * GLOBAL: JM, CSF: The frontend (JM, CSF), including registers.
+	 *         CSF: The L2 and AXI interface, Tiler, and MMU.
+	 * STACKS: JM, CSF: The shader cores.
+	 *         JM: The L2 and AXI interface, Tiler, and MMU.
 	 */
 	GPU_POWER_LEVEL_OFF       = 0,
 	GPU_POWER_LEVEL_GLOBAL    = 1,
-	GPU_POWER_LEVEL_COREGROUP = 2,
-	GPU_POWER_LEVEL_STACKS    = 3,
+	GPU_POWER_LEVEL_STACKS    = 2,
 };
 
 /**

@@ -28,6 +28,7 @@
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
 #include "pixel_gpu_trace.h"
+#include <trace/events/power.h>
 
 /*
  * GPU_PM_DOMAIN_NAMES - names for GPU power domains.
@@ -41,7 +42,7 @@ static const char * const GPU_PM_DOMAIN_NAMES[GPU_PM_DOMAIN_COUNT] = {
 };
 
 /**
- * gpu_pm_power_on_cores() - Powers on the GPU shader cores.
+ * gpu_pm_power_on_top() - Powers on the GPU global domains and shader cores.
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
@@ -52,7 +53,7 @@ static const char * const GPU_PM_DOMAIN_NAMES[GPU_PM_DOMAIN_COUNT] = {
  *
  * Return: If GPU state has been lost, 1 is returned. Otherwise 0 is returned.
  */
-static int gpu_pm_power_on_cores(struct kbase_device *kbdev)
+static int gpu_pm_power_on_top(struct kbase_device *kbdev)
 {
 	int ret;
 	struct pixel_context *pc = kbdev->platform_context;
@@ -62,7 +63,6 @@ static int gpu_pm_power_on_cores(struct kbase_device *kbdev)
 
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
-
 	/*
 	 * We determine whether GPU state was lost by detecting whether the GPU state reached
 	 * GPU_POWER_LEVEL_OFF before we entered this function. The GPU state is set to be
@@ -94,32 +94,33 @@ static int gpu_pm_power_on_cores(struct kbase_device *kbdev)
 }
 
 /**
- * gpu_pm_power_off_cores() - Powers off the GPU shader cores.
+ * gpu_pm_power_off_top() - Instruct GPU to transition to OFF.
  *
  * @kbdev: The &struct kbase_device for the GPU.
  *
- * Powers off the CORES domain and issues trace points and events. Also marks the TOP domain for
- * delayed suspend. Complete power down of all GPU domains will only occur after this delayed
- * suspend, and the kernel notifies of this change via the &gpu_pm_callback_power_runtime_suspend
- * callback.
+ * Powers off the CORES domain if they are on. Marks the TOP domain for delayed
+ * suspend. The complete power down of all GPU domains will only occur after
+ * this delayed suspend, and the kernel notifies of this change via the
+ * &gpu_pm_callback_power_runtime_suspend callback.
  *
  * Note: If the we have already performed these operations without an intervening call to
- *       &gpu_pm_power_on_cores, then we take no action.
+ *       &gpu_pm_power_on_top, then we take no action.
  *
  * Context: Process context. Takes and releases the PM lock.
  */
-static void gpu_pm_power_off_cores(struct kbase_device *kbdev)
+static void gpu_pm_power_off_top(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
 
 	mutex_lock(&pc->pm.lock);
 
-	if (pc->pm.state > GPU_POWER_LEVEL_GLOBAL) {
+	if (pc->pm.state == GPU_POWER_LEVEL_STACKS) {
 		pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
 		pc->pm.state = GPU_POWER_LEVEL_GLOBAL;
+	}
 
-
+	if (pc->pm.state == GPU_POWER_LEVEL_GLOBAL) {
 		pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 		pm_runtime_put_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 
@@ -155,7 +156,7 @@ static int gpu_pm_callback_power_on(struct kbase_device *kbdev)
 {
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
-	return gpu_pm_power_on_cores(kbdev);
+	return gpu_pm_power_on_top(kbdev);
 }
 
 /**
@@ -173,7 +174,7 @@ static void gpu_pm_callback_power_off(struct kbase_device *kbdev)
 {
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
-	gpu_pm_power_off_cores(kbdev);
+	gpu_pm_power_off_top(kbdev);
 }
 
 /**
@@ -207,7 +208,7 @@ static void gpu_pm_callback_power_suspend(struct kbase_device *kbdev)
 {
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
-	gpu_pm_power_off_cores(kbdev);
+	gpu_pm_power_off_top(kbdev);
 }
 
 #if IS_ENABLED(KBASE_PM_RUNTIME)
@@ -319,6 +320,87 @@ static void gpu_pm_callback_power_runtime_term(struct kbase_device *kbdev)
 
 #endif /* IS_ENABLED(KBASE_PM_RUNTIME) */
 
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+/**
+ * gpu_pm_power_on_cores() - Powers on the GPU shader cores for
+ *                           CONFIG_MALI_HOST_CONTROLS_SC_RAILS integrations.
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * Powers on the CORES domain for CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+ * integrations. Afterwards shaders must be powered and may be used by GPU.
+ *
+ * Context: Process context. Takes and releases PM lock.
+ */
+static void gpu_pm_power_on_cores(struct kbase_device *kbdev) {
+	struct pixel_context *pc = kbdev->platform_context;
+	mutex_lock(&pc->pm.lock);
+	if (pc->pm.state == GPU_POWER_LEVEL_GLOBAL) {
+		pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
+		pc->pm.state = GPU_POWER_LEVEL_STACKS;
+
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+		gpu_dvfs_event_power_on(kbdev);
+#endif
+	}
+	mutex_unlock(&pc->pm.lock);
+}
+
+/**
+ * gpu_pm_power_off_cores() - Powers off the GPU shader cores for
+ *                            CONFIG_MALI_HOST_CONTROLS_SC_RAILS integrations.
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * Powers off the CORES domain for CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+ * integrations. Afterwards shaders are not powered and may not be used by GPU.
+ *
+ * Context: Process context. Takes and releases PM lock.
+ */
+static void gpu_pm_power_off_cores(struct kbase_device *kbdev) {
+	struct pixel_context *pc = kbdev->platform_context;
+	mutex_lock(&pc->pm.lock);
+	if (pc->pm.state == GPU_POWER_LEVEL_STACKS) {
+		pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
+		pc->pm.state = GPU_POWER_LEVEL_GLOBAL;
+
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+		gpu_dvfs_event_power_off(kbdev);
+#endif
+	}
+	mutex_unlock(&pc->pm.lock);
+}
+
+/**
+ * gpu_pm_callback_power_sc_rails_on() - Called by GPU when shaders are needed.
+ *
+ * @kbdev: The device that needs its shaders powered on.
+ *
+ * This callback is made when @dev needs shader cores powered on integrations
+ * using CONFIG_MALI_HOST_CONTROLS_SC_RAILS.
+ */
+static void gpu_pm_callback_power_sc_rails_on(struct kbase_device *kbdev) {
+	dev_dbg(kbdev->dev, "%s\n", __func__);
+
+	gpu_pm_power_on_cores(kbdev);
+}
+
+/**
+ * gpu_pm_callback_power_sc_rails_off() - Called by GPU when shaders are idle.
+ *
+ * @kbdev: The device that needs its shaders powered on.
+ *
+ * This callback is made when @dev coud have its shader cores powered off on
+ * integrations using CONFIG_MALI_HOST_CONTROLS_SC_RAILS.
+ */
+static void gpu_pm_callback_power_sc_rails_off(struct kbase_device *kbdev) {
+	dev_dbg(kbdev->dev, "%s\n", __func__);
+
+	gpu_pm_power_off_cores(kbdev);
+}
+#endif /* CONFIG_MALI_HOST_CONTROLS_SC_RAILS */
+
 /*
  * struct pm_callbacks - Callbacks for linking to core Mali KMD power management
  *
@@ -367,6 +449,10 @@ struct kbase_pm_callback_conf pm_callbacks = {
 	.power_runtime_idle_callback = NULL,
 #endif /* KBASE_PM_RUNTIME */
 	.soft_reset_callback = NULL,
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	.power_on_sc_rails_callback = gpu_pm_callback_power_sc_rails_on,
+	.power_off_sc_rails_callback = gpu_pm_callback_power_sc_rails_off,
+#endif /* CONFIG_MALI_HOST_CONTROLS_SC_RAILS */
 };
 
 /**
