@@ -295,16 +295,22 @@ static void mali_pma_slab_dealloc(
 	/* Lock the slab list. */
 	mutex_lock(&(mali_pma_dev->slab_mutex));
 
-	/* Deallocate all the blocks in the slab. */
+	/* Get the slab. */
 	slab = mali_pma->slab;
-	bitmap_clear((unsigned long *) &(slab->allocated_block_map),
-			mali_pma->first_block_index, mali_pma->block_count);
 
-	/* If no slab blocks remain allocated, remove the slab. */
-	if (bitmap_empty(
-		(unsigned long *) &(slab->allocated_block_map),
-		MALI_PMA_SLAB_BLOCK_COUNT)) {
-		mali_pma_slab_remove(mali_pma_dev, slab);
+	/* Deallocate the slab. */
+	if (slab != NULL) {
+		/* Deallocate all the blocks in the slab. */
+		bitmap_clear((unsigned long *) &(slab->allocated_block_map),
+				mali_pma->first_block_index,
+				mali_pma->block_count);
+
+		/* If no slab blocks remain allocated, remove the slab. */
+		if (bitmap_empty(
+			(unsigned long *) &(slab->allocated_block_map),
+			MALI_PMA_SLAB_BLOCK_COUNT)) {
+			mali_pma_slab_remove(mali_pma_dev, slab);
+		}
 	}
 
 	/* Unlock the slab list. */
