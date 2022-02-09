@@ -1612,15 +1612,20 @@ u32 kbase_csf_firmware_get_gpu_idle_hysteresis_time(struct kbase_device *kbdev)
 u32 kbase_csf_firmware_set_gpu_idle_hysteresis_time(struct kbase_device *kbdev, u32 dur)
 {
 	unsigned long flags;
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	const u32 hysteresis_val = convert_dur_to_idle_count(kbdev, MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_MS);
+#else
 	const u32 hysteresis_val = convert_dur_to_idle_count(kbdev, dur);
+#endif
 
 	kbase_csf_scheduler_spin_lock(kbdev, &flags);
 	kbdev->csf.gpu_idle_hysteresis_ms = dur;
 	kbdev->csf.gpu_idle_dur_count = hysteresis_val;
 	kbase_csf_scheduler_spin_unlock(kbdev, flags);
 
-	dev_dbg(kbdev->dev, "CSF set firmware idle hysteresis count-value: 0x%.8x",
-		hysteresis_val);
+	dev_info(kbdev->dev, "GPU suspend timeout updated: %i ms (0x%.8x)",
+		kbdev->csf.gpu_idle_hysteresis_ms,
+		kbdev->csf.gpu_idle_dur_count);
 
 	return hysteresis_val;
 }
@@ -1777,6 +1782,7 @@ int kbase_csf_firmware_init(struct kbase_device *kbdev)
 	u32 version_hash;
 	u32 entry_end_offset;
 	u32 entry_offset;
+	u32 gpu_idle_hysteresis_ms;
 	int ret;
 
 	lockdep_assert_held(&kbdev->fw_load_lock);
@@ -1801,19 +1807,28 @@ int kbase_csf_firmware_init(struct kbase_device *kbdev)
 			FIRMWARE_IDLE_HYSTERESIS_GPU_SLEEP_SCALER;
 #endif
 	WARN_ON(!kbdev->csf.gpu_idle_hysteresis_ms);
-	kbdev->csf.gpu_idle_dur_count = convert_dur_to_idle_count(
-		kbdev, kbdev->csf.gpu_idle_hysteresis_ms);
 
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	gpu_idle_hysteresis_ms = MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_MS;
 	/* Set to the lowest posssible value for FW to immediately write
 	 * to the power off register to disable the cores.
 	 */
 	kbdev->csf.mcu_core_pwroff_dur_count = 1;
 #else
+	gpu_idle_hysteresis_ms = kbdev->csf.gpu_idle_hysteresis_ms;
 	kbdev->csf.mcu_core_pwroff_dur_us = DEFAULT_GLB_PWROFF_TIMEOUT_US;
 	kbdev->csf.mcu_core_pwroff_dur_count = convert_dur_to_core_pwroff_count(
 		kbdev, DEFAULT_GLB_PWROFF_TIMEOUT_US);
 #endif
+	kbdev->csf.gpu_idle_dur_count = convert_dur_to_idle_count(
+		kbdev, gpu_idle_hysteresis_ms);
+
+	dev_info(kbdev->dev, "MCU core pwroff timeout: 0x%.8x",
+		kbdev->csf.mcu_core_pwroff_dur_count);
+	dev_info(kbdev->dev, "GPU shader idle notify: %i ms (0x%.8x cnt)",
+		gpu_idle_hysteresis_ms, kbdev->csf.gpu_idle_dur_count);
+	dev_info(kbdev->dev, "GPU suspend timeout: %i ms",
+		kbdev->csf.gpu_idle_hysteresis_ms);
 
 	ret = kbase_mcu_shared_interface_region_tracker_init(kbdev);
 	if (ret != 0) {

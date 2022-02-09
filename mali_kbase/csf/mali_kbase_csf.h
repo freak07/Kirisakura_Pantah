@@ -46,6 +46,7 @@
  *                    enabled.
  */
 #define FIRMWARE_IDLE_HYSTERESIS_TIME_MS (100)
+#define MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_MS (1)
 
 /* Idle hysteresis time can be scaled down when GPU sleep feature is used */
 #define FIRMWARE_IDLE_HYSTERESIS_GPU_SLEEP_SCALER (5)
