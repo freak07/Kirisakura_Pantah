@@ -32,6 +32,7 @@
 #include <uapi/gpu/arm/midgard/csf/mali_gpu_csf_registers.h>
 #include <uapi/gpu/arm/midgard/mali_base_kernel.h>
 #include <mali_kbase_hwaccess_time.h>
+#include <trace/events/power.h>
 
 /* Value to indicate that a queue group is not groups_to_schedule list */
 #define KBASEP_GROUP_PREPARED_SEQ_NUM_INVALID (U32_MAX)
@@ -4534,6 +4535,7 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 	long wt = kbase_csf_timeout_in_jiffies(kbdev->csf.fw_timeout_ms);
 	u32 num_groups = kbdev->csf.global_iface.group_num;
 	unsigned long flags, i;
+	bool shaders_ready;
 
 	lockdep_assert_held(&scheduler->lock);
 
@@ -4609,7 +4611,23 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 		}
 	}
 
-	return true;
+	//This workaround works by reading these registers indicating GPU activity.
+	//If these registers report GPU is in progress, but this function had determined that the
+	//GPU was idle, then this function must have detected idleness incorrectly.
+	shaders_ready = kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_READY_HI)) ||
+			kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_READY_LO));
+	if (shaders_ready) {
+		trace_clock_set_rate("idle_detection_failed.", 1, raw_smp_processor_id());
+		dev_warn(kbdev->dev, "GPU Idle Detection Failed");
+	}
+
+	//In this workaround, we'll prefer the SHADER_READY state. This is not
+	//completely robust, but in practice averts most the situations where a shader
+	//rail off is issued during a job.
+	//
+	//If shader rail is turned off during job, APM generates fatal error
+	//and GPU firmware will generate error interrupt and try to reset.
+	return !shaders_ready;
 }
 
 /**
