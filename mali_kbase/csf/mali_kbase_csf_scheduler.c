@@ -4534,7 +4534,6 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 	long wt = kbase_csf_timeout_in_jiffies(kbdev->csf.fw_timeout_ms);
 	u32 num_groups = kbdev->csf.global_iface.group_num;
 	unsigned long flags, i;
-	bool gpu_idle = true;
 
 	lockdep_assert_held(&scheduler->lock);
 
@@ -4552,12 +4551,6 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 	}
 	spin_unlock_irqrestore(&scheduler->interrupt_lock, flags);
 
-	/* Acknowledge the GPU idle event before inquiring the status of CSGs.
-	 * This is because in case FW reports CSGs as non-idle it doesn't miss
-	 * out on sending the next GPU idle event as it might see that previous
-	 * one hasn't been acknowledged.
-	 */
-	ack_gpu_idle_event(kbdev);
 	kbase_csf_ring_csg_slots_doorbell(kbdev, csg_bitmap[0]);
 
 	if (wait_csg_slots_handshake_ack(kbdev,
@@ -4571,6 +4564,7 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 		return false;
 	}
 
+	ack_gpu_idle_event(kbdev);
 	for_each_set_bit(i, scheduler->csg_slots_idle_mask, num_groups) {
 		struct kbase_csf_cmd_stream_group_info *const ginfo =
 			&kbdev->csf.global_iface.groups[i];
@@ -4606,18 +4600,15 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 					group_idle = false;
 			}
 
-			if (!group_idle)
+			if (!group_idle) {
 				kbase_csf_ring_cs_kernel_doorbell(kbdev,
-					queue->csi_index, group->csg_nr, false);
-		}
-
-		if (!group_idle) {
-			kbase_csf_ring_csg_doorbell(kbdev, group->csg_nr);
-			gpu_idle = false;
+					queue->csi_index, group->csg_nr, true);
+				return false;
+			}
 		}
 	}
 
-	return gpu_idle;
+	return true;
 }
 
 /**
