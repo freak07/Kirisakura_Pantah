@@ -4571,13 +4571,14 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 		struct kbase_csf_csg_slot *csg_slot = &scheduler->csg_slots[i];
 		struct kbase_queue_group *group = csg_slot->resident_group;
 		bool group_idle = true;
+		int j;
 
 		if (!group_on_slot_is_idle(kbdev, i))
 			group_idle = false;
 
-		for (i = 0; i < ginfo->stream_num; i++) {
+		for (j = 0; j < ginfo->stream_num; j++) {
 			struct kbase_queue *const queue =
-					group->bound_queues[i];
+					group->bound_queues[j];
 
 			if (!queue || !queue->enabled)
 				continue;
