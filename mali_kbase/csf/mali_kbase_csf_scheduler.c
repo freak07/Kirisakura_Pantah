@@ -4657,7 +4657,8 @@ static bool can_turn_off_sc_rails(struct kbase_device *kbdev)
 	spin_lock(&scheduler->interrupt_lock);
 	turn_off_sc_rails = kbase_csf_scheduler_all_csgs_idle(kbdev) &&
 			    !atomic_read(&scheduler->non_idle_offslot_grps) &&
-			    !kbase_pm_no_mcu_core_pwroff(kbdev);
+			    !kbase_pm_no_mcu_core_pwroff(kbdev) &&
+			    !scheduler->sc_power_rails_off;
 	spin_unlock(&scheduler->interrupt_lock);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
