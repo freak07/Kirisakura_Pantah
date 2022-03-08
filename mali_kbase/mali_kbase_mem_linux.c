@@ -1649,8 +1649,15 @@ KERNEL_VERSION(4, 5, 0) > LINUX_VERSION_CODE
 	faulted_pages = get_user_pages(address, *va_pages,
 			write ? FOLL_WRITE : 0, pages, NULL);
 #else
+	/*
+	 * User buffers should be pinned with FOLL_LONGTERM flag as their usage
+	 * cannot be time bounded. This will make sure that we do not pin pages
+	 * in the CMA region.
+	 */
+	pages = user_buf->pages;
 	faulted_pages = pin_user_pages(address, *va_pages,
-				       write ? FOLL_WRITE : 0, pages, NULL);
+				       write ? FOLL_WRITE | FOLL_LONGTERM : FOLL_LONGTERM,
+				       pages, NULL);
 #endif
 
 	up_read(kbase_mem_get_process_mmap_lock());
