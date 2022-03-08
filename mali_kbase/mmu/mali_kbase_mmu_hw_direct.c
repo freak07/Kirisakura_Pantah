@@ -140,7 +140,6 @@ static int wait_ready(struct kbase_device *kbdev,
 		dev_err(kbdev->dev,
 			"AS_ACTIVE bit stuck for as %u, might be caused by slow/unstable GPU clock or possible faulty FPGA connector",
 			as_nr);
-		dump_stack();
 		return -1;
 	}
 
