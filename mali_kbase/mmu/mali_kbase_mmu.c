@@ -152,7 +152,7 @@ mmu_flush_invalidate_on_gpu_ctrl(struct kbase_device *kbdev,
 
 	/* 1. Issue MMU_AS_CONTROL.COMMAND.LOCK operation. */
 	op_param->op = KBASE_MMU_OP_LOCK;
-	ret = kbase_mmu_hw_do_operation_locked(kbdev, as, op_param);
+	ret = kbase_mmu_hw_do_operation(kbdev, as, op_param);
 	if (ret)
 		return ret;
 
@@ -161,7 +161,7 @@ mmu_flush_invalidate_on_gpu_ctrl(struct kbase_device *kbdev,
 
 	/* 3. Issue MMU_AS_CONTROL.COMMAND.UNLOCK operation. */
 	op_param->op = KBASE_MMU_OP_UNLOCK;
-	ret2 = kbase_mmu_hw_do_operation_locked(kbdev, as, op_param);
+	ret2 = kbase_mmu_hw_do_operation(kbdev, as, op_param);
 
 	return ret ?: ret2;
 }
@@ -1845,7 +1845,7 @@ static void kbase_mmu_flush_invalidate_noretain(struct kbase_context *kctx,
 		err = mmu_flush_invalidate_on_gpu_ctrl(
 			kbdev, &kbdev->as[kctx->as_nr], &op_param);
 	} else {
-		err = kbase_mmu_hw_do_operation_locked(kbdev, &kbdev->as[kctx->as_nr],
+		err = kbase_mmu_hw_do_operation(kbdev, &kbdev->as[kctx->as_nr],
 						&op_param);
 	}
 

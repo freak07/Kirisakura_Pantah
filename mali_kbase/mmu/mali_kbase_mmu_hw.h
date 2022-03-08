@@ -102,22 +102,6 @@ void kbase_mmu_hw_configure(struct kbase_device *kbdev,
 		struct kbase_as *as);
 
 /**
- * kbase_mmu_hw_do_operation_locked - Issue an operation to the MMU.
- * @kbdev:         kbase device to issue the MMU operation on.
- * @as:            address space to issue the MMU operation on.
- * @op_param:      parameters for the operation.
- *
- * Issue an operation (MMU invalidate, MMU flush, etc) on the address space that
- * is associated with the provided kbase_context over the specified range
- *
- * Context: Expects the caller to hold the hwaccess_lock and the mmu_hw_mutex
- *
- * Return: Zero if the operation was successful, non-zero otherwise.
- */
-int kbase_mmu_hw_do_operation_locked(struct kbase_device *kbdev, struct kbase_as *as,
-			struct kbase_mmu_hw_op_param *op_param);
-
-/**
  * kbase_mmu_hw_do_operation - Issue an operation to the MMU.
  * @kbdev:         kbase device to issue the MMU operation on.
  * @as:            address space to issue the MMU operation on.

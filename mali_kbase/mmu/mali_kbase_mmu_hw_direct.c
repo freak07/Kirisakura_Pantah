@@ -226,21 +226,6 @@ int kbase_mmu_hw_do_operation(struct kbase_device *kbdev, struct kbase_as *as,
 			      struct kbase_mmu_hw_op_param *op_param)
 {
 	int ret;
-	unsigned long flags;
-
-	lockdep_assert_held(&kbdev->mmu_hw_mutex);
-
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	ret = kbase_mmu_hw_do_operation_locked(kbdev, as, op_param);
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-
-	return ret;
-}
-
-int kbase_mmu_hw_do_operation_locked(struct kbase_device *kbdev, struct kbase_as *as,
-			      struct kbase_mmu_hw_op_param *op_param)
-{
-	int ret;
 	u64 lock_addr = 0x0;
 
 	if (WARN_ON(kbdev == NULL) ||
