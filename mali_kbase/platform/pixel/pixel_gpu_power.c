@@ -137,9 +137,14 @@ static void gpu_pm_power_off_top(struct kbase_device *kbdev)
 #endif
 
 	if (pc->pm.state == GPU_POWER_LEVEL_GLOBAL) {
-		pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
-		pm_runtime_put_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
+		if (pc->pm.use_autosuspend) {
+			pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
+			pm_runtime_put_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
+		} else {
+			pm_runtime_put_sync_suspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
+		}
 		pc->pm.state = GPU_POWER_LEVEL_OFF;
+		trace_gpu_power_state(ktime_get_ns() - start_ns, prev_state, pc->pm.state);
 
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 		gpu_dvfs_event_power_off(kbdev);
@@ -249,14 +254,16 @@ static int gpu_pm_callback_power_runtime_init(struct kbase_device *kbdev)
 
 	dev_dbg(kbdev->dev, "%s\n", __func__);
 
-	pm_runtime_set_autosuspend_delay(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP],
-		pc->pm.autosuspend_delay);
-	pm_runtime_use_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
-
 	if (!pm_runtime_enabled(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]) ||
 		!pm_runtime_enabled(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES])) {
 		dev_warn(kbdev->dev, "pm_runtime not enabled\n");
 		return -ENOSYS;
+	}
+
+	if (pc->pm.use_autosuspend) {
+		pm_runtime_set_autosuspend_delay(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP],
+			pc->pm.autosuspend_delay);
+		pm_runtime_use_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 	}
 
 	return 0;
@@ -497,9 +504,12 @@ int gpu_pm_init(struct kbase_device *kbdev)
 	}
 
 	if (of_property_read_u32(np, "gpu_pm_autosuspend_delay", &pc->pm.autosuspend_delay)) {
-		pc->pm.autosuspend_delay = AUTO_SUSPEND_DELAY;
-		dev_info(kbdev->dev, "autosuspend delay not set in DT, using default of %dms\n",
-			AUTO_SUSPEND_DELAY);
+		pc->pm.use_autosuspend = false;
+		pc->pm.autosuspend_delay = 0;
+		dev_info(kbdev->dev, "using synchronous suspend for TOP domain\n");
+	} else {
+		pc->pm.use_autosuspend = true;
+		dev_info(kbdev->dev, "autosuspend delay set to %ims for TOP domain\n", pc->pm.autosuspend_delay);
 	}
 
 	if (of_property_read_u32(np, "gpu_pmu_status_reg_offset", &pc->pm.status_reg_offset)) {
