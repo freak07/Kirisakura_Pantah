@@ -20,6 +20,7 @@
 #if IS_ENABLED(CONFIG_CAL_IF)
 #include <soc/google/cal-if.h>
 #endif
+#include <soc/samsung/exynos-smc.h>
 
 /* Mali core includes */
 #include <mali_kbase.h>
@@ -86,6 +87,12 @@ static int gpu_pm_power_on_top(struct kbase_device *kbdev)
 		google_init_gpu_ratio(pc->pm.bcl_dev);
 #endif
 
+#if !IS_ENABLED(CONFIG_SOC_GS101)
+	if (exynos_smc(SMC_PROTECTION_SET, 0, PROT_G3D, SMC_PROTECTION_ENABLE) != 0) {
+		dev_err(kbdev->dev, "Couldn't enable protected mode after GPU power-on");
+	}
+#endif
+
 	pc->pm.state = GPU_POWER_LEVEL_STACKS;
 
 	mutex_unlock(&pc->pm.lock);
@@ -119,6 +126,12 @@ static void gpu_pm_power_off_top(struct kbase_device *kbdev)
 		pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
 		pc->pm.state = GPU_POWER_LEVEL_GLOBAL;
 	}
+
+#if !IS_ENABLED(CONFIG_SOC_GS101)
+	if (exynos_smc(SMC_PROTECTION_SET, 0, PROT_G3D, SMC_PROTECTION_DISABLE) != 0) {
+		dev_err(kbdev->dev, "Couldn't disable protected mode after GPU power-off");
+	}
+#endif
 
 	if (pc->pm.state == GPU_POWER_LEVEL_GLOBAL) {
 		pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);

@@ -13,7 +13,6 @@
 #include <linux/platform_device.h>
 #include <linux/protected_memory_allocator.h>
 #include <linux/slab.h>
-#include <soc/samsung/exynos-smc.h>
 
 #define MALI_PMA_DMA_HEAP_NAME "vframe-secure"
 #define MALI_PMA_SLAB_SIZE (1 << 16)
@@ -514,15 +513,6 @@ static int protected_memory_allocator_probe(struct platform_device *pdev)
 		goto out;
 	}
 
-	/* Enable protected mode for the GPU. */
-	ret = exynos_smc(
-		SMC_PROTECTION_SET, 0, PROT_G3D, SMC_PROTECTION_ENABLE);
-	if (ret) {
-		dev_err(&(pdev->dev),
-			"Failed to enable protected mode for the GPU\n");
-		goto out;
-	}
-
 	/* Log that the protected memory allocator was successfully probed. */
 	dev_info(&(pdev->dev),
 		"Protected memory allocator probed successfully\n");
@@ -546,7 +536,6 @@ static int protected_memory_allocator_remove(struct platform_device *pdev)
 {
 	struct protected_memory_allocator_device *pma_dev;
 	struct mali_pma_dev *mali_pma_dev;
-	int ret;
 
 	/* Get the Mali protected memory allocator device record. */
 	pma_dev = platform_get_drvdata(pdev);
@@ -559,14 +548,6 @@ static int protected_memory_allocator_remove(struct platform_device *pdev)
 	if (!list_empty(&(mali_pma_dev->slab_list))) {
 		dev_warn(&(pdev->dev),
 			"Some protected memory has been left allocated\n");
-	}
-
-	/* Disable protected mode for the GPU. */
-	ret = exynos_smc(
-		SMC_PROTECTION_SET, 0, PROT_G3D, SMC_PROTECTION_DISABLE);
-	if (ret) {
-		dev_warn(&(pdev->dev),
-			"Failed to disable protected mode for the GPU\n");
 	}
 
 	/* Release the DMA buffer heap. */
