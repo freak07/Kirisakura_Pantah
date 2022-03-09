@@ -3669,6 +3669,17 @@ static void wait_csg_slots_finish_prio_update(struct kbase_device *kbdev)
 	}
 }
 
+static void report_csg_termination(struct kbase_queue_group *const group)
+{
+	struct base_gpu_queue_group_error
+		err = { .error_type = BASE_GPU_QUEUE_GROUP_ERROR_FATAL,
+			.payload = { .fatal_group = {
+					     .status = GPU_EXCEPTION_TYPE_SW_FAULT_2,
+				     } } };
+
+	kbase_csf_add_group_fatal_error(group, &err);
+}
+
 void kbase_csf_scheduler_evict_ctx_slots(struct kbase_device *kbdev,
 		struct kbase_context *kctx, struct list_head *evicted_groups)
 {
@@ -3692,10 +3703,15 @@ void kbase_csf_scheduler_evict_ctx_slots(struct kbase_device *kbdev,
 		if (group && group->kctx == kctx) {
 			bool as_fault;
 
+			dev_dbg(kbdev->dev, "Evicting group [%d] running on slot [%d] due to reset",
+				group->handle, group->csg_nr);
+
 			term_csg_slot(group);
 			as_fault = cleanup_csg_slot(group);
 			/* remove the group from the scheduler list */
 			sched_evict_group(group, as_fault, false);
+			/* signal Userspace that CSG is being terminated */
+			report_csg_termination(group);
 			/* return the evicted group to the caller */
 			list_add_tail(&group->link, evicted_groups);
 			set_bit(slot, slot_mask);
@@ -3704,6 +3720,15 @@ void kbase_csf_scheduler_evict_ctx_slots(struct kbase_device *kbdev,
 
 	dev_info(kbdev->dev, "Evicting context %d_%d slots: 0x%*pb\n",
 			kctx->tgid, kctx->id, num_groups, slot_mask);
+
+	/* Fatal errors may have been the cause of the GPU reset
+	 * taking place, in which case we want to make sure that
+	 * we wake up the fatal event queue to notify userspace
+	 * only once. Otherwise, we may have duplicate event
+	 * notifications between the time the first notification
+	 * occurs and the time the GPU is reset.
+	 */
+	kbase_event_wakeup_nosync(kctx);
 
 	mutex_unlock(&scheduler->lock);
 }
