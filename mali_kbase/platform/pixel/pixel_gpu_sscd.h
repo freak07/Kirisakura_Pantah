@@ -17,11 +17,14 @@ void gpu_sscd_term(struct kbase_device *kbdev);
 
 void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason);
 #else
-static int gpu_sscd_init(struct kbase_device *kbdev) { return (void)kbdev, 0; }
+static int __maybe_unused gpu_sscd_init(struct kbase_device *kbdev) { return (void)kbdev, 0; }
 
-static void gpu_sscd_term(struct kbase_device *kbdev) { (void)kbdev; }
+static void __maybe_unused gpu_sscd_term(struct kbase_device *kbdev) { (void)kbdev; }
 
-static void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason) { (void)kbdev, (void)reason; }
+static void __maybe_unused gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
+{
+	(void)kbdev, (void)reason;
+}
 #endif /* CONFIG_MALI_PIXEL_GPU_SSCD */
 
 #endif /* _PIXEL_GPU_SSCD_H_ */

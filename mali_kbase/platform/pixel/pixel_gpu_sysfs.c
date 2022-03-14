@@ -12,6 +12,7 @@
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
 #include "pixel_gpu_dvfs.h"
+#include "pixel_gpu_sscd.h"
 
 static const char *gpu_dvfs_level_lock_names[GPU_DVFS_LEVEL_LOCK_COUNT] = {
 	"devicetree",
@@ -315,12 +316,25 @@ static ssize_t uid_time_in_state_h_show(struct device *dev, struct device_attrib
 	return ret;
 }
 
+static ssize_t trigger_core_dump_store(struct device *dev, struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	struct kbase_device *kbdev = dev->driver_data;
+
+	(void)attr, (void)buf;
+
+	gpu_sscd_dump(kbdev, "Manual core dump");
+
+	return count;
+}
+
 DEVICE_ATTR_RO(utilization);
 DEVICE_ATTR_RO(clock_info);
 DEVICE_ATTR_RO(dvfs_table);
 DEVICE_ATTR_RO(power_stats);
 DEVICE_ATTR_RO(uid_time_in_state);
 DEVICE_ATTR_RO(uid_time_in_state_h);
+DEVICE_ATTR_WO(trigger_core_dump);
 
 
 /* devfreq-like attributes */
@@ -722,7 +736,8 @@ static struct {
 	{ "time_in_state", &dev_attr_time_in_state },
 	{ "trans_stat", &dev_attr_trans_stat },
 	{ "available_governors", &dev_attr_available_governors },
-	{ "governor", &dev_attr_governor }
+	{ "governor", &dev_attr_governor },
+	{ "trigger_core_dump", &dev_attr_trigger_core_dump }
 };
 
 /**
