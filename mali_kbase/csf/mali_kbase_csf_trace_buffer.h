@@ -26,6 +26,7 @@
 
 #define CSF_FIRMWARE_TRACE_ENABLE_INIT_MASK_MAX (4)
 #define FW_TRACE_BUF_NAME "fwlog"
+#define FW_TRACE_BUF_NR_PAGES 4
 
 /* Forward declarations */
 struct firmware_trace_buffer;

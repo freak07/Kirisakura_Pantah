@@ -125,7 +125,12 @@ static const struct firmware_trace_buffer_data trace_buffer_data[] = {
 #if MALI_UNIT_TEST
 	{ "fwutf", { 0 }, 1 },
 #endif
-	{ FW_TRACE_BUF_NAME, { 0 }, 4 },
+#ifdef CONFIG_MALI_PIXEL_GPU_SSCD
+	/* Enable all the logs */
+	{ FW_TRACE_BUF_NAME, { 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF }, FW_TRACE_BUF_NR_PAGES },
+#else
+	{ FW_TRACE_BUF_NAME, { 0 }, FW_TRACE_BUF_NR_PAGES },
+#endif /* CONFIG_MALI_PIXEL_GPU_SSCD */
 	{ "benchmark", { 0 }, 2 },
 	{ "timeline", { 0 }, KBASE_CSF_TL_BUFFER_NR_PAGES },
 };
