@@ -130,13 +130,13 @@ static void gpu_pm_power_off_top(struct kbase_device *kbdev)
 		pc->pm.state = GPU_POWER_LEVEL_GLOBAL;
 	}
 
+	if (pc->pm.state == GPU_POWER_LEVEL_GLOBAL) {
 #if !IS_ENABLED(CONFIG_SOC_GS101)
-	if (exynos_smc(SMC_PROTECTION_SET, 0, PROT_G3D, SMC_PROTECTION_DISABLE) != 0) {
-		dev_err(kbdev->dev, "Couldn't disable protected mode after GPU power-off");
-	}
+		if (exynos_smc(SMC_PROTECTION_SET, 0, PROT_G3D, SMC_PROTECTION_DISABLE) != 0) {
+			dev_err(kbdev->dev, "Couldn't disable protected mode before GPU power-off");
+		}
 #endif
 
-	if (pc->pm.state == GPU_POWER_LEVEL_GLOBAL) {
 		if (pc->pm.use_autosuspend) {
 			pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 			pm_runtime_put_autosuspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
