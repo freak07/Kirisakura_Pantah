@@ -303,7 +303,7 @@ void gpu_dvfs_select_level(struct kbase_device *kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 	struct gpu_dvfs_utlization util_stats;
 
-	if (gpu_pm_get_power_state(kbdev)) {
+	if (pc->dvfs.updates_enabled && gpu_pm_get_power_state(kbdev)) {
 		util_stats.util = atomic_read(&pc->dvfs.util);
 #if !MALI_USE_CSF
 		util_stats.util_gl = atomic_read(&pc->dvfs.util_gl);
@@ -330,6 +330,41 @@ void gpu_dvfs_select_level(struct kbase_device *kbdev)
 		}
 	}
 }
+
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+/**
+ * gpu_dvfs_disable_updates() - Ensure DVFS updates are disabled
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * Ensure that no dvfs updates will occurr after this call completes.
+ */
+void gpu_dvfs_disable_updates(struct kbase_device *kbdev) {
+	struct pixel_context *pc = kbdev->platform_context;
+
+	mutex_lock(&pc->dvfs.lock);
+	pc->dvfs.updates_enabled = false;
+	mutex_unlock(&pc->dvfs.lock);
+
+	flush_workqueue(pc->dvfs.control_wq);
+}
+
+/**
+ * gpu_dvfs_enable_updates() - Ensure DVFS updates are enabled
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * Ensure that dvfs updates will occurr after this call completes, undoing the effect of
+ * gpu_dvfs_disable_updates().
+ */
+void gpu_dvfs_enable_updates(struct kbase_device *kbdev) {
+	struct pixel_context *pc = kbdev->platform_context;
+
+	mutex_lock(&pc->dvfs.lock);
+	pc->dvfs.updates_enabled = true;
+	mutex_unlock(&pc->dvfs.lock);
+}
+#endif
 
 /**
  * gpu_dvfs_control_worker() - The workqueue worker that changes DVFS on utilization change.
@@ -653,6 +688,8 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 		pc->dvfs.level_locks[i].level_min = -1;
 		pc->dvfs.level_locks[i].level_max = -1;
 	}
+
+	pc->dvfs.updates_enabled = true;
 
 	/* Get data from DT */
 	if (of_property_read_u32(np, "gpu0_cmu_cal_id",

@@ -336,6 +336,7 @@ struct pixel_context {
 		struct delayed_work clockdown_work;
 		unsigned int clockdown_hysteresis;
 
+		bool updates_enabled;
 		struct gpu_dvfs_clk clks[GPU_DVFS_CLK_COUNT];
 
 		struct gpu_dvfs_opp *table;

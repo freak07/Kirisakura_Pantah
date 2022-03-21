@@ -79,6 +79,7 @@ static int gpu_pm_power_on_top(struct kbase_device *kbdev)
 
 	trace_gpu_power_state(ktime_get_ns() - start_ns,
 		GPU_POWER_LEVEL_GLOBAL, GPU_POWER_LEVEL_STACKS);
+	gpu_dvfs_enable_updates(kbdev);
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 	kbase_pm_metrics_start(kbdev);
 	gpu_dvfs_event_power_on(kbdev);
@@ -138,6 +139,8 @@ static void gpu_pm_power_off_top(struct kbase_device *kbdev)
 			dev_err(kbdev->dev, "Couldn't disable protected mode before GPU power-off");
 		}
 #endif
+
+		gpu_dvfs_disable_updates(kbdev);
 
 		if (pc->pm.use_autosuspend) {
 			pm_runtime_mark_last_busy(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
