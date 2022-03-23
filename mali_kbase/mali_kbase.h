@@ -537,6 +537,12 @@ int kbase_pm_handle_runtime_suspend(struct kbase_device *kbdev);
  * Return: 0 if the wake up was successful.
  */
 int kbase_pm_force_mcu_wakeup_after_sleep(struct kbase_device *kbdev);
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+void kbase_pm_turn_on_sc_power_rails_locked(struct kbase_device *kbdev);
+void kbase_pm_turn_on_sc_power_rails(struct kbase_device *kbdev);
+void kbase_pm_turn_off_sc_power_rails(struct kbase_device *kbdev);
+#endif
 #endif
 
 #if !MALI_USE_CSF

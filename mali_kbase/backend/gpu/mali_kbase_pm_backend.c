@@ -1237,3 +1237,43 @@ out:
 	return ret;
 }
 #endif
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+void kbase_pm_turn_on_sc_power_rails_locked(struct kbase_device *kbdev)
+{
+	unsigned long flags;
+
+	lockdep_assert_held(&kbdev->pm.lock);
+	WARN_ON(!kbdev->pm.backend.gpu_powered);
+	if (kbdev->pm.backend.sc_power_rails_off) {
+		if (kbdev->pm.backend.callback_power_on_sc_rails)
+			kbdev->pm.backend.callback_power_on_sc_rails(kbdev);
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbdev->pm.backend.sc_power_rails_off = false;
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	}
+}
+
+void kbase_pm_turn_on_sc_power_rails(struct kbase_device *kbdev)
+{
+	kbase_pm_lock(kbdev);
+	kbase_pm_turn_on_sc_power_rails_locked(kbdev);
+	kbase_pm_unlock(kbdev);
+}
+
+void kbase_pm_turn_off_sc_power_rails(struct kbase_device *kbdev)
+{
+	unsigned long flags;
+
+	kbase_pm_lock(kbdev);
+	WARN_ON(!kbdev->pm.backend.gpu_powered);
+	if (!kbdev->pm.backend.sc_power_rails_off) {
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbdev->pm.backend.sc_power_rails_off = true;
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+		if (kbdev->pm.backend.callback_power_off_sc_rails)
+			kbdev->pm.backend.callback_power_off_sc_rails(kbdev);
+	}
+	kbase_pm_unlock(kbdev);
+}
+#endif

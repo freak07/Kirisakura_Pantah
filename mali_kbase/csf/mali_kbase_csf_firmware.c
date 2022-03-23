@@ -1395,6 +1395,13 @@ static void global_init(struct kbase_device *const kbdev, u64 core_mask)
 		&kbdev->csf.global_iface;
 	unsigned long flags;
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	/* If the power_policy will grant host control over FW PM, we need to turn on the SC rail*/
+	if (kbdev->csf.firmware_hctl_core_pwr) {
+		queue_work(system_highpri_wq, &kbdev->pm.backend.sc_rails_on_work);
+	}
+#endif
+
 	kbase_csf_scheduler_spin_lock(kbdev, &flags);
 
 	/* Update shader core allocation enable mask */
@@ -1452,7 +1459,9 @@ void kbase_csf_firmware_global_reinit(struct kbase_device *kbdev,
 bool kbase_csf_firmware_global_reinit_complete(struct kbase_device *kbdev)
 {
 	lockdep_assert_held(&kbdev->hwaccess_lock);
+#ifndef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 	WARN_ON(!kbdev->csf.glb_init_request_pending);
+#endif
 
 	if (global_request_complete(kbdev, CSF_GLB_REQ_CFG_MASK))
 		kbdev->csf.glb_init_request_pending = false;

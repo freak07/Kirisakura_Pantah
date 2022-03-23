@@ -471,6 +471,10 @@ struct kbase_pm_backend_data {
 	struct mutex policy_change_lock;
 	struct workqueue_struct *core_idle_wq;
 	struct work_struct core_idle_work;
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	struct work_struct sc_rails_on_work;
+	bool sc_power_rails_off;
+#endif
 
 #ifdef KBASE_PM_RUNTIME
 	bool gpu_sleep_supported;

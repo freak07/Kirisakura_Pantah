@@ -879,7 +879,7 @@ struct kbase_csf_csg_slot {
  *                          when scheduling tick needs to be advanced from
  *                          interrupt context, without actually deactivating
  *                          the @tick_timer first and then enqueing @tick_work.
- * @sc_rails_off_work:     Work item enqueued on GPU idle notification to
+ * @sc_rails_off_work:      Work item enqueued on GPU idle notification to
  *                          turn off the shader core power rails.
  * @sc_power_rails_off:     Flag to keep a track of the status of shader core
  *                          power rails, set to true when power rails are

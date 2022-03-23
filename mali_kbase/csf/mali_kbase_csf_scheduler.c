@@ -110,11 +110,8 @@ void turn_on_sc_power_rails(struct kbase_device *kbdev)
 
 	WARN_ON(kbdev->csf.scheduler.state == SCHED_SUSPENDED);
 
-	if (kbdev->csf.scheduler.sc_power_rails_off) {
-		if (kbdev->pm.backend.callback_power_on_sc_rails)
-			kbdev->pm.backend.callback_power_on_sc_rails(kbdev);
-		kbdev->csf.scheduler.sc_power_rails_off = false;
-	}
+	kbase_pm_turn_on_sc_power_rails(kbdev);
+	kbdev->csf.scheduler.sc_power_rails_off = false;
 }
 
 /**
@@ -130,11 +127,8 @@ static void turn_off_sc_power_rails(struct kbase_device *kbdev)
 
 	WARN_ON(kbdev->csf.scheduler.state == SCHED_SUSPENDED);
 
-	if (!kbdev->csf.scheduler.sc_power_rails_off) {
-		if (kbdev->pm.backend.callback_power_off_sc_rails)
-			kbdev->pm.backend.callback_power_off_sc_rails(kbdev);
-		kbdev->csf.scheduler.sc_power_rails_off = true;
-	}
+	kbase_pm_turn_off_sc_power_rails(kbdev);
+	kbdev->csf.scheduler.sc_power_rails_off = true;
 }
 
 /**

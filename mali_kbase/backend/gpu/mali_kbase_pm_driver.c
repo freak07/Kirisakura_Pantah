@@ -709,6 +709,14 @@ static int kbase_pm_mcu_update_state(struct kbase_device *kbdev)
 						backend->shaders_desired_mask;
 				backend->pm_shaders_core_mask = 0;
 				if (kbdev->csf.firmware_hctl_core_pwr) {
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+					/* On rail up, this state machine will be re-invoked */
+					if (backend->sc_power_rails_off) {
+						/* The work should already be queued or executing */
+						WARN_ON(!work_busy(&backend->sc_rails_on_work));
+						break;
+					}
+#endif
 					kbase_pm_invoke(kbdev, KBASE_PM_CORE_SHADER,
 						backend->shaders_avail, ACTION_PWRON);
 					backend->mcu_state =
@@ -986,6 +994,31 @@ static void core_idle_worker(struct work_struct *work)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 }
 #endif
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+static void sc_rails_on_worker(struct work_struct *work)
+{
+	struct kbase_device *kbdev =
+		container_of(work, struct kbase_device, pm.backend.sc_rails_on_work);
+	unsigned long flags;
+
+	/*
+	 * Intentionally not synchronized using the scheduler.lock, as the scheduler may be waiting
+	 * on the SC rail to power up
+	 */
+	kbase_pm_lock(kbdev);
+
+	kbase_pm_turn_on_sc_power_rails_locked(kbdev);
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	/* Push the state machine forward in case it was waiting on SC rail power up */
+	kbase_pm_update_state(kbdev);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	kbase_pm_unlock(kbdev);
+}
+#endif /* CONFIG_MALI_HOST_CONTROLS_SC_RAILS */
+
 
 static const char *kbase_l2_core_state_to_string(enum kbase_l2_core_state state)
 {
@@ -2015,6 +2048,9 @@ int kbase_pm_state_machine_init(struct kbase_device *kbdev)
 	}
 
 	INIT_WORK(&kbdev->pm.backend.core_idle_work, core_idle_worker);
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	INIT_WORK(&kbdev->pm.backend.sc_rails_on_work, sc_rails_on_worker);
+#endif
 #endif
 
 	return 0;
