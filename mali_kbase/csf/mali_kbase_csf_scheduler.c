@@ -6507,24 +6507,12 @@ out:
 	mutex_unlock(&scheduler->lock);
 }
 
-int kbase_csf_scheduler_pm_suspend(struct kbase_device *kbdev)
+int kbase_csf_scheduler_pm_suspend_no_lock(struct kbase_device *kbdev)
 {
-	int result = 0;
 	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
+	int result = 0;
 
-	/* Cancel any potential queued delayed work(s) */
-	kthread_cancel_work_sync(&scheduler->tick_work);
-	cancel_tock_work(scheduler);
-
-	result = kbase_reset_gpu_prevent_and_wait(kbdev);
-	if (result) {
-		dev_warn(kbdev->dev,
-			 "Stop PM suspending for failing to prevent gpu reset.\n");
-		return result;
-	}
-
-	mutex_lock(&scheduler->lock);
-
+	lockdep_assert_held(&scheduler->lock);
 #ifdef KBASE_PM_RUNTIME
 	/* If scheduler is in sleeping state, then MCU needs to be activated
 	 * to suspend CSGs.
@@ -6551,6 +6539,27 @@ int kbase_csf_scheduler_pm_suspend(struct kbase_device *kbdev)
 	}
 
 exit:
+	return result;
+}
+
+int kbase_csf_scheduler_pm_suspend(struct kbase_device *kbdev)
+{
+	int result = 0;
+	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
+
+	/* Cancel any potential queued delayed work(s) */
+	kthread_cancel_work_sync(&scheduler->tick_work);
+	cancel_tock_work(scheduler);
+
+	result = kbase_reset_gpu_prevent_and_wait(kbdev);
+	if (result) {
+		dev_warn(kbdev->dev, "Stop PM suspending for failing to prevent gpu reset.\n");
+		return result;
+	}
+
+	mutex_lock(&scheduler->lock);
+
+	result = kbase_csf_scheduler_pm_suspend_no_lock(kbdev);
 	mutex_unlock(&scheduler->lock);
 
 	kbase_reset_gpu_allow(kbdev);
@@ -6559,17 +6568,23 @@ exit:
 }
 KBASE_EXPORT_TEST_API(kbase_csf_scheduler_pm_suspend);
 
-void kbase_csf_scheduler_pm_resume(struct kbase_device *kbdev)
+void kbase_csf_scheduler_pm_resume_no_lock(struct kbase_device *kbdev)
 {
 	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
 
-	mutex_lock(&scheduler->lock);
+	lockdep_assert_held(&scheduler->lock);
 	if ((scheduler->total_runnable_grps > 0) &&
 	    (scheduler->state == SCHED_SUSPENDED)) {
 		dev_info(kbdev->dev, "Scheduler PM resume");
 		scheduler_wakeup(kbdev, true);
 	}
-	mutex_unlock(&scheduler->lock);
+}
+
+void kbase_csf_scheduler_pm_resume(struct kbase_device *kbdev)
+{
+	mutex_lock(&kbdev->csf.scheduler.lock);
+	kbase_csf_scheduler_pm_resume_no_lock(kbdev);
+	mutex_unlock(&kbdev->csf.scheduler.lock);
 }
 KBASE_EXPORT_TEST_API(kbase_csf_scheduler_pm_resume);
 
