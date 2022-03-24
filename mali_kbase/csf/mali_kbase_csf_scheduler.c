@@ -104,15 +104,7 @@ static bool evaluate_sync_update(struct kbase_queue *queue);
 #define kctx_as_enabled(kctx) (!kbase_ctx_flag(kctx, KCTX_AS_DISABLED_ON_FAULT))
 
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-/**
- * turn_on_sc_power_rails - Turn on the shader core power rails.
- *
- * @kbdev: Pointer to the device.
- *
- * This function is called to synchronously turn on the shader core power rails,
- * before execution is resumed on the cores.
- */
-static void turn_on_sc_power_rails(struct kbase_device *kbdev)
+void turn_on_sc_power_rails(struct kbase_device *kbdev)
 {
 	lockdep_assert_held(&kbdev->csf.scheduler.lock);
 

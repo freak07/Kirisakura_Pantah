@@ -311,7 +311,7 @@ static void gpu_pm_callback_power_runtime_term(struct kbase_device *kbdev)
 static void gpu_pm_power_on_cores(struct kbase_device *kbdev) {
 	struct pixel_context *pc = kbdev->platform_context;
 	mutex_lock(&pc->pm.lock);
-	if (pc->pm.state == GPU_POWER_LEVEL_GLOBAL) {
+	if (pc->pm.state == GPU_POWER_LEVEL_GLOBAL && pc->pm.ifpo_enabled) {
 		pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
 		pc->pm.state = GPU_POWER_LEVEL_STACKS;
 
@@ -336,7 +336,7 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev) {
 static void gpu_pm_power_off_cores(struct kbase_device *kbdev) {
 	struct pixel_context *pc = kbdev->platform_context;
 	mutex_lock(&pc->pm.lock);
-	if (pc->pm.state == GPU_POWER_LEVEL_STACKS) {
+	if (pc->pm.state == GPU_POWER_LEVEL_STACKS && pc->pm.ifpo_enabled) {
 		pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
 		pc->pm.state = GPU_POWER_LEVEL_GLOBAL;
 
@@ -507,6 +507,10 @@ int gpu_pm_init(struct kbase_device *kbdev)
 			goto error;
 		}
 	}
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	pc->pm.ifpo_enabled = false;
+#endif
 
 	if (of_property_read_u32(np, "gpu_pm_autosuspend_delay", &pc->pm.autosuspend_delay)) {
 		pc->pm.use_autosuspend = false;

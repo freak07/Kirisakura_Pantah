@@ -314,6 +314,9 @@ struct pixel_context {
 #if IS_ENABLED(CONFIG_GOOGLE_BCL)
 		struct bcl_device *bcl_dev;
 #endif
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+		bool ifpo_enabled;
+#endif
 	} pm;
 
 #ifdef CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING

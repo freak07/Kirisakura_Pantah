@@ -49,6 +49,7 @@ CONFIG_MALI_PIXEL_GPU_THERMAL ?= y
 ifeq ($(CONFIG_MALI_CSF_SUPPORT),y)
 CONFIG_MALI_PIXEL_GPU_SSCD ?= n
 endif
+CONFIG_MALI_HOST_CONTROLS_SC_RAILS ?= y
 
 #
 # Default configuration values
