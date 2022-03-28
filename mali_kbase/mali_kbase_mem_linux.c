@@ -102,6 +102,22 @@ static int kbase_mem_shrink_gpu_mapping(struct kbase_context *kctx,
 		struct kbase_va_region *reg,
 		u64 new_pages, u64 old_pages);
 
+static bool is_process_exiting(struct vm_area_struct *vma)
+{
+	/* PF_EXITING flag can't be reliably used here for the detection
+	 * of process exit, as 'mm_users' counter could still be non-zero
+	 * when all threads of the process have exited. Later when the
+	 * thread (which took a reference on the 'mm' of process that
+	 * exited) drops it reference, the vm_ops->close method would be
+	 * called for all the vmas (owned by 'mm' of process that exited)
+	 * but the PF_EXITING flag may not be neccessarily set for the
+	 * thread at that time.
+	 */
+	if (atomic_read(&vma->vm_mm->mm_users))
+		return false;
+	return true;
+}
+
 /* Retrieve the associated region pointer if the GPU address corresponds to
  * one of the event memory pages. The enclosing region, if found, shouldn't
  * have been marked as free.
@@ -2412,7 +2428,7 @@ static void kbase_cpu_vm_close(struct vm_area_struct *vma)
 		/* Avoid freeing memory on the process death which results in
 		 * GPU Page Fault. Memory will be freed in kbase_destroy_context
 		 */
-		if (!(current->flags & PF_EXITING))
+		if (!is_process_exiting(vma))
 			kbase_mem_free_region(map->kctx, map->region);
 	}
 
@@ -3341,7 +3357,7 @@ static void kbase_csf_user_io_pages_vm_close(struct vm_area_struct *vma)
 		reset_prevented = true;
 
 	mutex_lock(&kctx->csf.lock);
-	kbase_csf_queue_unbind(queue);
+	kbase_csf_queue_unbind(queue, is_process_exiting(vma));
 	mutex_unlock(&kctx->csf.lock);
 
 	if (reset_prevented)

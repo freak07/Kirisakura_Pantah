@@ -164,9 +164,10 @@ int kbase_csf_queue_bind(struct kbase_context *kctx,
  *			    resources allocated for this queue if there
  *			    are any.
  *
- * @queue:	Pointer to queue to be unbound.
+ * @queue:	  Pointer to queue to be unbound.
+ * @process_exit: Flag to indicate if process exit is happening.
  */
-void kbase_csf_queue_unbind(struct kbase_queue *queue);
+void kbase_csf_queue_unbind(struct kbase_queue *queue, bool process_exit);
 
 /**
  * kbase_csf_queue_unbind_stopped - Unbind a GPU command queue in the case
