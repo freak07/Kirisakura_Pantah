@@ -46,6 +46,7 @@
 #include <backend/gpu/mali_kbase_irq_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <backend/gpu/mali_kbase_l2_mmu_config.h>
+#include <backend/gpu/mali_kbase_pm_event_log.h>
 #include <mali_kbase_dummy_job_wa.h>
 #ifdef CONFIG_MALI_ARBITER_SUPPORT
 #include <arbiter/mali_kbase_arbiter_pm.h>
@@ -1002,10 +1003,17 @@ static int kbase_pm_mcu_update_state(struct kbase_device *kbdev)
 			     backend->mcu_state);
 		}
 
-		if (backend->mcu_state != prev_state)
+		if (backend->mcu_state != prev_state) {
+			struct kbase_pm_event_log_event *event =
+					kbase_pm_add_log_event(kbdev);
+			event->type = KBASE_PM_LOG_EVENT_MCU_STATE;
+			event->state.prev = prev_state;
+			event->state.next = backend->mcu_state;
+
 			dev_dbg(kbdev->dev, "MCU state transition: %s to %s\n",
 				kbase_mcu_state_to_string(prev_state),
 				kbase_mcu_state_to_string(backend->mcu_state));
+		}
 
 	} while (backend->mcu_state != prev_state);
 
@@ -1438,11 +1446,18 @@ static int kbase_pm_l2_update_state(struct kbase_device *kbdev)
 					backend->l2_state);
 		}
 
-		if (backend->l2_state != prev_state)
+		if (backend->l2_state != prev_state) {
+			struct kbase_pm_event_log_event *event =
+					kbase_pm_add_log_event(kbdev);
+			event->type = KBASE_PM_LOG_EVENT_L2_STATE;
+			event->state.prev = prev_state;
+			event->state.next = backend->l2_state;
+
 			dev_dbg(kbdev->dev, "L2 state transition: %s to %s\n",
 				kbase_l2_core_state_to_string(prev_state),
 				kbase_l2_core_state_to_string(
 					backend->l2_state));
+		}
 
 	} while (backend->l2_state != prev_state);
 
@@ -1878,11 +1893,18 @@ static int kbase_pm_shaders_update_state(struct kbase_device *kbdev)
 			break;
 		}
 
-		if (backend->shaders_state != prev_state)
+		if (backend->shaders_state != prev_state) {
+			struct kbase_pm_event_log_event *event =
+					kbase_pm_add_log_event(kbdev);
+			event->type = KBASE_PM_LOG_EVENT_SHADERS_STATE;
+			event->state.prev = prev_state;
+			event->state.next = backend->shaders_state;
+
 			dev_dbg(kbdev->dev, "Shader state transition: %s to %s\n",
 				kbase_shader_core_state_to_string(prev_state),
 				kbase_shader_core_state_to_string(
 					backend->shaders_state));
+		}
 
 	} while (backend->shaders_state != prev_state);
 
@@ -1942,6 +1964,22 @@ static bool kbase_pm_is_in_desired_state_with_l2_powered(
 static void kbase_pm_trace_power_state(struct kbase_device *kbdev)
 {
 	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	{
+		struct kbase_pm_event_log_event *event =
+				kbase_pm_add_log_event(kbdev);
+		event->type = KBASE_PM_LOG_EVENT_CORES;
+		event->cores.l2 = kbase_pm_get_state(
+				kbdev, KBASE_PM_CORE_L2, ACTION_READY);
+		event->cores.shader = kbase_pm_get_state(
+				kbdev, KBASE_PM_CORE_SHADER, ACTION_READY);
+		event->cores.tiler = kbase_pm_get_state(
+				kbdev, KBASE_PM_CORE_TILER, ACTION_READY);
+		if (corestack_driver_control) {
+			event->cores.stack = kbase_pm_get_state(
+					kbdev, KBASE_PM_CORE_STACK, ACTION_READY);
+		}
+	}
 
 	KBASE_TLSTREAM_AUX_PM_STATE(
 			kbdev,

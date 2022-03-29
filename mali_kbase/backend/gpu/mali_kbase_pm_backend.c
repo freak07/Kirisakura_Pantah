@@ -152,6 +152,8 @@ int kbase_hwaccess_pm_init(struct kbase_device *kbdev)
 
 	mutex_init(&kbdev->pm.lock);
 
+	kbase_pm_init_event_log(kbdev);
+
 	kbdev->pm.backend.gpu_poweroff_wait_wq = alloc_workqueue("kbase_pm_poweroff_wait",
 			WQ_HIGHPRI | WQ_UNBOUND, 1);
 	if (!kbdev->pm.backend.gpu_poweroff_wait_wq)

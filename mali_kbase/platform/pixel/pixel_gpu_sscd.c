@@ -41,6 +41,7 @@ enum
 	GPU_REGISTERS = 0x2,
 	PRIVATE_MEM = 0x3,
 	SHARED_MEM = 0x4,
+	PM_EVENT_LOG = 0x6,
 	NUM_SEGMENTS
 } sscd_segs;
 
@@ -127,6 +128,13 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 	/* Zero init everything for safety */
 	memset(segs, 0, sizeof(segs));
 
+	segs[PM_EVENT_LOG].size = kbase_pm_max_event_log_size(kbdev);
+	segs[PM_EVENT_LOG].addr = kmalloc(segs[PM_EVENT_LOG].size, GFP_KERNEL);
+
+	if (!segs[PM_EVENT_LOG].addr) {
+		segs[PM_EVENT_LOG].size = 0;
+	}
+
 	/* We don't want anything messing with the HW while we dump */
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
@@ -145,10 +153,17 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 	get_fw_registers(kbdev, &segs[MCU_REGISTERS]);
 	get_gpu_registers(kbdev, &segs[GPU_REGISTERS]);
 
+	if (!segs[PM_EVENT_LOG].addr || kbase_pm_copy_event_log(
+			kbdev, segs[PM_EVENT_LOG].addr, segs[PM_EVENT_LOG].size)) {
+		dev_warn(kbdev->dev, "Failed to report PM log");
+	}
+
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	/* Report the core dump and generate an ELF header for it */
 	pdata->sscd_report(&sscd_dev, segs, NUM_SEGMENTS, SSCD_FLAGS_ELFARM64HDR, reason);
+
+	kfree(segs[PM_EVENT_LOG].addr);
 }
 
 /**

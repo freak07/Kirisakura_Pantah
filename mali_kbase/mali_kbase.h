@@ -576,6 +576,40 @@ void kbase_pm_metrics_start(struct kbase_device *kbdev);
  */
 void kbase_pm_metrics_stop(struct kbase_device *kbdev);
 
+/**
+ * kbase_pm_init_event_log - Initialize the event log and make it discoverable
+ *
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ */
+void kbase_pm_init_event_log(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_max_event_log_size - Get the largest size of the power management event log
+ *
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ *
+ * Return: The size of a buffer large enough to contain the log at any time.
+ */
+u64 kbase_pm_max_event_log_size(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_copy_event_log - Retrieve a copy of the power management event log
+ *
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ * @buffer: If non-NULL, a buffer of @size bytes to copy the data into
+ * @size: The size of buffer (should be at least as large as returned by
+ *        kbase_pm_event_max_log_size())
+ *
+ * This function is called when dumping a debug log of all recent events in the
+ * power management backend.
+ *
+ * Return: 0 if the log could be copied successfully, otherwise an error code.
+ *
+ * Requires kbdev->pmaccess_lock to be held.
+ */
+int kbase_pm_copy_event_log(struct kbase_device *kbdev,
+		void *buffer, u64 size);
+
 #if MALI_USE_CSF && defined(KBASE_PM_RUNTIME)
 /**
  * kbase_pm_handle_runtime_suspend - Handle the runtime suspend of GPU

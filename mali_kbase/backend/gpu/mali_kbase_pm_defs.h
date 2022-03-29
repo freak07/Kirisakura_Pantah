@@ -215,6 +215,60 @@ union kbase_pm_policy_data {
 };
 
 /**
+ * enum kbase_pm_log_event_type - The types of core in a GPU.
+ *
+ * @KBASE_PM_LOG_EVENT_NONE: an unused log event, default state at
+ *                           initialization. Carries no data.
+ * @KBASE_PM_LOG_EVENT_SHADERS_STATE: a transition of the JM shader state
+ *                               machine.  .state is populated.
+ * @KBASE_PM_LOG_EVENT_L2_STATE: a transition of the L2 state machine.
+ *                               .state is populated.
+ * @KBASE_PM_LOG_EVENT_MCU_STATE: a transition of the MCU state machine.
+ *                                .state is populated.
+ * @KBASE_PM_LOG_EVENT_CORES: a transition of core availability.
+ *                            .cores is populated.
+ *
+ * Each event log event has a type which determines the data it carries.
+ */
+enum kbase_pm_log_event_type {
+	KBASE_PM_LOG_EVENT_NONE = 0,
+	KBASE_PM_LOG_EVENT_SHADERS_STATE,
+	KBASE_PM_LOG_EVENT_L2_STATE,
+	KBASE_PM_LOG_EVENT_MCU_STATE,
+	KBASE_PM_LOG_EVENT_CORES
+};
+
+/**
+ * struct kbase_pm_event_log_event - One event in the PM log.
+ *
+ * @type: The type of the event, from &enum kbase_pm_log_event_type.
+ * @timestamp: The time the log event was generated.
+ **/
+struct kbase_pm_event_log_event {
+	u8 type;
+	ktime_t timestamp;
+	union {
+		struct {
+			u8 next;
+			u8 prev;
+		} state;
+		struct {
+			u64 l2;
+			u64 shader;
+			u64 tiler;
+			u64 stack;
+		} cores;
+	};
+};
+
+#define EVENT_LOG_MAX (PAGE_SIZE / sizeof(struct kbase_pm_event_log_event))
+
+struct kbase_pm_event_log {
+	u32 last_event;
+	struct kbase_pm_event_log_event events[EVENT_LOG_MAX];
+};
+
+/**
  * struct kbase_pm_backend_data - Data stored per device for power management.
  *
  * @pm_current_policy: The policy that is currently actively controlling the
@@ -395,6 +449,7 @@ union kbase_pm_policy_data {
  *                         work function, kbase_pm_gpu_clock_control_worker.
  * @gpu_clock_control_work: work item to set GPU clock during L2 power cycle
  *                          using gpu_clock_control
+ * @event_log: data for the always-on event log
  *
  * This structure contains data for the power management framework. There is one
  * instance of this structure per device in the system.
@@ -508,6 +563,8 @@ struct kbase_pm_backend_data {
 	bool gpu_clock_slow_down_desired;
 	bool gpu_clock_slowed_down;
 	struct work_struct gpu_clock_control_work;
+
+	struct kbase_pm_event_log event_log;
 };
 
 #if MALI_USE_CSF
