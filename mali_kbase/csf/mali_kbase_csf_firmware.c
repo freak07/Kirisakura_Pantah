@@ -1533,7 +1533,7 @@ void kbase_csf_firmware_trigger_reload(struct kbase_device *kbdev)
 
 	if (kbdev->csf.firmware_reload_needed) {
 		kbdev->csf.firmware_reload_needed = false;
-		queue_work(system_wq, &kbdev->csf.firmware_reload_work);
+		queue_work(system_highpri_wq, &kbdev->csf.firmware_reload_work);
 	} else {
 		kbase_csf_firmware_enable_mcu(kbdev);
 	}
