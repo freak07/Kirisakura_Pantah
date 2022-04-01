@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2010-2017, 2019-2021 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2017, 2019-2022 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -259,8 +259,6 @@ struct kbase_pm_callback_conf {
 	 *
 	 * For linux this callback will be called by the kernel runtime_suspend callback.
 	 * Note: for linux the kernel must have CONFIG_PM_RUNTIME enabled to use this feature.
-	 *
-	 * @return 0 on success, else OS error code.
 	 */
 	void (*power_runtime_off_callback)(struct kbase_device *kbdev);
 
@@ -268,6 +266,8 @@ struct kbase_pm_callback_conf {
 	 *
 	 * For linux this callback will be called by the kernel runtime_resume callback.
 	 * Note: for linux the kernel must have CONFIG_PM_RUNTIME enabled to use this feature.
+	 *
+	 * @return 0 on success, else OS error code.
 	 */
 	int (*power_runtime_on_callback)(struct kbase_device *kbdev);
 
@@ -486,7 +486,7 @@ struct kbase_platform_config {
 /**
  * kbase_get_platform_config - Gets the pointer to platform config.
  *
- * @return Pointer to the platform config
+ * Return: Pointer to the platform config
  */
 struct kbase_platform_config *kbase_get_platform_config(void);
 
@@ -614,7 +614,6 @@ void kbasep_platform_event_core_dump(struct kbase_device *kbdev, const char* rea
 #ifndef CONFIG_OF
 /**
  * kbase_platform_register - Register a platform device for the GPU
- *
  * This can be used to register a platform device on systems where device tree
  * is not enabled and the platform initialisation code in the kernel doesn't
  * create the GPU device. Where possible device tree should be used instead.

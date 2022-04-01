@@ -29,6 +29,7 @@
 
 /**
  * lock_region() - Generate lockaddr to lock memory region in MMU
+ * @gpu_props: GPU properties for finding the MMU lock region size
  * @pfn:       Starting page frame number of the region to lock
  * @num_pages: Number of pages to lock. It must be greater than 0.
  * @lockaddr:  Address and size of memory region to lock
@@ -62,7 +63,8 @@
  *
  * Return: 0 if success, or an error code on failure.
  */
-static int lock_region(u64 pfn, u32 num_pages, u64 *lockaddr)
+static int lock_region(struct kbase_gpu_props const *gpu_props, u64 pfn, u32 num_pages,
+		       u64 *lockaddr)
 {
 	const u64 lockaddr_base = pfn << PAGE_SHIFT;
 	const u64 lockaddr_end = ((pfn + num_pages) << PAGE_SHIFT) - 1;
@@ -106,7 +108,7 @@ static int lock_region(u64 pfn, u32 num_pages, u64 *lockaddr)
 		return -EINVAL;
 
 	lockaddr_size_log2 =
-		MAX(lockaddr_size_log2, KBASE_LOCK_REGION_MIN_SIZE_LOG2);
+		MAX(lockaddr_size_log2, kbase_get_lock_region_min_size_log2(gpu_props));
 
 	/* Represent the result in a way that is compatible with HW spec.
 	 *
@@ -267,7 +269,7 @@ int kbase_mmu_hw_do_operation_locked(struct kbase_device *kbdev, struct kbase_as
 			dev_err(kbdev->dev, "AS_ACTIVE bit stuck after sending UNLOCK command");
 	} else if (op_param->op >= KBASE_MMU_OP_FIRST &&
 		   op_param->op < KBASE_MMU_OP_COUNT) {
-		ret = lock_region(op_param->vpfn, op_param->nr, &lock_addr);
+		ret = lock_region(&kbdev->gpu_props, op_param->vpfn, op_param->nr, &lock_addr);
 
 		if (!ret) {
 			/* Lock the region that needs to be updated */
