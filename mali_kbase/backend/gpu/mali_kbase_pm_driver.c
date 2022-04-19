@@ -2995,6 +2995,10 @@ int kbase_pm_init_hw(struct kbase_device *kbdev, unsigned int flags)
 
 		kbdev->pm.backend.gpu_powered = true;
 	}
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	/* Ensure the SC rail is up otherwise the FW will get stuck during reset */
+	kbase_pm_turn_on_sc_power_rails_locked(kbdev);
+#endif
 
 	/* Ensure interrupts are off to begin with, this also clears any
 	 * outstanding interrupts
