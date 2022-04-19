@@ -1895,6 +1895,14 @@ kbase_mmu_flush_invalidate_as(struct kbase_device *kbdev, struct kbase_as *as,
 		return;
 	}
 
+	/* There's a chance that we were the second thread to take a PM reference.
+	 * In that case, the owner of the first reference may not have completed the
+	 * L2 power up yet.
+	 * We need to wait for that to complete before proceeding.
+	 */
+	WARN_ON_ONCE(!kbdev->pm.backend.l2_desired);
+	kbase_pm_wait_for_desired_state(kbdev);
+
 	/* AS transaction begin */
 	mutex_lock(&kbdev->mmu_hw_mutex);
 
