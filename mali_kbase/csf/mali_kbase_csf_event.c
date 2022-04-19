@@ -120,7 +120,7 @@ void kbase_csf_event_signal(struct kbase_context *kctx, bool notify_gpu)
 	/* First increment the signal count and wake up event thread.
 	 */
 	atomic_set(&kctx->event_count, 1);
-	kbase_event_wakeup_sync(kctx);
+	kbase_event_wakeup_nosync(kctx);
 
 	/* Signal the CSF firmware. This is to ensure that pending command
 	 * stream synch object wait operations are re-evaluated.
