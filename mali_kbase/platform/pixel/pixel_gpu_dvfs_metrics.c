@@ -25,6 +25,7 @@
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
 #include "pixel_gpu_dvfs.h"
+#include "mali_power_gpu_frequency_trace.h"
 
 static void *enumerate_gpu_clk(struct kbase_device *kbdev, unsigned int index)
 {
@@ -85,7 +86,6 @@ static void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, int old_lev
 	struct pixel_context *pc = kbdev->platform_context;
 	struct kbase_gpu_clk_notifier_data nd;
 	int c;
-	int proc = raw_smp_processor_id();
 	int clks[GPU_DVFS_CLK_COUNT];
 
 	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
@@ -103,9 +103,8 @@ static void gpu_dvfs_metrics_trace_clock(struct kbase_device *kbdev, int old_lev
 
 	}
 
-	/* TODO: Remove reporting clocks this way when we transition to Perfetto */
-	trace_clock_set_rate("gpu0", clks[GPU_DVFS_CLK_TOP_LEVEL], proc);
-	trace_clock_set_rate("gpu1", clks[GPU_DVFS_CLK_SHADERS], proc);
+	trace_gpu_frequency(clks[GPU_DVFS_CLK_TOP_LEVEL], 0);
+	trace_gpu_frequency(clks[GPU_DVFS_CLK_SHADERS], 1);
 }
 
 /**
