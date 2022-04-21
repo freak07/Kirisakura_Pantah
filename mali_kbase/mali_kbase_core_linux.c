@@ -220,7 +220,7 @@ struct task_struct *kbase_create_realtime_thread(struct kbase_device *kbdev,
 
 		wake_up_process(ret);
 
-		if (sched_setscheduler(ret, SCHED_FIFO, &param))
+		if (sched_setscheduler_nocheck(ret, SCHED_FIFO, &param))
 			dev_warn(kbdev->dev, "%s not set to RT prio", namefmt);
 		else
 			dev_dbg(kbdev->dev, "%s set to RT prio: %i",
