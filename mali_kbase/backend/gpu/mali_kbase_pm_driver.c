@@ -1906,7 +1906,7 @@ static bool kbase_pm_is_in_desired_state_nolock(struct kbase_device *kbdev)
 			kbdev->pm.backend.shaders_state != KBASE_SHADERS_OFF_CORESTACK_OFF)
 		in_desired_state = false;
 #else
-	in_desired_state = kbase_pm_mcu_is_in_desired_state(kbdev);
+	in_desired_state &= kbase_pm_mcu_is_in_desired_state(kbdev);
 #endif
 
 	return in_desired_state;
