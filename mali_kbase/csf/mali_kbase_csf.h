@@ -47,11 +47,8 @@
 
 #define FIRMWARE_PING_INTERVAL_MS (12000) /* 12 seconds */
 
-/* TODO(b/201222260): revisit value once interframe power off support is
- *                    enabled.
- */
 #define FIRMWARE_IDLE_HYSTERESIS_TIME_MS (100)
-#define MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_MS (1)
+#define MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_US (600)
 
 /* Idle hysteresis time can be scaled down when GPU sleep feature is used */
 #define FIRMWARE_IDLE_HYSTERESIS_GPU_SLEEP_SCALER (5)

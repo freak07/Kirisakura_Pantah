@@ -1666,12 +1666,21 @@ void kbase_csf_firmware_reload_completed(struct kbase_device *kbdev)
 	kbase_pm_update_state(kbdev);
 }
 
-static u32 convert_dur_to_idle_count(struct kbase_device *kbdev, const u32 dur_ms)
+/**
+ * Converts the dur_us provided to the idle count the firmware can use.
+ *
+ * Return: the firmware count corresponding to dur_us to use in MCU.
+ *
+ * @kbdev: Kernel base device pointer
+ * @dur_us: The duration in microseconds.
+ */
+static u32 convert_dur_to_idle_count(struct kbase_device *kbdev, const u32 dur_us)
 {
+#define MICROSECONDS_PER_SECOND 1000000u
 #define HYSTERESIS_VAL_UNIT_SHIFT (10)
 	/* Get the cntfreq_el0 value, which drives the SYSTEM_TIMESTAMP */
 	u64 freq = arch_timer_get_cntfrq();
-	u64 dur_val = dur_ms;
+	u64 dur_val = dur_us;
 	u32 cnt_val_u32, reg_val_u32;
 	bool src_system_timestamp = freq > 0;
 
@@ -1688,9 +1697,9 @@ static u32 convert_dur_to_idle_count(struct kbase_device *kbdev, const u32 dur_m
 			 "use cycle counter format with firmware idle hysteresis!");
 	}
 
-	/* Formula for dur_val = ((dur_ms/1000) * freq_HZ) >> 10) */
+	/* Formula for dur_val = ((dur_us/MICROSECONDS_PER_SECOND) * freq_HZ) >> 10) */
 	dur_val = (dur_val * freq) >> HYSTERESIS_VAL_UNIT_SHIFT;
-	dur_val = div_u64(dur_val, 1000);
+	dur_val = div_u64(dur_val, MICROSECONDS_PER_SECOND);
 
 	/* Interface limits the value field to S32_MAX */
 	cnt_val_u32 = (dur_val > S32_MAX) ? S32_MAX : (u32)dur_val;
@@ -1719,13 +1728,22 @@ u32 kbase_csf_firmware_get_gpu_idle_hysteresis_time(struct kbase_device *kbdev)
 	return dur;
 }
 
+#ifndef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+static inline u32 msec_to_usec_saturate(u32 ms) {
+#define MILLISECONDS_PER_SECOND 1000
+	if (ms > U32_MAX / MILLISECONDS_PER_SECOND)
+		return U32_MAX;
+	return ms * MILLISECONDS_PER_SECOND;
+}
+#endif
+
 u32 kbase_csf_firmware_set_gpu_idle_hysteresis_time(struct kbase_device *kbdev, u32 dur)
 {
 	unsigned long flags;
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-	const u32 hysteresis_val = convert_dur_to_idle_count(kbdev, MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_MS);
+	const u32 hysteresis_val = convert_dur_to_idle_count(kbdev, MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_US);
 #else
-	const u32 hysteresis_val = convert_dur_to_idle_count(kbdev, dur);
+	const u32 hysteresis_val = convert_dur_to_idle_count(kbdev, msec_to_usec_saturate(dur));
 #endif
 
 	/* The 'fw_load_lock' is taken to synchronize against the deferred
@@ -1931,7 +1949,7 @@ int kbase_csf_firmware_early_init(struct kbase_device *kbdev)
 
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 	kbdev->csf.gpu_idle_dur_count = convert_dur_to_idle_count(
-		kbdev, MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_MS);
+		kbdev, MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_US);
 
 	/* Set to the lowest posssible value for FW to immediately write
 	 * to the power off register to disable the cores.
@@ -1939,7 +1957,7 @@ int kbase_csf_firmware_early_init(struct kbase_device *kbdev)
 	kbdev->csf.mcu_core_pwroff_dur_count = 1;
 #else
 	kbdev->csf.gpu_idle_dur_count = convert_dur_to_idle_count(
-		kbdev, kbdev->csf.gpu_idle_hysteresis_ms);
+		kbdev, msec_to_usec_saturate(kbdev->csf.gpu_idle_hysteresis_ms));
 	kbdev->csf.mcu_core_pwroff_dur_us = DEFAULT_GLB_PWROFF_TIMEOUT_US;
 	kbdev->csf.mcu_core_pwroff_dur_count = convert_dur_to_core_pwroff_count(
 		kbdev, DEFAULT_GLB_PWROFF_TIMEOUT_US);
