@@ -412,7 +412,7 @@ static int kbasep_csf_queue_group_debugfs_show(struct seq_file *file,
 	seq_printf(file, "MALI_CSF_CSG_DEBUGFS_VERSION: v%u\n",
 			MALI_CSF_CSG_DEBUGFS_VERSION);
 
-	mutex_lock(&kctx->csf.lock);
+	rt_mutex_lock(&kctx->csf.lock);
 	kbase_csf_scheduler_lock(kbdev);
 	if (kbdev->csf.scheduler.state == SCHED_SLEEPING) {
 		/* Wait for the MCU sleep request to complete. Please refer the
@@ -428,7 +428,7 @@ static int kbasep_csf_queue_group_debugfs_show(struct seq_file *file,
 			kbasep_csf_scheduler_dump_active_group(file, group);
 	}
 	kbase_csf_scheduler_unlock(kbdev);
-	mutex_unlock(&kctx->csf.lock);
+	rt_mutex_unlock(&kctx->csf.lock);
 
 	return 0;
 }
