@@ -545,7 +545,7 @@ static void update_on_slot_queues_offsets(struct kbase_device *kbdev)
 #endif
 
 static void enqueue_gpu_idle_work(struct kbase_csf_scheduler *const scheduler,
-			unsigned long delay)
+			unsigned long delay_ms)
 {
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 	lockdep_assert_held(&scheduler->lock);
@@ -555,7 +555,7 @@ static void enqueue_gpu_idle_work(struct kbase_csf_scheduler *const scheduler,
 	atomic_set(&scheduler->gpu_no_longer_idle, false);
 #endif
 
-	mod_delayed_work(system_highpri_wq, &scheduler->gpu_idle_work, delay);
+	mod_delayed_work(system_highpri_wq, &scheduler->gpu_idle_work, msecs_to_jiffies(delay_ms));
 }
 
 bool kbase_csf_scheduler_process_gpu_idle_event(struct kbase_device *kbdev)
