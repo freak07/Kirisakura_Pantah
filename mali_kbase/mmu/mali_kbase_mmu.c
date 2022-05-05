@@ -1895,13 +1895,18 @@ kbase_mmu_flush_invalidate_as(struct kbase_device *kbdev, struct kbase_as *as,
 		return;
 	}
 
-	/* There's a chance that we were the second thread to take a PM reference.
-	 * In that case, the owner of the first reference may not have completed the
-	 * L2 power up yet.
-	 * We need to wait for that to complete before proceeding.
+	/*
+	 * Taking a pm reference does not guarantee that the GPU has finished powering up.
+	 * It's possible that the power up has been deferred until after a scheduled power down.
+	 * We must wait here for the L2 to be powered up, and holding a pm reference guarantees that
+	 * it will not be powered down afterwards.
 	 */
-	WARN_ON_ONCE(!kbdev->pm.backend.l2_desired);
-	kbase_pm_wait_for_desired_state(kbdev);
+	err = kbase_pm_wait_for_l2_powered(kbdev);
+	if (err) {
+		dev_err(kbdev->dev, "Wait for L2 power up failed, skipping MMU command");
+		/* Drop the pm ref */
+		goto idle;
+	}
 
 	/* AS transaction begin */
 	mutex_lock(&kbdev->mmu_hw_mutex);
@@ -1942,6 +1947,7 @@ kbase_mmu_flush_invalidate_as(struct kbase_device *kbdev, struct kbase_as *as,
 	mutex_unlock(&kbdev->mmu_hw_mutex);
 	/* AS transaction end */
 
+idle:
 	kbase_pm_context_idle(kbdev);
 }
 
