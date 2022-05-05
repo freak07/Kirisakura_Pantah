@@ -149,9 +149,9 @@ bool kbase_pm_is_l2_desired(struct kbase_device *kbdev)
 	if (unlikely(kbdev->pm.backend.policy_change_clamp_state_to_off))
 		return false;
 
-	/* Power up the L2 cache only when MCU is desired */
-	if (likely(kbdev->csf.firmware_inited))
-		return kbase_pm_is_mcu_desired(kbdev);
+	/* We need to power up the L2 when the MCU is desired */
+	if (kbase_pm_is_mcu_desired(kbdev))
+		return true;
 #endif
 
 	return kbdev->pm.backend.l2_desired;
