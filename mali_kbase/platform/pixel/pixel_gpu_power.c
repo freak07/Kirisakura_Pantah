@@ -59,8 +59,10 @@ static int gpu_pm_power_on_top(struct kbase_device *kbdev)
 	int ret;
 	struct pixel_context *pc = kbdev->platform_context;
 	u64 start_ns = ktime_get_ns();
+	int prev_state;
 
 	mutex_lock(&pc->pm.lock);
+	prev_state = pc->pm.state;
 
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
@@ -77,8 +79,6 @@ static int gpu_pm_power_on_top(struct kbase_device *kbdev)
 	 */
 	ret = (pc->pm.state == GPU_POWER_LEVEL_OFF);
 
-	trace_gpu_power_state(ktime_get_ns() - start_ns,
-		GPU_POWER_LEVEL_GLOBAL, GPU_POWER_LEVEL_STACKS);
 	gpu_dvfs_enable_updates(kbdev);
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 	kbase_pm_metrics_start(kbdev);
@@ -99,6 +99,7 @@ static int gpu_pm_power_on_top(struct kbase_device *kbdev)
 
 	pc->pm.state = GPU_POWER_LEVEL_STACKS;
 
+	trace_gpu_power_state(ktime_get_ns() - start_ns, prev_state, pc->pm.state);
 	mutex_unlock(&pc->pm.lock);
 
 	return ret;
@@ -126,8 +127,8 @@ static void gpu_pm_power_off_top(struct kbase_device *kbdev)
 	int prev_state;
 
 	mutex_lock(&pc->pm.lock);
-
 	prev_state = pc->pm.state;
+
 	if (pc->pm.state == GPU_POWER_LEVEL_STACKS) {
 		pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
 		pc->pm.state = GPU_POWER_LEVEL_GLOBAL;
@@ -149,7 +150,6 @@ static void gpu_pm_power_off_top(struct kbase_device *kbdev)
 			pm_runtime_put_sync_suspend(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 		}
 		pc->pm.state = GPU_POWER_LEVEL_OFF;
-		trace_gpu_power_state(ktime_get_ns() - start_ns, prev_state, pc->pm.state);
 
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 		gpu_dvfs_event_power_off(kbdev);
@@ -159,7 +159,6 @@ static void gpu_pm_power_off_top(struct kbase_device *kbdev)
 	}
 
 	trace_gpu_power_state(ktime_get_ns() - start_ns, prev_state, pc->pm.state);
-
 	mutex_unlock(&pc->pm.lock);
 }
 
@@ -310,7 +309,12 @@ static void gpu_pm_callback_power_runtime_term(struct kbase_device *kbdev)
  */
 static void gpu_pm_power_on_cores(struct kbase_device *kbdev) {
 	struct pixel_context *pc = kbdev->platform_context;
+	u64 start_ns = ktime_get_ns();
+	int prev_state;
+
 	mutex_lock(&pc->pm.lock);
+	prev_state = pc->pm.state;
+
 	if (pc->pm.state == GPU_POWER_LEVEL_GLOBAL && pc->pm.ifpo_enabled) {
 		pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
 		pc->pm.state = GPU_POWER_LEVEL_STACKS;
@@ -319,6 +323,8 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev) {
 		gpu_dvfs_event_power_on(kbdev);
 #endif
 	}
+
+	trace_gpu_power_state(ktime_get_ns() - start_ns, prev_state, pc->pm.state);
 	mutex_unlock(&pc->pm.lock);
 }
 
@@ -335,7 +341,12 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev) {
  */
 static void gpu_pm_power_off_cores(struct kbase_device *kbdev) {
 	struct pixel_context *pc = kbdev->platform_context;
+	u64 start_ns = ktime_get_ns();
+	int prev_state;
+
 	mutex_lock(&pc->pm.lock);
+	prev_state = pc->pm.state;
+
 	if (pc->pm.state == GPU_POWER_LEVEL_STACKS && pc->pm.ifpo_enabled) {
 		pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
 		pc->pm.state = GPU_POWER_LEVEL_GLOBAL;
@@ -344,6 +355,8 @@ static void gpu_pm_power_off_cores(struct kbase_device *kbdev) {
 		gpu_dvfs_event_power_off(kbdev);
 #endif
 	}
+
+	trace_gpu_power_state(ktime_get_ns() - start_ns, prev_state, pc->pm.state);
 	mutex_unlock(&pc->pm.lock);
 }
 
