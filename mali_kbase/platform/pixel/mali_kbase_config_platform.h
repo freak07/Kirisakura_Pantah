@@ -121,6 +121,7 @@ enum gpu_power_state {
 	GPU_POWER_LEVEL_OFF       = 0,
 	GPU_POWER_LEVEL_GLOBAL    = 1,
 	GPU_POWER_LEVEL_STACKS    = 2,
+	GPU_POWER_LEVEL_NUM
 };
 
 /**
@@ -314,6 +315,7 @@ struct pixel_context {
 #if IS_ENABLED(CONFIG_GOOGLE_BCL)
 		struct bcl_device *bcl_dev;
 #endif
+		struct pixel_rail_state_log *rail_state_log;
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 		bool ifpo_enabled;
 #endif

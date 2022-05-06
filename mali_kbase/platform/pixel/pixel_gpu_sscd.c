@@ -12,6 +12,7 @@
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_sscd.h"
+#include "pixel_gpu_control.h"
 #include <linux/platform_data/sscoredump.h>
 #include <linux/platform_device.h>
 
@@ -44,6 +45,7 @@ enum
 	SHARED_MEM = 0x4,
 	FW_TRACE = 0x5,
 	PM_EVENT_LOG = 0x6,
+	POWER_RAIL_LOG = 0x7,
 	NUM_SEGMENTS
 } sscd_segs;
 
@@ -170,6 +172,14 @@ static void suspend_mcu(struct kbase_device *kbdev)
 	(void)kbdev;
 }
 
+static void get_rail_state_log(struct kbase_device *kbdev, struct sscd_segment *seg)
+{
+	lockdep_assert_held(&((struct pixel_context*)kbdev->platform_context)->pm.lock);
+
+	seg->addr = gpu_pm_get_rail_state_log(kbdev);
+	seg->size = gpu_pm_get_rail_state_log_size(kbdev);
+}
+
 static int segments_init(struct kbase_device *kbdev, struct sscd_segment* segments)
 {
 	/* Zero init everything for safety */
@@ -218,6 +228,7 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 {
 	struct sscd_segment segs[NUM_SEGMENTS];
 	struct sscd_platform_data *pdata = dev_get_platdata(&sscd_dev.dev);
+	struct pixel_context *pc = kbdev->platform_context;
 	int ec = 0;
 	unsigned long flags;
 
@@ -258,8 +269,16 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
+	/* Acquire the pm lock to prevent modifications to the rail state log */
+	mutex_lock(&pc->pm.lock);
+
+	get_rail_state_log(kbdev, &segs[POWER_RAIL_LOG]);
+
 	/* Report the core dump and generate an ELF header for it */
 	pdata->sscd_report(&sscd_dev, segs, NUM_SEGMENTS, SSCD_FLAGS_ELFARM64HDR, reason);
+
+	/* Must be held until the dump completes, as the log is referenced rather than copied */
+	mutex_unlock(&pc->pm.lock);
 
 	segments_term(kbdev, segs);
 }

@@ -12,6 +12,8 @@
 bool gpu_pm_get_power_state(struct kbase_device *kbdev);
 int gpu_pm_init(struct kbase_device *kbdev);
 void gpu_pm_term(struct kbase_device *kbdev);
+void* gpu_pm_get_rail_state_log(struct kbase_device *kbdev);
+unsigned int gpu_pm_get_rail_state_log_size(struct kbase_device *kbdev);
 
 /* DVFS */
 void gpu_dvfs_event_power_on(struct kbase_device *kbdev);

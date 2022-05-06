@@ -43,6 +43,206 @@ static const char * const GPU_PM_DOMAIN_NAMES[GPU_PM_DOMAIN_COUNT] = {
 };
 
 /**
+ * struct pixel_rail_transition - Represents a power rail state transition
+ *
+ * @begin_timestamp: Time-stamp from when the transition began
+ * @end_timestamp:   Time-stamp from when the transition completed
+ * @from:            Rail state at the start of the transition
+ * @to:              Rail state at the end of the transition
+ **/
+struct pixel_rail_transition {
+	ktime_t begin_timestamp;
+	ktime_t end_timestamp;
+	uint8_t from;
+	uint8_t to;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pixel_rail_transition) == 18,
+	       "Incorrect pixel_rail_transition size");
+_Static_assert(GPU_POWER_LEVEL_NUM < ((uint8_t)(~0U)), "gpu_power_state must fit in one byte");
+
+#define PIXEL_RAIL_LOG_MAX (PAGE_SIZE / sizeof(struct pixel_rail_transition))
+
+/**
+ * struct pixel_rail_state_metadata - Info about the rail transition log
+ *
+ * @magic:            Always 'pprs', helps find the log in memory dumps
+ * @version:          Updated whenever the binary layout changes
+ * @log_address:      The memory address of the power rail state log
+ * @log_offset:       The offset of the power rail state log within an SSCD
+ * @log_length:       Number of used bytes in the power rail state log ring buffer.
+ *                    The length will be <= (FW_TRACE_BUF_NR_PAGES << PAGE_SHIFT)
+ * @last_entry:       The last entry index, used to find the start and end of the ring buffer
+ * @log_entry_stride: The stride in bytes between entries within the log
+ * @_reserved:        Bytes reserved for future use
+ **/
+struct pixel_rail_state_metadata {
+	char magic[4];
+	uint8_t version;
+	uint64_t log_address;
+	uint32_t log_offset;
+	uint32_t log_length;
+	uint32_t last_entry;
+	uint8_t log_entry_stride;
+	char _reserved[6];
+} __attribute__((packed));
+_Static_assert(sizeof(struct pixel_rail_state_metadata) == 32,
+	       "Incorrect pixel_rail_state_metadata size");
+
+
+/**
+ * struct pixel_rail_state_log - Log containing a record of power rail state transitions
+ *
+ * @meta:       Info about the log
+ * @log_rb:     The actual log
+ **/
+struct pixel_rail_state_log {
+	struct pixel_rail_state_metadata meta;
+	struct pixel_rail_transition log_rb[PIXEL_RAIL_LOG_MAX];
+} __attribute__((packed));
+
+/**
+ * gpu_pm_rail_state_log_last_entry() - Get a handle to the last logged rail transition
+ *
+ * @log: The &struct pixel_rail_state_log containing all logged transitions
+ *
+ * Context: Process context
+ *
+ * Return: Most recent log entry
+ */
+static struct pixel_rail_transition *
+gpu_pm_rail_state_log_last_entry(struct pixel_rail_state_log *log)
+{
+	return &log->log_rb[log->meta.last_entry];
+}
+
+/**
+ * gpu_pm_rail_state_start_transition_lock() - Mark the start of a power rail transition
+ *
+ * @pc: The &struct pixel_context for the GPU
+ *
+ * Mark the beginning of a power rail transition. This function starts a critical section
+ * by holding the pm.lock, and creates a new log entry to record the transition.
+ *
+ * Context: Process context, acquires pc->pm.lock and does not release it
+ */
+static void gpu_pm_rail_state_start_transition_lock(struct pixel_context *pc)
+{
+	struct pixel_rail_state_log *log;
+	struct pixel_rail_transition *entry;
+
+	mutex_lock(&pc->pm.lock);
+
+	log = pc->pm.rail_state_log;
+	log->meta.last_entry = (log->meta.last_entry + 1) % PIXEL_RAIL_LOG_MAX;
+	log->meta.log_length = max(log->meta.last_entry, log->meta.log_length);
+	entry = gpu_pm_rail_state_log_last_entry(log);
+
+	/* Clear to prevent leaking an old event */
+	memset(entry, 0, sizeof(struct pixel_rail_transition));
+
+	entry->from = (uint8_t)pc->pm.state;
+	entry->begin_timestamp = ktime_get_ns();
+}
+
+/**
+ * gpu_pm_rail_state_end_transition_unlock() - Mark the end of a power rail transition
+ *
+ * @pc: The &struct pixel_context for the GPU
+ *
+ * Mark the end of a power rail transition. This function ends a critical section
+ * by releasing the pm.lock, and completes the partial event log entry added when
+ * the transition began.
+ *
+ * Context: Process context, expects pc->pm.lock to be held, releases pc->pm.lock
+ */
+static void gpu_pm_rail_state_end_transition_unlock(struct pixel_context *pc)
+{
+	struct pixel_rail_transition *entry;
+
+	lockdep_assert_held(&pc->pm.lock);
+
+	entry = gpu_pm_rail_state_log_last_entry(pc->pm.rail_state_log);
+
+	entry->end_timestamp = ktime_get_ns();
+	entry->to = (uint8_t)pc->pm.state;
+	trace_gpu_power_state(entry->end_timestamp - entry->begin_timestamp, entry->from, entry->to);
+
+	mutex_unlock(&pc->pm.lock);
+}
+
+/**
+ * gpu_pm_get_rail_state_log() - Obtain a handle to the rail state log
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * Context: Process context
+ *
+ * Return: Opaque handle to rail state log
+ */
+void* gpu_pm_get_rail_state_log(struct kbase_device *kbdev)
+{
+	return ((struct pixel_context *)kbdev->platform_context)->pm.rail_state_log;
+}
+
+
+/**
+ * gpu_pm_get_rail_state_log_size() - Size in bytes of the rail state log
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * Context: Process context
+ *
+ * Return: Size in bytes of the rail state log, for dumping purposes
+ */
+unsigned int gpu_pm_get_rail_state_log_size(struct kbase_device *kbdev)
+{
+	return sizeof(struct pixel_rail_state_log);
+}
+
+/**
+ * gpu_pm_rail_state_log_init() - Allocate and initialize the power rail state transition log
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * Context: Process context
+ *
+ * Return: Owning pointer to allocated rail state log
+ */
+static struct pixel_rail_state_log* gpu_pm_rail_state_log_init(struct kbase_device *kbdev)
+{
+	struct pixel_rail_state_log* log = kzalloc(sizeof(struct pixel_rail_state_log), GFP_KERNEL);
+
+	if (log == NULL) {
+		dev_err(kbdev->dev, "Failed to allocated pm_rail_state_log");
+		return log;
+	}
+
+	log->meta = (struct pixel_rail_state_metadata) {
+		.magic = "pprs",
+		.version = 1,
+		.log_address = (uint64_t)log->log_rb,
+		.log_offset = offsetof(struct pixel_rail_state_log, log_rb),
+		.log_length = 0,
+		.last_entry = 0,
+		.log_entry_stride = (uint8_t)sizeof(struct pixel_rail_transition),
+	};
+
+	return log;
+}
+
+/**
+ * gpu_pm_rail_state_log_term() - Free the rail state transition log
+ *
+ * @log: The &struct pixel_rail_state_log to destroy
+ *
+ * Context: Process context
+ */
+static void gpu_pm_rail_state_log_term(struct pixel_rail_state_log *log)
+{
+	kfree(log);
+}
+
+/**
  * gpu_pm_power_on_top() - Powers on the GPU global domains and shader cores.
  *
  * @kbdev: The &struct kbase_device for the GPU.
@@ -58,11 +258,8 @@ static int gpu_pm_power_on_top(struct kbase_device *kbdev)
 {
 	int ret;
 	struct pixel_context *pc = kbdev->platform_context;
-	u64 start_ns = ktime_get_ns();
-	int prev_state;
 
-	mutex_lock(&pc->pm.lock);
-	prev_state = pc->pm.state;
+	gpu_pm_rail_state_start_transition_lock(pc);
 
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
@@ -99,8 +296,7 @@ static int gpu_pm_power_on_top(struct kbase_device *kbdev)
 
 	pc->pm.state = GPU_POWER_LEVEL_STACKS;
 
-	trace_gpu_power_state(ktime_get_ns() - start_ns, prev_state, pc->pm.state);
-	mutex_unlock(&pc->pm.lock);
+	gpu_pm_rail_state_end_transition_unlock(pc);
 
 	return ret;
 }
@@ -123,11 +319,8 @@ static int gpu_pm_power_on_top(struct kbase_device *kbdev)
 static void gpu_pm_power_off_top(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
-	u64 start_ns = ktime_get_ns();
-	int prev_state;
 
-	mutex_lock(&pc->pm.lock);
-	prev_state = pc->pm.state;
+	gpu_pm_rail_state_start_transition_lock(pc);
 
 	if (pc->pm.state == GPU_POWER_LEVEL_STACKS) {
 		pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
@@ -158,8 +351,7 @@ static void gpu_pm_power_off_top(struct kbase_device *kbdev)
 
 	}
 
-	trace_gpu_power_state(ktime_get_ns() - start_ns, prev_state, pc->pm.state);
-	mutex_unlock(&pc->pm.lock);
+	gpu_pm_rail_state_end_transition_unlock(pc);
 }
 
 /**
@@ -309,11 +501,8 @@ static void gpu_pm_callback_power_runtime_term(struct kbase_device *kbdev)
  */
 static void gpu_pm_power_on_cores(struct kbase_device *kbdev) {
 	struct pixel_context *pc = kbdev->platform_context;
-	u64 start_ns = ktime_get_ns();
-	int prev_state;
 
-	mutex_lock(&pc->pm.lock);
-	prev_state = pc->pm.state;
+	gpu_pm_rail_state_start_transition_lock(pc);
 
 	if (pc->pm.state == GPU_POWER_LEVEL_GLOBAL && pc->pm.ifpo_enabled) {
 		pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
@@ -324,8 +513,7 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev) {
 #endif
 	}
 
-	trace_gpu_power_state(ktime_get_ns() - start_ns, prev_state, pc->pm.state);
-	mutex_unlock(&pc->pm.lock);
+	gpu_pm_rail_state_end_transition_unlock(pc);
 }
 
 /**
@@ -341,11 +529,8 @@ static void gpu_pm_power_on_cores(struct kbase_device *kbdev) {
  */
 static void gpu_pm_power_off_cores(struct kbase_device *kbdev) {
 	struct pixel_context *pc = kbdev->platform_context;
-	u64 start_ns = ktime_get_ns();
-	int prev_state;
 
-	mutex_lock(&pc->pm.lock);
-	prev_state = pc->pm.state;
+	gpu_pm_rail_state_start_transition_lock(pc);
 
 	if (pc->pm.state == GPU_POWER_LEVEL_STACKS && pc->pm.ifpo_enabled) {
 		pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
@@ -356,8 +541,7 @@ static void gpu_pm_power_off_cores(struct kbase_device *kbdev) {
 #endif
 	}
 
-	trace_gpu_power_state(ktime_get_ns() - start_ns, prev_state, pc->pm.state);
-	mutex_unlock(&pc->pm.lock);
+	gpu_pm_rail_state_end_transition_unlock(pc);
 }
 
 /**
@@ -564,6 +748,8 @@ int gpu_pm_init(struct kbase_device *kbdev)
 	pc->pm.bcl_dev = google_retrieve_bcl_handle();
 #endif
 
+	pc->pm.rail_state_log = gpu_pm_rail_state_log_init(kbdev);
+
 	return 0;
 
 error:
@@ -583,6 +769,8 @@ void gpu_pm_term(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 	int i;
+
+	gpu_pm_rail_state_log_term(pc->pm.rail_state_log);
 
 	for (i = 0; i < GPU_PM_DOMAIN_COUNT; i++) {
 		if (pc->pm.domain_devs[i]) {
