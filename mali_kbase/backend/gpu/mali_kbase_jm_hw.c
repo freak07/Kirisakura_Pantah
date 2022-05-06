@@ -873,10 +873,10 @@ exit:
 	dev_dbg(kbdev->dev, "Zap: Finished Context %pK", kctx);
 
 	/* Ensure that the signallers of the waitqs have finished */
-	mutex_lock(&kctx->jctx.lock);
-	mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
-	mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
-	mutex_unlock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+	rt_mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+	rt_mutex_unlock(&kctx->jctx.lock);
 }
 
 u32 kbase_backend_get_current_flush_id(struct kbase_device *kbdev)

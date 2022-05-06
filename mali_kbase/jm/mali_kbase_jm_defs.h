@@ -847,7 +847,7 @@ struct kbase_jd_renderpass {
  * @max_priority:             Max priority level allowed for this context.
  */
 struct kbase_jd_context {
-	struct mutex lock;
+	struct rt_mutex lock;
 	struct kbasep_js_kctx_info sched_info;
 	struct kbase_jd_atom atoms[BASE_JD_ATOM_COUNT];
 	struct kbase_jd_renderpass renderpasses[BASE_JD_RP_COUNT];

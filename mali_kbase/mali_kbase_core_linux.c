@@ -795,7 +795,7 @@ static int kbase_api_set_flags(struct kbase_file *kfile,
 		 */
 #else
 		js_kctx_info = &kctx->jctx.sched_info;
-		mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+		rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 		spin_lock_irqsave(&kctx->kbdev->hwaccess_lock, irq_flags);
 		/* Translate the flags */
 		if ((flags->create_flags &
@@ -804,7 +804,7 @@ static int kbase_api_set_flags(struct kbase_file *kfile,
 
 
 		spin_unlock_irqrestore(&kctx->kbdev->hwaccess_lock, irq_flags);
-		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+		rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 #endif
 	}
 

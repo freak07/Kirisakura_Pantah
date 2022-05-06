@@ -776,7 +776,7 @@ void kbase_mmu_page_fault_worker(struct work_struct *data)
 
 #if MALI_JIT_PRESSURE_LIMIT_BASE
 #if !MALI_USE_CSF
-	mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.lock);
 #endif
 #endif
 
@@ -1198,7 +1198,7 @@ fault_done:
 		kbase_gpu_vm_unlock(kctx);
 	}
 #if !MALI_USE_CSF
-	mutex_unlock(&kctx->jctx.lock);
+	rt_mutex_unlock(&kctx->jctx.lock);
 #endif
 #endif
 
@@ -1964,9 +1964,9 @@ kbase_mmu_flush_invalidate(struct kbase_context *kctx, u64 vpfn, size_t nr,
 
 	kbdev = kctx->kbdev;
 #if !MALI_USE_CSF
-	mutex_lock(&kbdev->js_data.queue_mutex);
+	rt_mutex_lock(&kbdev->js_data.queue_mutex);
 	ctx_is_in_runpool = kbase_ctx_sched_inc_refcount(kctx);
-	mutex_unlock(&kbdev->js_data.queue_mutex);
+	rt_mutex_unlock(&kbdev->js_data.queue_mutex);
 #else
 	ctx_is_in_runpool = kbase_ctx_sched_inc_refcount_if_as_valid(kctx);
 #endif /* !MALI_USE_CSF */

@@ -168,7 +168,7 @@ static int kbasep_jd_debugfs_atoms_show(struct seq_file *sfile, void *data)
 
 	atoms = kctx->jctx.atoms;
 	/* General atom states */
-	mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.lock);
 	/* JS-related states */
 	spin_lock_irqsave(&kctx->kbdev->hwaccess_lock, irq_flags);
 	for (i = 0; i != BASE_JD_ATOM_COUNT; ++i) {
@@ -202,7 +202,7 @@ static int kbasep_jd_debugfs_atoms_show(struct seq_file *sfile, void *data)
 		seq_puts(sfile, "\n");
 	}
 	spin_unlock_irqrestore(&kctx->kbdev->hwaccess_lock, irq_flags);
-	mutex_unlock(&kctx->jctx.lock);
+	rt_mutex_unlock(&kctx->jctx.lock);
 
 	return 0;
 }

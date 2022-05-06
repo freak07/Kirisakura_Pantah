@@ -329,7 +329,7 @@ struct kbasep_js_device_data {
 	u32 nr_contexts_pullable;
 	atomic_t nr_contexts_runnable;
 	atomic_t soft_job_timeout_ms;
-	struct mutex queue_mutex;
+	struct rt_mutex queue_mutex;
 	/*
 	 * Run Pool mutex, for managing contexts within the runpool.
 	 * Unless otherwise specified, you must hold this lock whilst accessing
@@ -370,7 +370,7 @@ struct kbasep_js_device_data {
  */
 struct kbasep_js_kctx_info {
 	struct kbase_jsctx {
-		struct mutex jsctx_mutex;
+		struct rt_mutex jsctx_mutex;
 
 		u32 nr_jobs;
 		u32 ctx_attr_ref_count[KBASEP_JS_CTX_ATTR_COUNT];

@@ -1451,7 +1451,7 @@ int kbase_jd_submit(struct kbase_context *kctx,
 
 		user_addr = (void __user *)((uintptr_t) user_addr + stride);
 
-		mutex_lock(&jctx->lock);
+		rt_mutex_lock(&jctx->lock);
 #ifndef compiletime_assert
 #define compiletime_assert_defined
 #define compiletime_assert(x, msg) do { switch (0) { case 0: case (x):; } } \
@@ -1476,7 +1476,7 @@ while (false)
 			/* Atom number is already in use, wait for the atom to
 			 * complete
 			 */
-			mutex_unlock(&jctx->lock);
+			rt_mutex_unlock(&jctx->lock);
 
 			/* This thread will wait for the atom to complete. Due
 			 * to thread scheduling we are not sure that the other
@@ -1495,7 +1495,7 @@ while (false)
 				 */
 				return 0;
 			}
-			mutex_lock(&jctx->lock);
+			rt_mutex_lock(&jctx->lock);
 		}
 		KBASE_TLSTREAM_TL_JD_SUBMIT_ATOM_START(kbdev, katom);
 		need_to_try_schedule_context |= jd_submit_atom(kctx, &user_atom,
@@ -1506,7 +1506,7 @@ while (false)
 		 */
 		kbase_disjoint_event_potential(kbdev);
 
-		mutex_unlock(&jctx->lock);
+		rt_mutex_unlock(&jctx->lock);
 	}
 
 	if (need_to_try_schedule_context)
@@ -1549,10 +1549,10 @@ void kbase_jd_done_worker(struct kthread_work *data)
 	/*
 	 * Begin transaction on JD context and JS context
 	 */
-	mutex_lock(&jctx->lock);
+	rt_mutex_lock(&jctx->lock);
 	KBASE_TLSTREAM_TL_ATTRIB_ATOM_STATE(kbdev, katom, TL_ATOM_STATE_DONE);
-	mutex_lock(&js_devdata->queue_mutex);
-	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_lock(&js_devdata->queue_mutex);
+	rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 
 	/* This worker only gets called on contexts that are scheduled *in*. This is
 	 * because it only happens in response to an IRQ from a job that was
@@ -1565,8 +1565,8 @@ void kbase_jd_done_worker(struct kthread_work *data)
 
 		dev_dbg(kbdev->dev, "Atom %pK has been promoted to stopped\n",
 			(void *)katom);
-		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
-		mutex_unlock(&js_devdata->queue_mutex);
+		rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+		rt_mutex_unlock(&js_devdata->queue_mutex);
 
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
@@ -1576,7 +1576,7 @@ void kbase_jd_done_worker(struct kthread_work *data)
 		kbase_js_unpull(kctx, katom);
 
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		mutex_unlock(&jctx->lock);
+		rt_mutex_unlock(&jctx->lock);
 
 		return;
 	}
@@ -1596,8 +1596,8 @@ void kbase_jd_done_worker(struct kthread_work *data)
 	KBASE_DEBUG_ASSERT(kbasep_js_has_atom_finished(&katom_retained_state));
 
 	kbasep_js_remove_job(kbdev, kctx, katom);
-	mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
-	mutex_unlock(&js_devdata->queue_mutex);
+	rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_unlock(&js_devdata->queue_mutex);
 	/* jd_done_nolock() requires the jsctx_mutex lock to be dropped */
 	jd_done_nolock(katom, false);
 
@@ -1607,7 +1607,7 @@ void kbase_jd_done_worker(struct kthread_work *data)
 		unsigned long flags;
 
 		context_idle = false;
-		mutex_lock(&js_devdata->queue_mutex);
+		rt_mutex_lock(&js_devdata->queue_mutex);
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 		/* If kbase_sched() has scheduled this context back in then
@@ -1647,13 +1647,13 @@ void kbase_jd_done_worker(struct kthread_work *data)
 			kbase_ctx_flag_set(kctx, KCTX_ACTIVE);
 		}
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		mutex_unlock(&js_devdata->queue_mutex);
+		rt_mutex_unlock(&js_devdata->queue_mutex);
 	}
 
 	/*
 	 * Transaction complete
 	 */
-	mutex_unlock(&jctx->lock);
+	rt_mutex_unlock(&jctx->lock);
 
 	/* Job is now no longer running, so can now safely release the context
 	 * reference, and handle any actions that were logged against the
@@ -1668,7 +1668,7 @@ void kbase_jd_done_worker(struct kthread_work *data)
 		/* If worker now idle then post all events that jd_done_nolock()
 		 * has queued
 		 */
-		mutex_lock(&jctx->lock);
+		rt_mutex_lock(&jctx->lock);
 		while (!list_empty(&kctx->completed_jobs)) {
 			struct kbase_jd_atom *atom = list_entry(
 					kctx->completed_jobs.next,
@@ -1677,7 +1677,7 @@ void kbase_jd_done_worker(struct kthread_work *data)
 
 			kbase_event_post(kctx, atom);
 		}
-		mutex_unlock(&jctx->lock);
+		rt_mutex_unlock(&jctx->lock);
 	}
 
 	kbase_backend_complete_wq_post_sched(kbdev, core_req);
@@ -1732,11 +1732,11 @@ static void jd_cancel_worker(struct kthread_work *data)
 	KBASE_DEBUG_ASSERT(!kbase_ctx_flag(kctx, KCTX_SCHEDULED));
 
 	/* Scheduler: Remove the job from the system */
-	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 	attr_state_changed = kbasep_js_remove_cancelled_job(kbdev, kctx, katom);
-	mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 
-	mutex_lock(&jctx->lock);
+	rt_mutex_lock(&jctx->lock);
 
 	jd_done_nolock(katom, true);
 	/* Because we're zapping, we're not adding any more jobs to this ctx, so no need to
@@ -1746,7 +1746,7 @@ static void jd_cancel_worker(struct kthread_work *data)
 	KBASE_DEBUG_ASSERT(!need_to_try_schedule_context);
 
 	/* katom may have been freed now, do not use! */
-	mutex_unlock(&jctx->lock);
+	rt_mutex_unlock(&jctx->lock);
 
 	if (attr_state_changed)
 		kbase_js_sched_all(kbdev);
@@ -1846,7 +1846,7 @@ void kbase_jd_zap_context(struct kbase_context *kctx)
 
 	kbase_js_zap_context(kctx);
 
-	mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.lock);
 
 	/*
 	 * While holding the struct kbase_jd_context lock clean up jobs which are known to kbase but are
@@ -1864,7 +1864,7 @@ void kbase_jd_zap_context(struct kbase_context *kctx)
 	kbase_dma_fence_cancel_all_atoms(kctx);
 #endif
 
-	mutex_unlock(&kctx->jctx.lock);
+	rt_mutex_unlock(&kctx->jctx.lock);
 
 #ifdef CONFIG_MALI_DMA_FENCE
 	/* Flush dma-fence workqueue to ensure that any callbacks that may have
@@ -1912,7 +1912,7 @@ int kbase_jd_init(struct kbase_context *kctx)
 	for (i = 0; i < BASE_JD_RP_COUNT; i++)
 		kctx->jctx.renderpasses[i].state = KBASE_JD_RP_COMPLETE;
 
-	mutex_init(&kctx->jctx.lock);
+	rt_mutex_init(&kctx->jctx.lock);
 
 	init_waitqueue_head(&kctx->jctx.zero_jobs_wait);
 
