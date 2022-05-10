@@ -12,6 +12,7 @@
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_sscd.h"
+#include "pixel_gpu_debug.h"
 #include "pixel_gpu_control.h"
 #include <linux/platform_data/sscoredump.h>
 #include <linux/platform_device.h>
@@ -46,11 +47,14 @@ enum
 	FW_TRACE = 0x5,
 	PM_EVENT_LOG = 0x6,
 	POWER_RAIL_LOG = 0x7,
+	PDC_STATUS = 0x8,
 	NUM_SEGMENTS
 } sscd_segs;
 
 static void get_pm_event_log(struct kbase_device *kbdev, struct sscd_segment *seg)
 {
+	lockdep_assert_held(kbdev->hwaccess_lock);
+
 	if (seg->addr == NULL)
 		return;
 
@@ -180,6 +184,20 @@ static void get_rail_state_log(struct kbase_device *kbdev, struct sscd_segment *
 	seg->size = gpu_pm_get_rail_state_log_size(kbdev);
 }
 
+static void get_pdc_state(struct kbase_device *kbdev, struct pixel_gpu_pdc_status *pdc_status,
+			  struct sscd_segment *seg)
+{
+	lockdep_assert_held(kbdev->hwaccess_lock);
+
+	if (pdc_status == NULL) {
+		dev_err(kbdev->dev, "pixel: failed to read PDC status, no storage");
+		return;
+	}
+	gpu_debug_read_pdc_status(kbdev, pdc_status);
+	seg->addr = pdc_status;
+	seg->size = sizeof(*pdc_status);
+}
+
 static int segments_init(struct kbase_device *kbdev, struct sscd_segment* segments)
 {
 	/* Zero init everything for safety */
@@ -231,6 +249,7 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 	struct pixel_context *pc = kbdev->platform_context;
 	int ec = 0;
 	unsigned long flags;
+	struct pixel_gpu_pdc_status pdc_status;
 
 	dev_info(kbdev->dev, "pixel: mali subsystem core dump in progress");
 	/* No point in proceeding if we can't report the dumped data */
@@ -247,6 +266,9 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 
 	/* We don't want anything messing with the HW while we dump */
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+
+	/* Read the FW view of GPU PDC state, we get this early */
+	get_pdc_state(kbdev, &pdc_status, &segs[PDC_STATUS]);
 
 	/* Suspend the MCU to prevent it from overwriting the data we want to dump */
 	suspend_mcu(kbdev);

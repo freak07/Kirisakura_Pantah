@@ -37,3 +37,6 @@ mali_kbase-$(CONFIG_MALI_PIXEL_GPU_THERMAL) += \
 
 mali_kbase-$(CONFIG_MALI_PIXEL_GPU_SSCD) += \
 	platform/$(MALI_PLATFORM_DIR)/pixel_gpu_sscd.o
+
+mali_kbase-$(CONFIG_MALI_CSF_SUPPORT) += \
+	platform/$(MALI_PLATFORM_DIR)/pixel_gpu_debug.o
