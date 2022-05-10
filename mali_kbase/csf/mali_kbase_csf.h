@@ -47,7 +47,8 @@
 
 #define FIRMWARE_PING_INTERVAL_MS (12000) /* 12 seconds */
 
-#define FIRMWARE_IDLE_HYSTERESIS_TIME_MS (100)
+/* 60ms optimizes power while minimizing latency impact for UI test cases. */
+#define FIRMWARE_IDLE_HYSTERESIS_TIME_MS (60)
 #define MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_US (600)
 
 /* Idle hysteresis time can be scaled down when GPU sleep feature is used */
