@@ -53,7 +53,7 @@ enum
 
 static void get_pm_event_log(struct kbase_device *kbdev, struct sscd_segment *seg)
 {
-	lockdep_assert_held(kbdev->hwaccess_lock);
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	if (seg->addr == NULL)
 		return;
@@ -99,7 +99,7 @@ static void get_fw_trace(struct kbase_device *kbdev, struct sscd_segment *seg)
 	struct firmware_trace_buffer *tb;
 	struct pixel_fw_trace *fw_trace;
 
-	lockdep_assert_held(kbdev->hwaccess_lock);
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	if (seg->addr == NULL)
 		return;
@@ -187,7 +187,7 @@ static void get_rail_state_log(struct kbase_device *kbdev, struct sscd_segment *
 static void get_pdc_state(struct kbase_device *kbdev, struct pixel_gpu_pdc_status *pdc_status,
 			  struct sscd_segment *seg)
 {
-	lockdep_assert_held(kbdev->hwaccess_lock);
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	if (pdc_status == NULL) {
 		dev_err(kbdev->dev, "pixel: failed to read PDC status, no storage");
