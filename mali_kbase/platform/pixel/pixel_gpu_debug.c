@@ -24,7 +24,7 @@ static bool gpu_debug_check_dbg_active(struct kbase_device *kbdev)
 	int i = 0;
 	u32 val;
 
-	lockdep_assert_held(kbdev->hwaccess_lock);
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	/* Wait for the active bit to drop, indicating the DBG command completed */
 	do {
@@ -40,7 +40,7 @@ static bool gpu_debug_check_dbg_active(struct kbase_device *kbdev)
 
 static u32 gpu_debug_read_pdc(struct kbase_device *kbdev, u32 pdc_offset)
 {
-	lockdep_assert_held(kbdev->hwaccess_lock);
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	/* Write the debug command */
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), pdc_offset);
@@ -56,7 +56,7 @@ void gpu_debug_read_pdc_status(struct kbase_device *kbdev, struct pixel_gpu_pdc_
 {
 	int i;
 
-	lockdep_assert_held(kbdev->hwaccess_lock);
+	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	status->meta = (struct pixel_gpu_pdc_status_metadata) {
 		.magic = "pdcs",
