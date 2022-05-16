@@ -212,12 +212,12 @@ void kbase_soft_event_wait_callback(struct kbase_jd_atom *katom)
 {
 	struct kbase_context *kctx = katom->kctx;
 
-	mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.lock);
 	kbasep_remove_waiting_soft_job(katom);
 	kbase_finish_soft_job(katom);
 	if (jd_done_nolock(katom, true))
 		kbase_js_sched_all(kctx->kbdev);
-	mutex_unlock(&kctx->jctx.lock);
+	rt_mutex_unlock(&kctx->jctx.lock);
 }
 #endif
 
@@ -228,9 +228,9 @@ static void kbasep_soft_event_complete_job(struct kthread_work *work)
 	struct kbase_context *kctx = katom->kctx;
 	int resched;
 
-	mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.lock);
 	resched = jd_done_nolock(katom, true);
-	mutex_unlock(&kctx->jctx.lock);
+	rt_mutex_unlock(&kctx->jctx.lock);
 
 	if (resched)
 		kbase_js_sched_all(kctx->kbdev);
@@ -359,9 +359,9 @@ static void kbase_fence_debug_wait_timeout_worker(struct kthread_work *work)
 	struct kbase_jd_atom *katom = w->katom;
 	struct kbase_context *kctx = katom->kctx;
 
-	mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.lock);
 	kbase_fence_debug_wait_timeout(katom);
-	mutex_unlock(&kctx->jctx.lock);
+	rt_mutex_unlock(&kctx->jctx.lock);
 
 	kfree(w);
 }
@@ -481,7 +481,7 @@ int kbase_soft_event_update(struct kbase_context *kctx,
 {
 	int err = 0;
 
-	mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.lock);
 
 	if (kbasep_write_soft_event_status(kctx, event, new_status)) {
 		err = -ENOENT;
@@ -492,7 +492,7 @@ int kbase_soft_event_update(struct kbase_context *kctx,
 		kbasep_complete_triggered_soft_events(kctx, event);
 
 out:
-	mutex_unlock(&kctx->jctx.lock);
+	rt_mutex_unlock(&kctx->jctx.lock);
 
 	return err;
 }
@@ -1355,10 +1355,10 @@ static void kbasep_jit_finish_worker(struct kthread_work *work)
 	struct kbase_context *kctx = katom->kctx;
 	int resched;
 
-	mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.lock);
 	kbase_finish_soft_job(katom);
 	resched = jd_done_nolock(katom, true);
-	mutex_unlock(&kctx->jctx.lock);
+	rt_mutex_unlock(&kctx->jctx.lock);
 
 	if (resched)
 		kbase_js_sched_all(kctx->kbdev);
@@ -1788,7 +1788,7 @@ void kbase_resume_suspended_soft_jobs(struct kbase_device *kbdev)
 			&local_suspended_soft_jobs, dep_item[1]) {
 		struct kbase_context *kctx = katom_iter->kctx;
 
-		mutex_lock(&kctx->jctx.lock);
+		rt_mutex_lock(&kctx->jctx.lock);
 
 		/* Remove from the global list */
 		list_del(&katom_iter->dep_item[1]);
@@ -1802,7 +1802,7 @@ void kbase_resume_suspended_soft_jobs(struct kbase_device *kbdev)
 			atomic_dec(&kbdev->pm.gpu_users_waiting);
 #endif /* CONFIG_MALI_ARBITER_SUPPORT */
 		}
-		mutex_unlock(&kctx->jctx.lock);
+		rt_mutex_unlock(&kctx->jctx.lock);
 	}
 
 	if (resched)

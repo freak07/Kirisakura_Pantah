@@ -599,7 +599,7 @@ int kbasep_js_devdata_init(struct kbase_device * const kbdev)
 	 */
 
 	mutex_init(&jsdd->runpool_mutex);
-	mutex_init(&jsdd->queue_mutex);
+	rt_mutex_init(&jsdd->queue_mutex);
 	sema_init(&jsdd->schedule_sem, 1);
 
 	for (i = 0; i < kbdev->gpu_props.num_job_slots; ++i) {
@@ -662,7 +662,7 @@ int kbasep_js_kctx_init(struct kbase_context *const kctx)
 	/* On error, we could continue on: providing none of the below resources
 	 * rely on the ones above
 	 */
-	mutex_init(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_init(&js_kctx_info->ctx.jsctx_mutex);
 
 	init_waitqueue_head(&js_kctx_info->ctx.is_scheduled_wait);
 
@@ -692,8 +692,8 @@ void kbasep_js_kctx_term(struct kbase_context *kctx)
 	KBASE_DEBUG_ASSERT(!kbase_ctx_flag(kctx, KCTX_SCHEDULED));
 	KBASE_DEBUG_ASSERT(js_kctx_info->ctx.nr_jobs == 0);
 
-	mutex_lock(&kbdev->js_data.queue_mutex);
-	mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+	rt_mutex_lock(&kbdev->js_data.queue_mutex);
+	rt_mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	for (js = 0; js < kbdev->gpu_props.num_job_slots; js++)
@@ -707,8 +707,8 @@ void kbasep_js_kctx_term(struct kbase_context *kctx)
 		kbase_ctx_flag_clear(kctx, KCTX_RUNNABLE_REF);
 	}
 
-	mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
-	mutex_unlock(&kbdev->js_data.queue_mutex);
+	rt_mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+	rt_mutex_unlock(&kbdev->js_data.queue_mutex);
 
 	if (update_ctx_count) {
 		mutex_lock(&kbdev->js_data.runpool_mutex);
@@ -1522,8 +1522,8 @@ bool kbasep_js_add_job(struct kbase_context *kctx,
 	js_devdata = &kbdev->js_data;
 	js_kctx_info = &kctx->jctx.sched_info;
 
-	mutex_lock(&js_devdata->queue_mutex);
-	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_lock(&js_devdata->queue_mutex);
+	rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 
 	if (atom->core_req & BASE_JD_REQ_START_RENDERPASS)
 		err = js_add_start_rp(atom);
@@ -1639,9 +1639,9 @@ out_unlock:
 	dev_dbg(kbdev->dev, "Enqueue of kctx %pK is %srequired\n",
 		kctx, enqueue_required ? "" : "not ");
 
-	mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 
-	mutex_unlock(&js_devdata->queue_mutex);
+	rt_mutex_unlock(&js_devdata->queue_mutex);
 
 	return enqueue_required;
 }
@@ -1986,8 +1986,8 @@ void kbasep_js_runpool_release_ctx_and_katom_retained_state(
 	js_kctx_info = &kctx->jctx.sched_info;
 	js_devdata = &kbdev->js_data;
 
-	mutex_lock(&js_devdata->queue_mutex);
-	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_lock(&js_devdata->queue_mutex);
+	rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 	mutex_lock(&js_devdata->runpool_mutex);
 
 	release_result = kbasep_js_runpool_release_ctx_internal(kbdev, kctx,
@@ -2001,8 +2001,8 @@ void kbasep_js_runpool_release_ctx_and_katom_retained_state(
 
 	/* Drop the jsctx_mutex to allow scheduling in a new context */
 
-	mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
-	mutex_unlock(&js_devdata->queue_mutex);
+	rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_unlock(&js_devdata->queue_mutex);
 
 	if (release_result & KBASEP_JS_RELEASE_RESULT_SCHED_ALL)
 		kbase_js_sched_all(kbdev);
@@ -2038,7 +2038,7 @@ static void kbasep_js_runpool_release_ctx_no_schedule(
 	js_devdata = &kbdev->js_data;
 	kbasep_js_atom_retained_state_init_invalid(katom_retained_state);
 
-	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 	mutex_lock(&js_devdata->runpool_mutex);
 
 	release_result = kbasep_js_runpool_release_ctx_internal(kbdev, kctx,
@@ -2050,7 +2050,7 @@ static void kbasep_js_runpool_release_ctx_no_schedule(
 		kbasep_js_runpool_requeue_or_kill_ctx(kbdev, kctx, true);
 
 	/* Drop the jsctx_mutex to allow scheduling in a new context */
-	mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 
 	/* NOTE: could return release_result if the caller would like to know
 	 * whether it should schedule a new context, but currently no callers do
@@ -2107,7 +2107,7 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 	/*
 	 * Atomic transaction on the Context and Run Pool begins
 	 */
-	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 	mutex_lock(&js_devdata->runpool_mutex);
 	mutex_lock(&kbdev->mmu_hw_mutex);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
@@ -2120,7 +2120,7 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 		mutex_unlock(&kbdev->mmu_hw_mutex);
 		mutex_unlock(&js_devdata->runpool_mutex);
-		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+		rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 
 		return false;
 	}
@@ -2140,7 +2140,7 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 		mutex_unlock(&kbdev->mmu_hw_mutex);
 		mutex_unlock(&js_devdata->runpool_mutex);
-		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+		rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 
 		return false;
 	}
@@ -2189,7 +2189,7 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 	kbase_backend_ctx_count_changed(kbdev);
 
 	mutex_unlock(&js_devdata->runpool_mutex);
-	mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 	/* Note: after this point, the context could potentially get scheduled
 	 * out immediately
 	 */
@@ -2272,8 +2272,8 @@ void kbasep_js_schedule_privileged_ctx(struct kbase_device *kbdev,
 		return;
 #endif
 
-	mutex_lock(&js_devdata->queue_mutex);
-	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_lock(&js_devdata->queue_mutex);
+	rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 
 	/* Mark the context as privileged */
 	kbase_ctx_flag_set(kctx, KCTX_PRIVILEGED);
@@ -2287,8 +2287,8 @@ void kbasep_js_schedule_privileged_ctx(struct kbase_device *kbdev,
 		/* Fast-starting requires the jsctx_mutex to be dropped,
 		 * because it works on multiple ctxs
 		 */
-		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
-		mutex_unlock(&js_devdata->queue_mutex);
+		rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+		rt_mutex_unlock(&js_devdata->queue_mutex);
 
 		/* Try to schedule the context in */
 		kbase_js_sched_all(kbdev);
@@ -2301,8 +2301,8 @@ void kbasep_js_schedule_privileged_ctx(struct kbase_device *kbdev,
 		 * corresponding address space
 		 */
 		WARN_ON(!kbase_ctx_sched_inc_refcount(kctx));
-		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
-		mutex_unlock(&js_devdata->queue_mutex);
+		rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+		rt_mutex_unlock(&js_devdata->queue_mutex);
 	}
 }
 KBASE_EXPORT_TEST_API(kbasep_js_schedule_privileged_ctx);
@@ -2316,9 +2316,9 @@ void kbasep_js_release_privileged_ctx(struct kbase_device *kbdev,
 	js_kctx_info = &kctx->jctx.sched_info;
 
 	/* We don't need to use the address space anymore */
-	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 	kbase_ctx_flag_clear(kctx, KCTX_PRIVILEGED);
-	mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 
 	/* Release the context - it will be scheduled out */
 	kbasep_js_runpool_release_ctx(kbdev, kctx);
@@ -2391,7 +2391,7 @@ void kbasep_js_resume(struct kbase_device *kbdev)
 	js_devdata = &kbdev->js_data;
 	KBASE_DEBUG_ASSERT(!kbase_pm_is_suspending(kbdev));
 
-	mutex_lock(&js_devdata->queue_mutex);
+	rt_mutex_lock(&js_devdata->queue_mutex);
 	for (js = 0; js < kbdev->gpu_props.num_job_slots; js++) {
 		for (prio = KBASE_JS_ATOM_SCHED_PRIO_FIRST;
 			prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++) {
@@ -2413,7 +2413,7 @@ void kbasep_js_resume(struct kbase_device *kbdev)
 
 				js_kctx_info = &kctx->jctx.sched_info;
 
-				mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+				rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 				mutex_lock(&js_devdata->runpool_mutex);
 				spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
@@ -2430,7 +2430,7 @@ void kbasep_js_resume(struct kbase_device *kbdev)
 					kbase_backend_ctx_count_changed(kbdev);
 
 				mutex_unlock(&js_devdata->runpool_mutex);
-				mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+				rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
 
 				/* Take lock before accessing list again */
 				spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
@@ -2462,7 +2462,7 @@ void kbasep_js_resume(struct kbase_device *kbdev)
 #endif
 		}
 	}
-	mutex_unlock(&js_devdata->queue_mutex);
+	rt_mutex_unlock(&js_devdata->queue_mutex);
 
 	/* Restart atom processing */
 	kbase_js_sched_all(kbdev);
@@ -2984,8 +2984,8 @@ static void js_return_worker(struct kthread_work *data)
 
 	kbasep_js_atom_retained_state_copy(&retained_state, katom);
 
-	mutex_lock(&js_devdata->queue_mutex);
-	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_lock(&js_devdata->queue_mutex);
+	rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 
 	if (katom->event_code != BASE_JD_EVENT_END_RP_DONE)
 		atomic_dec(&katom->blocked);
@@ -3062,17 +3062,17 @@ static void js_return_worker(struct kthread_work *data)
 	if (timer_sync)
 		kbase_js_sync_timers(kbdev);
 
-	mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
-	mutex_unlock(&js_devdata->queue_mutex);
+	rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_unlock(&js_devdata->queue_mutex);
 
 	if (katom->core_req & BASE_JD_REQ_START_RENDERPASS) {
-		mutex_lock(&kctx->jctx.lock);
+		rt_mutex_lock(&kctx->jctx.lock);
 		js_return_of_start_rp(katom);
-		mutex_unlock(&kctx->jctx.lock);
+		rt_mutex_unlock(&kctx->jctx.lock);
 	} else if (katom->event_code == BASE_JD_EVENT_END_RP_DONE) {
-		mutex_lock(&kctx->jctx.lock);
+		rt_mutex_lock(&kctx->jctx.lock);
 		js_return_of_end_rp(katom);
-		mutex_unlock(&kctx->jctx.lock);
+		rt_mutex_unlock(&kctx->jctx.lock);
 	}
 
 	dev_dbg(kbdev->dev, "JS: retained state %s finished",
@@ -3616,7 +3616,7 @@ static bool kbase_js_defer_activate_for_slot(struct kbase_context *kctx, int js)
 	if (js != 1 || kbase_pm_is_active(kbdev))
 		return false;
 
-	mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+	rt_mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	for (prio = KBASE_JS_ATOM_SCHED_PRIO_REALTIME; prio < KBASE_JS_ATOM_SCHED_PRIO_COUNT; prio++) {
@@ -3635,7 +3635,7 @@ static bool kbase_js_defer_activate_for_slot(struct kbase_context *kctx, int js)
 
 done:
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-	mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+	rt_mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
 	return ret;
 }
 
@@ -3655,7 +3655,7 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 	js_devdata = &kbdev->js_data;
 
 	down(&js_devdata->schedule_sem);
-	mutex_lock(&js_devdata->queue_mutex);
+	rt_mutex_lock(&js_devdata->queue_mutex);
 
 	for (js = 0; js < BASE_JM_MAX_NR_SLOTS; js++) {
 		last_active[js] = kbdev->hwaccess.active_kctx[js];
@@ -3676,11 +3676,11 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 
 			if (first_deferred_ctx && kctx == first_deferred_ctx) {
 				if (!kbase_pm_is_active(kbdev)) {
-					mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+					rt_mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
 					if (kbase_js_ctx_list_add_pullable_head(
 						kctx->kbdev, kctx, js))
 						kbase_js_sync_timers(kbdev);
-					mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+					rt_mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
 					/* Stop looking for new pullable work for this slot */
 					kctx = NULL;
 				} else {
@@ -3709,12 +3709,12 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 					dev_dbg(kbdev->dev,
 						"Deferring activation of kctx %pK for JS%d\n",
 						(void *)kctx, js);
-					mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+					rt_mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
 					spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 					ctx_count_changed = kbase_js_ctx_list_add_pullable_nolock(
 							kctx->kbdev, kctx, js);
 					spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-					mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+					rt_mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
 					if (ctx_count_changed)
 						kbase_backend_ctx_count_changed(kctx->kbdev);
 					if (!first_deferred_ctx)
@@ -3730,14 +3730,14 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 					/* Suspend pending - return context to
 					 * queue and stop scheduling
 					 */
-					mutex_lock(
+					rt_mutex_lock(
 					&kctx->jctx.sched_info.ctx.jsctx_mutex);
 					if (kbase_js_ctx_list_add_pullable_head(
 						kctx->kbdev, kctx, js))
 						kbase_js_sync_timers(kbdev);
-					mutex_unlock(
+					rt_mutex_unlock(
 					&kctx->jctx.sched_info.ctx.jsctx_mutex);
-					mutex_unlock(&js_devdata->queue_mutex);
+					rt_mutex_unlock(&js_devdata->queue_mutex);
 					up(&js_devdata->schedule_sem);
 					KBASE_TLSTREAM_TL_JS_SCHED_END(kbdev,
 									  0);
@@ -3750,7 +3750,7 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 			}
 
 			if (!kbase_js_use_ctx(kbdev, kctx, js)) {
-				mutex_lock(
+				rt_mutex_lock(
 					&kctx->jctx.sched_info.ctx.jsctx_mutex);
 
 				dev_dbg(kbdev->dev,
@@ -3769,7 +3769,7 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 							kctx->kbdev, kctx, js);
 				spin_unlock_irqrestore(&kbdev->hwaccess_lock,
 						flags);
-				mutex_unlock(
+				rt_mutex_unlock(
 					&kctx->jctx.sched_info.ctx.jsctx_mutex);
 				if (context_idle) {
 					WARN_ON(!kbase_ctx_flag(kctx, KCTX_ACTIVE));
@@ -3781,7 +3781,7 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 				js_mask &= ~(1 << js);
 				break;
 			}
-			mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+			rt_mutex_lock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
 			spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 			kbase_ctx_flag_clear(kctx, KCTX_PULLED);
@@ -3851,7 +3851,7 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 							&kbdev->hwaccess_lock,
 							flags);
 				}
-				mutex_unlock(
+				rt_mutex_unlock(
 					&kctx->jctx.sched_info.ctx.jsctx_mutex);
 
 				js_mask &= ~(1 << js);
@@ -3870,7 +3870,7 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 							kctx->kbdev, kctx, js);
 
 			spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-			mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+			rt_mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
 		}
 	}
 
@@ -3886,7 +3886,7 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 		}
 	}
 
-	mutex_unlock(&js_devdata->queue_mutex);
+	rt_mutex_unlock(&js_devdata->queue_mutex);
 	up(&js_devdata->schedule_sem);
 	KBASE_TLSTREAM_TL_JS_SCHED_END(kbdev, 0);
 }
@@ -3907,9 +3907,9 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 	 * - mark the context as dying
 	 * - try to evict it from the queue
 	 */
-	mutex_lock(&kctx->jctx.lock);
-	mutex_lock(&js_devdata->queue_mutex);
-	mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
+	rt_mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&js_devdata->queue_mutex);
+	rt_mutex_lock(&js_kctx_info->ctx.jsctx_mutex);
 	kbase_ctx_flag_set(kctx, KCTX_DYING);
 
 	dev_dbg(kbdev->dev, "Zap: Try Evict Ctx %pK", kctx);
@@ -3986,9 +3986,9 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 		 */
 		kbasep_js_runpool_requeue_or_kill_ctx(kbdev, kctx, false);
 
-		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
-		mutex_unlock(&js_devdata->queue_mutex);
-		mutex_unlock(&kctx->jctx.lock);
+		rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+		rt_mutex_unlock(&js_devdata->queue_mutex);
+		rt_mutex_unlock(&kctx->jctx.lock);
 	} else {
 		unsigned long flags;
 
@@ -4023,9 +4023,9 @@ void kbase_js_zap_context(struct kbase_context *kctx)
 		kbase_backend_jm_kill_running_jobs_from_kctx(kctx);
 
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
-		mutex_unlock(&js_devdata->queue_mutex);
-		mutex_unlock(&kctx->jctx.lock);
+		rt_mutex_unlock(&js_kctx_info->ctx.jsctx_mutex);
+		rt_mutex_unlock(&js_devdata->queue_mutex);
+		rt_mutex_unlock(&kctx->jctx.lock);
 
 		dev_dbg(kbdev->dev, "Zap: Ctx %pK Release (may or may not schedule out immediately)",
 									kctx);

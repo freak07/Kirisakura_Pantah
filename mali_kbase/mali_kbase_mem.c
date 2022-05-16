@@ -3625,7 +3625,7 @@ static int kbase_jit_debugfs_used_get(struct kbase_jit_debugfs_data *data)
 	struct kbase_va_region *reg;
 
 #if !MALI_USE_CSF
-	mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.lock);
 #endif /* !MALI_USE_CSF */
 	mutex_lock(&kctx->jit_evict_lock);
 	list_for_each_entry(reg, &kctx->jit_active_head, jit_node) {
@@ -3633,7 +3633,7 @@ static int kbase_jit_debugfs_used_get(struct kbase_jit_debugfs_data *data)
 	}
 	mutex_unlock(&kctx->jit_evict_lock);
 #if !MALI_USE_CSF
-	mutex_unlock(&kctx->jctx.lock);
+	rt_mutex_unlock(&kctx->jctx.lock);
 #endif /* !MALI_USE_CSF */
 
 	return 0;
@@ -3652,7 +3652,7 @@ static int kbase_jit_debugfs_trim_get(struct kbase_jit_debugfs_data *data)
 	struct kbase_va_region *reg;
 
 #if !MALI_USE_CSF
-	mutex_lock(&kctx->jctx.lock);
+	rt_mutex_lock(&kctx->jctx.lock);
 #endif /* !MALI_USE_CSF */
 	kbase_gpu_vm_lock(kctx);
 	mutex_lock(&kctx->jit_evict_lock);
@@ -3673,7 +3673,7 @@ static int kbase_jit_debugfs_trim_get(struct kbase_jit_debugfs_data *data)
 	mutex_unlock(&kctx->jit_evict_lock);
 	kbase_gpu_vm_unlock(kctx);
 #if !MALI_USE_CSF
-	mutex_unlock(&kctx->jctx.lock);
+	rt_mutex_unlock(&kctx->jctx.lock);
 #endif /* !MALI_USE_CSF */
 
 	return 0;
