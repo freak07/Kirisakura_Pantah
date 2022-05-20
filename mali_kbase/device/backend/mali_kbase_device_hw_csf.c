@@ -83,6 +83,37 @@ static void kbase_gpu_fault_interrupt(struct kbase_device *kbdev)
 
 }
 
+#if CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+/* When the GLB_PWROFF_TIMER expires, FW will write the SHADER_PWROFF register, this sequence
+ * follows:
+ *  - SHADER_PWRTRANS goes high
+ *  - SHADER_READY goes low
+ *  - Iterator is told not to send any more work to the core
+ *  - Wait for the core to drain
+ *  - SHADER_PWRACTIVE goes low
+ *  - Do an IPA sample
+ *  - Flush the core
+ *  - Apply functional isolation
+ *  - Turn the clock off
+ *  - Put the core in reset
+ *  - Apply electrical isolation
+ *  - Power off the core
+ *  - SHADER_PWRTRANS goes low
+ *
+ * It's therefore safe to turn off the SC rail when:
+ *  - SHADER_READY == 0, this means the SC's last transitioned to OFF
+ *  - SHADER_PWRTRANS == 0, this means the SC's have finished transitioning
+ */
+static bool safe_to_turn_off_sc_rail(struct kbase_device *kbdev)
+{
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+	return (kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_READY_HI)) ||
+		kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_READY_LO)) ||
+		kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_PWRTRANS_HI)) ||
+		kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_PWRTRANS_LO))) == 0;
+}
+#endif /* CONFIG_MALI_HOST_CONTROLS_SC_RAILS */
+
 void kbase_gpu_interrupt(struct kbase_device *kbdev, u32 val)
 {
 	KBASE_KTRACE_ADD(kbdev, CORE_GPU_IRQ, NULL, val);
@@ -165,6 +196,16 @@ void kbase_gpu_interrupt(struct kbase_device *kbdev, u32 val)
 
 	if (val & CLEAN_CACHES_COMPLETED)
 		kbase_clean_caches_done(kbdev);
+
+#if CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	if (val & POWER_CHANGED_ALL) {
+		unsigned long flags;
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		kbdev->pm.backend.sc_pwroff_safe = safe_to_turn_off_sc_rail(kbdev);
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	}
+#endif
+
 
 	if (val & (POWER_CHANGED_ALL | MCU_STATUS_GPU_IRQ)) {
 		kbase_pm_power_changed(kbdev);

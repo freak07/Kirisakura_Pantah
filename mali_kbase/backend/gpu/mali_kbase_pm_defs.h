@@ -529,6 +529,7 @@ struct kbase_pm_backend_data {
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 	struct work_struct sc_rails_on_work;
 	bool sc_power_rails_off;
+	bool sc_pwroff_safe;
 #endif
 
 #ifdef KBASE_PM_RUNTIME

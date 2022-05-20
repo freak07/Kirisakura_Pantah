@@ -4650,7 +4650,6 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 	long wt = kbase_csf_timeout_in_jiffies(kbdev->csf.fw_timeout_ms);
 	u32 num_groups = kbdev->csf.global_iface.group_num;
 	unsigned long flags, i;
-	bool shaders_ready;
 
 	lockdep_assert_held(&scheduler->lock);
 
@@ -4725,24 +4724,7 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 			}
 		}
 	}
-
-	//This workaround works by reading these registers indicating GPU activity.
-	//If these registers report GPU is in progress, but this function had determined that the
-	//GPU was idle, then this function must have detected idleness incorrectly.
-	shaders_ready = kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_READY_HI)) ||
-			kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_READY_LO));
-	if (shaders_ready) {
-		trace_clock_set_rate("idle_detection_failed.", 1, raw_smp_processor_id());
-		dev_warn(kbdev->dev, "GPU Idle Detection Failed");
-	}
-
-	//In this workaround, we'll prefer the SHADER_READY state. This is not
-	//completely robust, but in practice averts most the situations where a shader
-	//rail off is issued during a job.
-	//
-	//If shader rail is turned off during job, APM generates fatal error
-	//and GPU firmware will generate error interrupt and try to reset.
-	return !shaders_ready;
+	return true;
 }
 
 /**
@@ -4770,10 +4752,24 @@ static bool can_turn_off_sc_rails(struct kbase_device *kbdev)
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	spin_lock(&scheduler->interrupt_lock);
-	turn_off_sc_rails = kbase_csf_scheduler_all_csgs_idle(kbdev) &&
+	/* Ensure the SC power off sequence is complete before powering off the rail.
+	 * If shader rail is turned off during job, APM generates fatal error and GPU firmware
+	 * will generate error interrupt and try to reset.
+	 * Note that this will avert the case when a power off is not complete, but it is not
+	 * designed to handle a situation where a power on races with this code. That situation
+	 * should be prevented by trapping new work through the kernel.
+	 */
+	if (!kbdev->pm.backend.sc_pwroff_safe) {
+		trace_clock_set_rate("rail_off_aborted.", 1, raw_smp_processor_id());
+		dev_info(kbdev->dev, "SC Rail off aborted, power sequence incomplete");
+	}
+
+	turn_off_sc_rails = kbdev->pm.backend.sc_pwroff_safe &&
+			    kbase_csf_scheduler_all_csgs_idle(kbdev) &&
 			    !atomic_read(&scheduler->non_idle_offslot_grps) &&
 			    !kbase_pm_no_mcu_core_pwroff(kbdev) &&
 			    !scheduler->sc_power_rails_off;
+
 	spin_unlock(&scheduler->interrupt_lock);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
