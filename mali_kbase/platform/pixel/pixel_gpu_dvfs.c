@@ -719,6 +719,12 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 		goto done;
 	}
 
+	/* Setup dvfs step up value */
+	if (of_property_read_u32(np, "gpu_dvfs_step_up_val", &pc->dvfs.step_up_val)) {
+		ret = -EINVAL;
+		goto done;
+	}
+
 	/* Initialize power down hysteresis */
 	if (of_property_read_u32(np, "gpu_dvfs_clockdown_hysteresis",
 		&pc->dvfs.clockdown_hysteresis)) {
