@@ -139,12 +139,15 @@ static void turn_off_sc_power_rails(struct kbase_device *kbdev)
  * This function is called to acknowledge the GPU idle event. It is expected
  * that firmware will re-enable the User submission only when it receives a
  * CSI kernel doorbell after the idle event acknowledgement.
+ *
+ * @return true if there was an idle event to ack, false if not
  */
-static void ack_gpu_idle_event(struct kbase_device *kbdev)
+static bool ack_gpu_idle_event(struct kbase_device *kbdev)
 {
 	struct kbase_csf_global_iface *global_iface = &kbdev->csf.global_iface;
 	u32 glb_req, glb_ack;
 	unsigned long flags;
+	bool ret = false;
 
 	lockdep_assert_held(&kbdev->csf.scheduler.lock);
 
@@ -155,8 +158,29 @@ static void ack_gpu_idle_event(struct kbase_device *kbdev)
 		kbase_csf_firmware_global_input_mask(
 			global_iface, GLB_REQ, glb_ack,
 			GLB_REQ_IDLE_EVENT_MASK);
+		ret = true;
 	}
 	spin_unlock_irqrestore(&kbdev->csf.scheduler.interrupt_lock, flags);
+
+	return ret;
+}
+
+/* cancel_sc_rail_off - Prevent a scheduled SC rail power-off
+ *
+ * @kbdev: Pointer to the device.
+ *
+ * Ringing the CSI kernel doorbell will bring the GPU out of its IDLE state, if it was idle.
+ * If we previously received an IDLE notification from FW, then an SC rail power off may be
+ * scheduled, and it's possible that a submission has pre-empted the rail power-off.
+ *
+ * ACK the idle event to cancel the scheduled rail power-off.
+ * A new REQ will arrive when we are next notified of GPU transitioning to IDLE.
+ * This function will not race with the receipt of an IDLE notification, as the IDLE timer will be
+ * cancelled when we ring a CSI doorbell.
+ */
+static void cancel_sc_rail_off(struct kbase_device *kbdev)
+{
+	(void)ack_gpu_idle_event(kbdev);
 }
 
 static void cancel_gpu_idle_work(struct kbase_device *kbdev)
@@ -1648,6 +1672,11 @@ static void program_cs(struct kbase_device *kbdev,
 
 	kbase_csf_ring_cs_kernel_doorbell(kbdev, csi_index, group->csg_nr,
 					  ring_csg_doorbell);
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	cancel_sc_rail_off(kbdev);
+#endif
+
 	update_hw_active(queue, true);
 }
 
@@ -1755,6 +1784,9 @@ int kbase_csf_scheduler_queue_start(struct kbase_queue *queue)
 					kbase_csf_ring_cs_kernel_doorbell(kbdev,
 						queue->csi_index, group->csg_nr,
 						true);
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+					cancel_sc_rail_off(kbdev);
+#endif
 				} else {
 					start_stream_sync(queue);
 				}
@@ -4680,7 +4712,10 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 		return false;
 	}
 
-	ack_gpu_idle_event(kbdev);
+	if (!ack_gpu_idle_event(kbdev)) {
+		return false;
+	}
+
 	for_each_set_bit(i, scheduler->csg_slots_idle_mask, num_groups) {
 		struct kbase_csf_cmd_stream_group_info *const ginfo =
 			&kbdev->csf.global_iface.groups[i];
@@ -6036,6 +6071,7 @@ static bool check_sync_update_for_on_slot_group(
 				turn_on_sc_power_rails(kbdev);
 				kbase_csf_ring_cs_kernel_doorbell(kbdev,
 					queue->csi_index, group->csg_nr, true);
+				cancel_sc_rail_off(kbdev);
 			}
 #endif
 		}
@@ -6126,22 +6162,7 @@ static void check_sync_update_in_sleep_mode(struct kbase_device *kbdev)
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 static void check_sync_update_after_sc_power_down(struct kbase_device *kbdev)
 {
-	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
-	u32 const num_groups = kbdev->csf.global_iface.group_num;
-	u32 csg_nr;
-
-	lockdep_assert_held(&scheduler->lock);
-
-	for (csg_nr = 0; csg_nr < num_groups; csg_nr++) {
-		struct kbase_queue_group *const group =
-			kbdev->csf.scheduler.csg_slots[csg_nr].resident_group;
-
-		if (!group)
-			continue;
-
-		if (check_sync_update_for_on_slot_group(group))
-			return;
-	}
+	check_sync_update_in_sleep_mode(kbdev);
 }
 #endif
 
@@ -6171,6 +6192,13 @@ static void check_group_sync_update_worker(struct kthread_work *work)
 	mutex_lock(&scheduler->lock);
 
 	KBASE_KTRACE_ADD(kbdev, GROUP_SYNC_UPDATE_WORKER_BEGIN, kctx, 0u);
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	if (!scheduler->sc_power_rails_off) {
+		/* This ring was deferred so that we can synchronize with the scheduler */
+		kbase_csf_ring_doorbell(kbdev, CSF_KERNEL_DOORBELL_NR);
+		cancel_sc_rail_off(kbdev);
+	}
+#endif
 	if (kctx->csf.sched.num_idle_wait_grps != 0) {
 		struct kbase_queue_group *group, *temp;
 
