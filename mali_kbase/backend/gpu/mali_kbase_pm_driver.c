@@ -658,7 +658,6 @@ static void kbase_pm_enable_mcu_db_notification(struct kbase_device *kbdev)
 }
 #endif
 
-
 /**
  * kbasep_pm_toggle_power_interrupt - Toggles the IRQ mask for power interrupts
  *                                    from the firmware
@@ -679,10 +678,16 @@ static void kbasep_pm_toggle_power_interrupt(struct kbase_device *kbdev, bool en
 
 	irq_mask = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK));
 
+#if CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	(void)enable;
+	/* For IFPO, we require the POWER_CHANGED_ALL interrupt to be always on */
+	irq_mask |= POWER_CHANGED_ALL | POWER_CHANGED_SINGLE;
+#else
 	if (enable)
 		irq_mask |= POWER_CHANGED_ALL | POWER_CHANGED_SINGLE;
 	else
 		irq_mask &= ~(POWER_CHANGED_ALL | POWER_CHANGED_SINGLE);
+#endif /* CONFIG_MALI_HOST_CONTROLS_SC_RAILS */
 
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask);
 }

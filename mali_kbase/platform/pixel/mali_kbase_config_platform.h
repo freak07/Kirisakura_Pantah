@@ -346,6 +346,7 @@ struct pixel_context {
 
 		struct gpu_dvfs_opp *table;
 		int table_size;
+		int step_up_val;
 		int level;
 		int level_target;
 		int level_max;

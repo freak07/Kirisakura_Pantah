@@ -1279,6 +1279,7 @@ void kbase_pm_turn_off_sc_power_rails(struct kbase_device *kbdev)
 	WARN_ON(!kbdev->pm.backend.gpu_powered);
 	if (!kbdev->pm.backend.sc_power_rails_off) {
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+		WARN_ON(!kbdev->pm.backend.sc_pwroff_safe);
 		kbdev->pm.backend.sc_power_rails_off = true;
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 		if (kbdev->pm.backend.callback_power_off_sc_rails)
