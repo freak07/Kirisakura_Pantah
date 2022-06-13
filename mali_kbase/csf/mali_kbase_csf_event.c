@@ -122,15 +122,6 @@ void kbase_csf_event_signal(struct kbase_context *kctx, bool notify_gpu)
 	atomic_set(&kctx->event_count, 1);
 	kbase_event_wakeup_nosync(kctx);
 
-	/* Ringing the DB can lead to unblocked groups running immediately
-	 * We must defer the running of groups until we can guarantee the power rail has come up,
-	 * and any pending rail-off worker has been cancelled
-	 * Executing the event.callback_list will result in a call to check_group_sync_update_worker
-	 */
-#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-	notify_gpu = false;
-#endif
-
 	/* Signal the CSF firmware. This is to ensure that pending command
 	 * stream synch object wait operations are re-evaluated.
 	 * Write to GLB_DOORBELL would suffice as spec says that all pending
