@@ -132,6 +132,23 @@ static void turn_off_sc_power_rails(struct kbase_device *kbdev)
 }
 
 /**
+ * gpu_idle_event_is_pending - Check if there is a pending GPU idle event
+ *
+ * @kbdev: Pointer to the device.
+ */
+static bool gpu_idle_event_is_pending(struct kbase_device *kbdev)
+{
+	struct kbase_csf_global_iface *global_iface = &kbdev->csf.global_iface;
+
+	lockdep_assert_held(&kbdev->csf.scheduler.lock);
+	lockdep_assert_held(&kbdev->csf.scheduler.interrupt_lock);
+
+	return (kbase_csf_firmware_global_input_read(global_iface, GLB_REQ) ^
+		kbase_csf_firmware_global_output(global_iface, GLB_ACK)) &
+	       GLB_REQ_IDLE_EVENT_MASK;
+}
+
+/**
  * ack_gpu_idle_event - Acknowledge the GPU idle event
  *
  * @kbdev: Pointer to the device.
@@ -4736,6 +4753,9 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
  * This function checks both the on-slots and off-slots groups idle status and
  * if firmware is managing the cores. If the groups are not idle or Host is
  * managing the cores then the rails need to be kept on.
+ * Additionally, we must check that the Idle event has not already been acknowledged
+ * as that would indicate that the idle worker has run and potentially re-enabled
+ * user-submission.
  *
  * Return: true if the SC power rails can be turned off.
  */
@@ -4765,6 +4785,7 @@ static bool can_turn_off_sc_rails(struct kbase_device *kbdev)
 	}
 
 	turn_off_sc_rails = kbdev->pm.backend.sc_pwroff_safe &&
+			    gpu_idle_event_is_pending(kbdev) &&
 			    kbase_csf_scheduler_all_csgs_idle(kbdev) &&
 			    !atomic_read(&scheduler->non_idle_offslot_grps) &&
 			    !kbase_pm_no_mcu_core_pwroff(kbdev) &&
