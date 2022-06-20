@@ -1621,11 +1621,9 @@ static void kbase_csf_firmware_reload_worker(struct work_struct *work)
 
 	kbase_csf_tl_reader_reset(&kbdev->timeline->csf_tl_reader);
 
-#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-	err = kbase_csf_firmware_cfg_enable_host_ctrl_sc_rails(kbdev);
+	err = kbasep_platform_fw_config_init(kbdev);
 	if (WARN_ON(err))
 		return;
-#endif
 
 	/* Reboot the firmware */
 	kbase_csf_firmware_enable_mcu(kbdev);
@@ -2110,13 +2108,11 @@ int kbase_csf_firmware_init(struct kbase_device *kbdev)
 		goto error;
 	}
 
-#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-	ret = kbase_csf_firmware_cfg_enable_host_ctrl_sc_rails(kbdev);
+	ret = kbasep_platform_fw_config_init(kbdev);
 	if (ret != 0) {
-		dev_err(kbdev->dev, "Failed to enable SC PM WA");
+		dev_err(kbdev->dev, "Failed to perform platform specific FW configuration");
 		goto error;
 	}
-#endif
 
 	/* Make sure L2 cache is powered up */
 	kbase_pm_wait_for_l2_powered(kbdev);

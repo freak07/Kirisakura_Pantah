@@ -158,6 +158,16 @@ struct kbase_platform_funcs_conf {
 	 */
 	void (*platform_handler_work_end_func)(void* param);
 	/**
+	 * platform_fw_cfg_init_func - Platform specific callback for FW configuration
+	 *
+	 * @kbdev: kbase_device pointer
+	 *
+	 * Function pointer for platform specific FW configuration
+	 *
+	 * Context: Process context
+	 */
+	int (*platform_fw_cfg_init_func)(struct kbase_device *kbdev);
+	/**
 	 * platform_handler_core_dump_func - Platform specific handler for triggering a core dump.
 	 *
 	 * @kbdev: kbase_device pointer
@@ -599,6 +609,16 @@ void kbasep_platform_event_work_begin(void *param);
  *
  */
 void kbasep_platform_event_work_end(void *param);
+
+/**
+ * kbasep_platform_fw_config_init - Platform specific callback to configure FW
+ *
+ * @kbdev - kbase_device pointer
+ *
+ * Function calls a platform defined routine if specified in the configuration attributes.
+ *
+ */
+int kbasep_platform_fw_config_init(struct kbase_device *kbdev);
 
 /**
  * kbasep_platform_event_core_dump - Platform specific callback to act on a firmware error.

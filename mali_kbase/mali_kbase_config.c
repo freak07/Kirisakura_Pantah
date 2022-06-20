@@ -101,6 +101,17 @@ void kbasep_platform_event_work_end(void *param)
 		platform_funcs_p->platform_handler_work_end_func(param);
 }
 
+int kbasep_platform_fw_config_init(struct kbase_device *kbdev)
+{
+	struct kbase_platform_funcs_conf *platform_funcs_p;
+
+	platform_funcs_p = (struct kbase_platform_funcs_conf*)PLATFORM_FUNCS;
+	if (platform_funcs_p && platform_funcs_p->platform_fw_cfg_init_func)
+		return platform_funcs_p->platform_fw_cfg_init_func(kbdev);
+
+	return 0;
+}
+
 void kbasep_platform_event_core_dump(struct kbase_device *kbdev, const char* reason)
 {
 	struct kbase_platform_funcs_conf *platform_funcs_p;
