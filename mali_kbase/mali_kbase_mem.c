@@ -3814,7 +3814,7 @@ int kbase_jit_init(struct kbase_context *kctx)
 	INIT_WORK(&kctx->jit_work, kbase_jit_destroy_worker);
 
 #if MALI_USE_CSF
-	spin_lock_init(&kctx->csf.kcpu_queues.jit_lock);
+	mutex_init(&kctx->csf.kcpu_queues.jit_lock);
 	INIT_LIST_HEAD(&kctx->csf.kcpu_queues.jit_cmds_head);
 	INIT_LIST_HEAD(&kctx->csf.kcpu_queues.jit_blocked_queues);
 #else /* !MALI_USE_CSF */
@@ -4254,7 +4254,9 @@ static bool jit_allow_allocate(struct kbase_context *kctx,
 {
 #if !MALI_USE_CSF
 	lockdep_assert_held(&kctx->jctx.lock);
-#endif
+#else /* MALI_USE_CSF */
+	lockdep_assert_held(&kctx->csf.kcpu_queues.jit_lock);
+#endif /* !MALI_USE_CSF */
 
 #if MALI_JIT_PRESSURE_LIMIT_BASE
 	if (!ignore_pressure_limit &&
@@ -4347,7 +4349,9 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 
 #if !MALI_USE_CSF
 	lockdep_assert_held(&kctx->jctx.lock);
-#endif
+#else /* MALI_USE_CSF */
+	lockdep_assert_held(&kctx->csf.kcpu_queues.jit_lock);
+#endif /* !MALI_USE_CSF */
 
 	if (!jit_allow_allocate(kctx, info, ignore_pressure_limit))
 		return NULL;
@@ -4578,6 +4582,12 @@ end:
 void kbase_jit_free(struct kbase_context *kctx, struct kbase_va_region *reg)
 {
 	u64 old_pages;
+
+#if !MALI_USE_CSF
+	lockdep_assert_held(&kctx->jctx.lock);
+#else /* MALI_USE_CSF */
+	lockdep_assert_held(&kctx->csf.kcpu_queues.jit_lock);
+#endif /* !MALI_USE_CSF */
 
 	/* JIT id not immediately available here, so use 0u */
 	trace_mali_jit_free(reg, 0u);
