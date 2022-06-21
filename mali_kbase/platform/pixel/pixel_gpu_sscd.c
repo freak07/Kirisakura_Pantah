@@ -8,6 +8,7 @@
 /* Mali core includes */
 #include <mali_kbase.h>
 #include <csf/mali_kbase_csf_trace_buffer.h>
+#include <csf/mali_kbase_csf_firmware_cfg.h>
 
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
@@ -303,6 +304,28 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 	mutex_unlock(&pc->pm.lock);
 
 	segments_term(kbdev, segs);
+}
+
+/**
+ * gpu_sscd_fw_log_init() - Set's the FW log verbosity which enables logging.
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * Context: Process context.
+ *
+ * Return: On success returns 0, otherwise returns an error code.
+ */
+int gpu_sscd_fw_log_init(struct kbase_device *kbdev)
+{
+	u32 addr;
+	int ec = kbase_csf_firmware_cfg_find_config_address(kbdev, "Log verbosity", &addr);
+
+	if (!ec) {
+		/* Update the FW log verbosity in FW memory */
+		kbase_csf_update_firmware_memory(kbdev, addr, 1);
+	}
+
+	return ec;
 }
 
 /**

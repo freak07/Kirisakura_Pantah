@@ -162,6 +162,9 @@ static int gpu_fw_cfg_init(struct kbase_device *kbdev) {
 	if (ec)
 		dev_warn(kbdev->dev, "pixel: failed to enable SC rail host-control");
 #endif
+	if (gpu_sscd_fw_log_init(kbdev)) {
+		dev_warn(kbdev->dev, "pixel: failed to enable FW log");
+	}
 #endif
 
 	return ec;
