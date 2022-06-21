@@ -4712,21 +4712,21 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 		for (j = 0; j < ginfo->stream_num; j++) {
 			struct kbase_queue *const queue =
 					group->bound_queues[j];
+			u32 *output_addr;
 
 			if (!queue || !queue->enabled)
 				continue;
-#ifdef CONFIG_MALI_DEBUG
-			else {
-				u64 *output_addr =
-					(u64 *)(queue->user_io_addr + PAGE_SIZE);
 
-				if (output_addr[CS_ACTIVE / sizeof(u64)])
-					dev_warn(kbdev->dev,
-						"queue %d bound to group %d on slot %d active unexpectedly",
-						queue->csi_index, queue->group->handle,
-						queue->group->csg_nr);
+			output_addr = (u32 *)(queue->user_io_addr + PAGE_SIZE);
+
+			if (output_addr[CS_ACTIVE / sizeof(u32)]) {
+				dev_warn(
+					kbdev->dev,
+					"queue %d bound to group %d on slot %d active unexpectedly",
+					queue->csi_index, queue->group->handle,
+					queue->group->csg_nr);
+				group_idle = false;
 			}
-#endif
 
 			if (group_idle) {
 				if (!save_slot_cs(ginfo, queue) &&
