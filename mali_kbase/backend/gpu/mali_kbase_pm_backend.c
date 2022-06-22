@@ -72,6 +72,8 @@ int kbase_pm_runtime_init(struct kbase_device *kbdev)
 					callbacks->power_runtime_idle_callback;
 		kbdev->pm.backend.callback_soft_reset =
 					callbacks->soft_reset_callback;
+		kbdev->pm.backend.callback_hardware_reset =
+					callbacks->hardware_reset_callback;
 		kbdev->pm.backend.callback_power_runtime_gpu_idle =
 					callbacks->power_runtime_gpu_idle_callback;
 		kbdev->pm.backend.callback_power_runtime_gpu_active =
@@ -99,6 +101,7 @@ int kbase_pm_runtime_init(struct kbase_device *kbdev)
 	kbdev->pm.backend.callback_power_runtime_off = NULL;
 	kbdev->pm.backend.callback_power_runtime_idle = NULL;
 	kbdev->pm.backend.callback_soft_reset = NULL;
+	kbdev->pm.backend.callback_hardware_reset = NULL;
 	kbdev->pm.backend.callback_power_runtime_gpu_idle = NULL;
 	kbdev->pm.backend.callback_power_runtime_gpu_active = NULL;
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS

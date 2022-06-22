@@ -2906,6 +2906,53 @@ static void reenable_protected_mode_hwcnt(struct kbase_device *kbdev)
 }
 #endif
 
+static int kbase_pm_hw_reset(struct kbase_device *kbdev)
+{
+	unsigned long flags;
+	bool gpu_ready;
+
+	lockdep_assert_held(&kbdev->pm.lock);
+
+	if (!kbdev->pm.backend.callback_hardware_reset) {
+		dev_warn(kbdev->dev, "No hardware reset provided");
+		return -EINVAL;
+	}
+
+	/* Save GPU power state */
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	WARN_ON(!kbdev->pm.backend.gpu_powered);
+	gpu_ready = kbdev->pm.backend.gpu_ready;
+	kbdev->pm.backend.gpu_ready = false;
+	kbdev->pm.backend.gpu_powered = false;
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+#if MALI_USE_CSF
+	/* Swap for dummy page */
+	update_user_reg_page_mapping(kbdev);
+#endif
+
+	/* Delegate hardware reset to platform */
+	kbdev->pm.backend.callback_hardware_reset(kbdev);
+
+#if MALI_USE_CSF
+	/* Swap for real page */
+	update_user_reg_page_mapping(kbdev);
+#endif
+
+	/* GPU is powered again, restore state */
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbdev->pm.backend.gpu_powered = true;
+	kbdev->pm.backend.gpu_ready = gpu_ready;
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	/* Check register access for success */
+	if (kbase_is_gpu_removed(kbdev)) {
+		dev_err(kbdev->dev, "Registers in-accessible after platform reset");
+		return -EINVAL;
+	}
+	return 0;
+}
+
 static int kbase_pm_do_reset(struct kbase_device *kbdev)
 {
 	struct kbasep_reset_timeout_data rtdata;
@@ -2998,12 +3045,14 @@ static int kbase_pm_do_reset(struct kbase_device *kbdev)
 			return 0;
 		}
 
-		kbasep_platform_event_core_dump(kbdev, "GPU hard reset timeout");
-
 		destroy_hrtimer_on_stack(&rtdata.timer);
 
-		dev_err(kbdev->dev, "Failed to hard-reset the GPU (timed out after %d ms)\n",
-					RESET_TIMEOUT);
+		dev_err(kbdev->dev,
+			"Failed to hard-reset the GPU (timed out after %d ms) GPU_IRQ_RAWSTAT: %d\n",
+			RESET_TIMEOUT, kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_RAWSTAT)));
+
+		/* Last resort, trigger a hardware reset of the GPU */
+		return kbase_pm_hw_reset(kbdev);
 #ifdef CONFIG_MALI_ARBITER_SUPPORT
 	}
 #endif /* CONFIG_MALI_ARBITER_SUPPORT */

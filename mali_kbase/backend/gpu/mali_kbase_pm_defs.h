@@ -333,6 +333,8 @@ struct kbase_pm_event_log {
  *                               &struct kbase_pm_callback_conf
  * @callback_soft_reset: Optional callback to software reset the GPU. See
  *                       &struct kbase_pm_callback_conf
+ * @callback_hardware_reset: Optional callback to hardware reset the GPU. See
+ *                           &struct kbase_pm_callback_conf
  * @callback_power_runtime_gpu_idle: Callback invoked by Kbase when GPU has
  *                                   become idle.
  *                                   See &struct kbase_pm_callback_conf.
@@ -503,6 +505,7 @@ struct kbase_pm_backend_data {
 	void (*callback_power_runtime_off)(struct kbase_device *kbdev);
 	int (*callback_power_runtime_idle)(struct kbase_device *kbdev);
 	int (*callback_soft_reset)(struct kbase_device *kbdev);
+	void (*callback_hardware_reset)(struct kbase_device *kbdev);
 	void (*callback_power_runtime_gpu_idle)(struct kbase_device *kbdev);
 	void (*callback_power_runtime_gpu_active)(struct kbase_device *kbdev);
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
