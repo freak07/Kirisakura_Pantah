@@ -678,7 +678,7 @@ static void kbasep_pm_toggle_power_interrupt(struct kbase_device *kbdev, bool en
 
 	irq_mask = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK));
 
-#if CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 	(void)enable;
 	/* For IFPO, we require the POWER_CHANGED_ALL interrupt to be always on */
 	irq_mask |= POWER_CHANGED_ALL | POWER_CHANGED_SINGLE;

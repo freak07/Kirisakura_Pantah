@@ -83,7 +83,7 @@ static void kbase_gpu_fault_interrupt(struct kbase_device *kbdev)
 
 }
 
-#if CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 /* When the GLB_PWROFF_TIMER expires, FW will write the SHADER_PWROFF register, this sequence
  * follows:
  *  - SHADER_PWRTRANS goes high
@@ -197,7 +197,7 @@ void kbase_gpu_interrupt(struct kbase_device *kbdev, u32 val)
 	if (val & CLEAN_CACHES_COMPLETED)
 		kbase_clean_caches_done(kbdev);
 
-#if CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 	if (val & POWER_CHANGED_ALL) {
 		unsigned long flags;
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
