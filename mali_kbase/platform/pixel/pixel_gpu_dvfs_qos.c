@@ -86,7 +86,8 @@ void gpu_dvfs_qos_set(struct kbase_device *kbdev, int level)
 			!pc->dvfs.qos.bts.enabled) {
 			bts_add_scenario(pc->dvfs.qos.bts.scenario);
 			pc->dvfs.qos.bts.enabled = true;
-		} else if (pc->dvfs.qos.bts.enabled) {
+		} else if (pc->dvfs.qos.bts.enabled &&
+				opp.clk[GPU_DVFS_CLK_SHADERS] < pc->dvfs.qos.bts.threshold) {
 			bts_del_scenario(pc->dvfs.qos.bts.scenario);
 			pc->dvfs.qos.bts.enabled = false;
 		}
