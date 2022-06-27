@@ -2950,8 +2950,6 @@ static int kbase_pm_do_reset(struct kbase_device *kbdev)
 		return 0;
 	}
 
-	kbasep_platform_event_core_dump(kbdev, "GPU soft reset timeout");
-
 	/* No interrupt has been received - check if the RAWSTAT register says
 	 * the reset has completed
 	 */

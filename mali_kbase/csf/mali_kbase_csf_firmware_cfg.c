@@ -26,10 +26,6 @@
 #if CONFIG_SYSFS
 #define CSF_FIRMWARE_CFG_SYSFS_DIR_NAME "firmware_config"
 
-#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-#define HOST_CONTROLS_SC_RAILS_CFG_ENTRY_NAME "Host controls SC rails"
-#endif
-
 /**
  * struct firmware_config - Configuration item within the MCU firmware
  *
@@ -138,12 +134,6 @@ static ssize_t store_fw_cfg(struct kobject *kobj,
 				config->name, attr->name);
 			return -EINVAL;
 		}
-
-#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-		if (!strcmp(config->name,
-			    HOST_CONTROLS_SC_RAILS_CFG_ENTRY_NAME))
-			return -EPERM;
-#endif
 
 		if ((val < config->min) || (val > config->max))
 			return -EINVAL;
@@ -318,23 +308,21 @@ int kbase_csf_firmware_cfg_option_entry_parse(struct kbase_device *kbdev,
 	return 0;
 }
 
-#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-int kbase_csf_firmware_cfg_enable_host_ctrl_sc_rails(struct kbase_device *kbdev)
+int kbase_csf_firmware_cfg_find_config_address(struct kbase_device *kbdev, const char *name, u32* addr)
 {
 	struct firmware_config *config;
 
 	list_for_each_entry(config, &kbdev->csf.firmware_config, node) {
-		if (strcmp(config->name,
-			   HOST_CONTROLS_SC_RAILS_CFG_ENTRY_NAME))
+		if (strcmp(config->name, name) || !config->address)
 			continue;
 
-		kbase_csf_update_firmware_memory(kbdev, config->address, 1);
+		*addr = config->address;
 		return 0;
 	}
 
 	return -ENOENT;
 }
-#endif
+
 
 #else
 int kbase_csf_firmware_cfg_init(struct kbase_device *kbdev)
@@ -353,11 +341,4 @@ int kbase_csf_firmware_cfg_option_entry_parse(struct kbase_device *kbdev,
 {
 	return 0;
 }
-
-#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-int kbase_csf_firmware_cfg_enable_host_ctrl_sc_rails(struct kbase_device *kbdev)
-{
-	return 0;
-}
-#endif
 #endif /* CONFIG_SYSFS */
