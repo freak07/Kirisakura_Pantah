@@ -1279,18 +1279,13 @@ void kbase_pm_turn_off_sc_power_rails(struct kbase_device *kbdev)
 	WARN_ON(!kbdev->pm.backend.gpu_powered);
 	if (!kbdev->pm.backend.sc_power_rails_off) {
 		bool abort;
-
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 		kbdev->pm.backend.sc_power_rails_off = true;
 		/* Work around for b/234962632 */
-		abort = !kbdev->pm.backend.sc_pwroff_safe;
+		abort = WARN_ON(!kbdev->pm.backend.sc_pwroff_safe);
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-
-		if (WARN_ON(abort)) {
-			kbasep_platform_event_core_dump(kbdev, "Unexpected SC power-up");
-		} else if (kbdev->pm.backend.callback_power_off_sc_rails) {
+		if (kbdev->pm.backend.callback_power_off_sc_rails && !abort)
 			kbdev->pm.backend.callback_power_off_sc_rails(kbdev);
-		}
 	}
 	kbase_pm_unlock(kbdev);
 }
