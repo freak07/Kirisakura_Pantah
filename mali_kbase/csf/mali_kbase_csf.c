@@ -1765,7 +1765,7 @@ int kbase_csf_ctx_init(struct kbase_context *kctx)
 
 	err = kbase_csf_scheduler_context_init(kctx);
 	if (unlikely(err))
-		goto out_err_kthread;
+		goto out_err_scheduler_context;
 
 	err = kbase_csf_kcpu_queue_context_init(kctx);
 	if (unlikely(err))
@@ -1785,6 +1785,8 @@ out_err_tiler_heap_context:
 	kbase_csf_kcpu_queue_context_term(kctx);
 out_err_kcpu_queue_context:
 	kbase_csf_scheduler_context_term(kctx);
+out_err_scheduler_context:
+	kthread_stop(kctx->csf.pending_sub_worker_thread);
 out_err_kthread:
 	destroy_workqueue(kctx->csf.wq);
 out:
