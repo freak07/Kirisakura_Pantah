@@ -157,7 +157,7 @@ static int gpu_fw_cfg_init(struct kbase_device *kbdev) {
 	int ec = 0;
 
 #if MALI_USE_CSF
-#if CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 	ec = gpu_pixel_enable_host_ctrl_sc_rails(kbdev);
 	if (ec)
 		dev_warn(kbdev->dev, "pixel: failed to enable SC rail host-control");
