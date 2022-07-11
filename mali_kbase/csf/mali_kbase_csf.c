@@ -1748,6 +1748,8 @@ int kbase_csf_ctx_init(struct kbase_context *kctx)
 
 	kctx->csf.wq = alloc_workqueue("mali_kbase_csf_wq",
 					WQ_UNBOUND, 1);
+	if (unlikely(!kctx->csf.wq))
+		goto out;
 
 	kthread_init_worker(&kctx->csf.pending_submission_worker);
 	kctx->csf.pending_sub_worker_thread = kbase_create_realtime_thread(
@@ -1758,35 +1760,36 @@ int kbase_csf_ctx_init(struct kbase_context *kctx)
 
 	if (IS_ERR(kctx->csf.pending_sub_worker_thread)) {
 		dev_err(kctx->kbdev->dev, "error initializing pending submission worker thread");
-		destroy_workqueue(kctx->csf.wq);
-		return err;
+		goto out_err_kthread;
 	}
 
-	if (likely(kctx->csf.wq)) {
-		err = kbase_csf_scheduler_context_init(kctx);
+	err = kbase_csf_scheduler_context_init(kctx);
+	if (unlikely(err))
+		goto out_err_scheduler_context;
 
-		if (likely(!err)) {
-			err = kbase_csf_kcpu_queue_context_init(kctx);
+	err = kbase_csf_kcpu_queue_context_init(kctx);
+	if (unlikely(err))
+		goto out_err_kcpu_queue_context;
 
-			if (likely(!err)) {
-				err = kbase_csf_tiler_heap_context_init(kctx);
+	err = kbase_csf_tiler_heap_context_init(kctx);
+	if (unlikely(err))
+		goto out_err_tiler_heap_context;
 
-				if (likely(!err)) {
-					rt_mutex_init(&kctx->csf.lock);
-					kthread_init_work(&kctx->csf.pending_submission_work,
-						  pending_submission_worker);
-				} else
-					kbase_csf_kcpu_queue_context_term(kctx);
-			}
+	rt_mutex_init(&kctx->csf.lock);
+	kthread_init_work(&kctx->csf.pending_submission_work,
+			  pending_submission_worker);
 
-			if (unlikely(err))
-				kbase_csf_scheduler_context_term(kctx);
-		}
+	return err;
 
-		if (unlikely(err))
-			destroy_workqueue(kctx->csf.wq);
-	}
-
+out_err_tiler_heap_context:
+	kbase_csf_kcpu_queue_context_term(kctx);
+out_err_kcpu_queue_context:
+	kbase_csf_scheduler_context_term(kctx);
+out_err_scheduler_context:
+	kthread_stop(kctx->csf.pending_sub_worker_thread);
+out_err_kthread:
+	destroy_workqueue(kctx->csf.wq);
+out:
 	return err;
 }
 
