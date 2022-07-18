@@ -32,6 +32,26 @@ static struct gpu_dvfs_opp gpu_dvfs_table[DVFS_TABLE_ROW_MAX];
 /* DVFS event handling code */
 
 /**
+ * gpu_dvfs_set_freq() - Request a frequency change for a GPU domain
+ *
+ * @kbdev:   &struct kbase_device for the GPU.
+ * @domain:  The GPU domain that shall have it's frequency changed.
+ * @level:   The frequency level to set the GPU domain to.
+ *
+ * Context: Expects the caller to hold the domain access lock
+ *
+ * Return: See cal_dfs_set_rate
+ */
+static int gpu_dvfs_set_freq(struct kbase_device *kbdev, enum gpu_dvfs_clk_index domain, int level)
+{
+	struct pixel_context *pc = kbdev->platform_context;
+
+	lockdep_assert_held(&pc->pm.domain->access_lock);
+
+	return cal_dfs_set_rate(pc->dvfs.clks[domain].cal_id, pc->dvfs.table[level].clk[domain]);
+}
+
+/**
  * gpu_dvfs_set_new_level() - Updates the GPU operating point.
  *
  * @kbdev:      The &struct kbase_device for the GPU.
@@ -43,7 +63,6 @@ static struct gpu_dvfs_opp gpu_dvfs_table[DVFS_TABLE_ROW_MAX];
 static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 {
 	struct pixel_context *pc = kbdev->platform_context;
-	int c;
 
 	lockdep_assert_held(&pc->dvfs.lock);
 
@@ -55,8 +74,17 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 
 	mutex_lock(&pc->pm.domain->access_lock);
 
-	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++)
-		cal_dfs_set_rate(pc->dvfs.clks[c].cal_id, pc->dvfs.table[next_level].clk[c]);
+	/* We must enforce the CLK_G3DL2 >= CLK_G3D constraint.
+	 * When clocking down we must set G3D CLK first to avoid violating the constraint.
+	 */
+	if (next_level > pc->dvfs.level) {
+		gpu_dvfs_set_freq(kbdev, GPU_DVFS_CLK_SHADERS, next_level);
+		gpu_dvfs_set_freq(kbdev, GPU_DVFS_CLK_TOP_LEVEL, next_level);
+	} else {
+		gpu_dvfs_set_freq(kbdev, GPU_DVFS_CLK_TOP_LEVEL, next_level);
+		gpu_dvfs_set_freq(kbdev, GPU_DVFS_CLK_SHADERS, next_level);
+	}
+
 
 	mutex_unlock(&pc->pm.domain->access_lock);
 
@@ -650,7 +678,7 @@ static int gpu_dvfs_set_initial_level(struct kbase_device *kbdev)
 	mutex_lock(&pc->pm.domain->access_lock);
 
 	for (c = 0; c < GPU_DVFS_CLK_COUNT; c++) {
-		ret = cal_dfs_set_rate(pc->dvfs.clks[c].cal_id, pc->dvfs.table[level].clk[c]);
+		ret = gpu_dvfs_set_freq(kbdev, c, level);
 		if (ret) {
 			dev_err(kbdev->dev,
 				"Failed to set boot frequency %d on clock index %d (err: %d)\n",
