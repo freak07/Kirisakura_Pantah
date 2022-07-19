@@ -5686,6 +5686,7 @@ MODULE_VERSION(MALI_RELEASE_NAME " (UK version " \
 		__stringify(BASE_UK_VERSION_MAJOR) "." \
 		__stringify(BASE_UK_VERSION_MINOR) ")");
 MODULE_SOFTDEP("pre: mali_pixel");
+MODULE_SOFTDEP("pre: exynos-pd-dbg");
 MODULE_INFO(import_ns, "DMA_BUF");
 
 #define CREATE_TRACE_POINTS
