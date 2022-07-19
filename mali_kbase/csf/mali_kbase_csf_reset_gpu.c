@@ -676,7 +676,7 @@ KBASE_EXPORT_TEST_API(kbase_reset_gpu_wait);
 
 int kbase_reset_gpu_init(struct kbase_device *kbdev)
 {
-	kbdev->csf.reset.workq = alloc_workqueue("Mali reset workqueue", 0, 1);
+	kbdev->csf.reset.workq = alloc_workqueue("Mali reset workqueue", 0, 1, WQ_HIGHPRI);
 	if (kbdev->csf.reset.workq == NULL)
 		return -ENOMEM;
 
