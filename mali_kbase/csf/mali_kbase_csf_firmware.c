@@ -285,7 +285,6 @@ static void wait_ready(struct kbase_device *kbdev)
 
 	if (max_loops == 0) {
 		dev_err(kbdev->dev, "AS_ACTIVE bit stuck when enabling AS0 for MCU, might be caused by slow/unstable GPU clock or possible faulty FPGA connector\n");
-		atomic_long_set(&kbdev->csf.coredump_work.data, KBASE_COREDUMP_MMU_HANG);
 		queue_work(system_highpri_wq, &kbdev->csf.coredump_work);
 	}
 }
@@ -1935,19 +1934,8 @@ static int kbase_device_csf_iterator_trace_init(struct kbase_device *kbdev)
 static void coredump_worker(struct work_struct *data)
 {
 	struct kbase_device *kbdev = container_of(data, struct kbase_device, csf.coredump_work);
-	const char* reason;
 
-	switch (atomic_long_read(&data->data))
-	{
-	case KBASE_COREDUMP_MMU_HANG:
-		reason = "AS_ACTIVE bit stuck";
-		break;
-	default:
-		reason = "Unknown";
-		break;
-	}
-
-	kbasep_platform_event_core_dump(kbdev, reason);
+	kbasep_platform_event_core_dump(kbdev, "GPU hang");
 }
 
 int kbase_csf_firmware_early_init(struct kbase_device *kbdev)
