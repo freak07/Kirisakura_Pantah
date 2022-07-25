@@ -2044,6 +2044,6 @@ static inline u64 kbase_get_lock_region_min_size_log2(struct kbase_gpu_props con
 /* Maximum number of loops polling the GPU for a cache flush before we assume it must have completed */
 #define KBASE_CLEAN_CACHE_MAX_LOOPS     100000
 /* Maximum number of loops polling the GPU for an AS command to complete before we assume the GPU has hung */
-#define KBASE_AS_INACTIVE_MAX_LOOPS     100000000
+#define KBASE_AS_INACTIVE_MAX_LOOPS     100000
 
 #endif /* _KBASE_DEFS_H_ */

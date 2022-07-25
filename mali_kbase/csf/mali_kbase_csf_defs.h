@@ -55,14 +55,6 @@
 #define CSF_FIRMWARE_ENTRY_ZERO       (1ul << 31)
 
 /**
- * enum kbase_csf_coredump_reason - Reason for issuing a coredump
- *
- * @KBASE_COREDUMP_MMU_HANG: Reason for core dump is an MMU hang
- */
-enum kbase_csf_coredump_reason {
-	KBASE_COREDUMP_MMU_HANG,
-};
-/**
  * enum kbase_csf_bind_state - bind state of the queue
  *
  * @KBASE_CSF_QUEUE_UNBOUND: Set when the queue is registered or when the link

@@ -320,6 +320,14 @@ struct kbase_pm_callback_conf {
 	int (*soft_reset_callback)(struct kbase_device *kbdev);
 
 	/*
+	 * Optional callback for full hardware reset of the GPU
+	 *
+	 * This callback will be called by the power management core to trigger
+	 * a GPU hardware reset.
+	 */
+	void (*hardware_reset_callback)(struct kbase_device *kbdev);
+
+	/*
 	 * Optional callback invoked after GPU becomes idle, not supported on
 	 * JM GPUs.
 	 *

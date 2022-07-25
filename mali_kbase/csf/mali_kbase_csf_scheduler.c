@@ -52,6 +52,9 @@
 /* CSF scheduler time slice value */
 #define CSF_SCHEDULER_TIME_TICK_MS (100) /* 100 milliseconds */
 
+/* CSG_REQ:STATUS_UPDATE timeout */
+#define CSG_STATUS_UPDATE_REQ_TIMEOUT_MS (250) /* 250 milliseconds */
+
 /*
  * CSF scheduler time threshold for converting "tock" requests into "tick" if
  * they come too close to the end of a tick interval. This avoids scheduling
@@ -4190,7 +4193,7 @@ static void scheduler_update_idle_slots_status(struct kbase_device *kbdev,
 	/* The groups are aggregated into a single kernel doorbell request */
 	if (!bitmap_empty(csg_bitmap, num_groups)) {
 		long wt =
-			kbase_csf_timeout_in_jiffies(kbdev->csf.fw_timeout_ms);
+			kbase_csf_timeout_in_jiffies(CSG_STATUS_UPDATE_REQ_TIMEOUT_MS);
 		u32 db_slots = (u32)csg_bitmap[0];
 
 		kbase_csf_ring_csg_slots_doorbell(kbdev, db_slots);

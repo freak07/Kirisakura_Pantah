@@ -243,23 +243,14 @@ static void gpu_pm_rail_state_log_term(struct pixel_rail_state_log *log)
 }
 
 /**
- * gpu_pm_power_on_top() - Powers on the GPU global domains and shader cores.
+ * gpu_pm_power_on_top_nolock() - See gpu_pm_power_on_top
  *
  * @kbdev: The &struct kbase_device for the GPU.
- *
- * Powers on the CORES domain and issues trace points and events. Also powers on TOP and cancels
- * any pending suspend operations on it.
- *
- * Context: Process context. Takes and releases PM lock.
- *
- * Return: If GPU state has been lost, 1 is returned. Otherwise 0 is returned.
  */
-static int gpu_pm_power_on_top(struct kbase_device *kbdev)
+static int gpu_pm_power_on_top_nolock(struct kbase_device *kbdev)
 {
 	int ret;
 	struct pixel_context *pc = kbdev->platform_context;
-
-	gpu_pm_rail_state_start_transition_lock(pc);
 
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_TOP]);
 	pm_runtime_get_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
@@ -296,31 +287,41 @@ static int gpu_pm_power_on_top(struct kbase_device *kbdev)
 
 	pc->pm.state = GPU_POWER_LEVEL_STACKS;
 
+	return ret;
+}
+
+/**
+ * gpu_pm_power_on_top() - Powers on the GPU global domains and shader cores.
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * Powers on the CORES domain and issues trace points and events. Also powers on TOP and cancels
+ * any pending suspend operations on it.
+ *
+ * Context: Process context. Takes and releases PM lock.
+ *
+ * Return: If GPU state has been lost, 1 is returned. Otherwise 0 is returned.
+ */
+static int gpu_pm_power_on_top(struct kbase_device *kbdev)
+{
+	int ret;
+	struct pixel_context *pc = kbdev->platform_context;
+
+	gpu_pm_rail_state_start_transition_lock(pc);
+	ret = gpu_pm_power_on_top_nolock(kbdev);
 	gpu_pm_rail_state_end_transition_unlock(pc);
 
 	return ret;
 }
 
 /**
- * gpu_pm_power_off_top() - Instruct GPU to transition to OFF.
+ * gpu_pm_power_off_top_nolock() - See gpu_pm_power_off_top
  *
  * @kbdev: The &struct kbase_device for the GPU.
- *
- * Powers off the CORES domain if they are on. Marks the TOP domain for delayed
- * suspend. The complete power down of all GPU domains will only occur after
- * this delayed suspend, and the kernel notifies of this change via the
- * &gpu_pm_callback_power_runtime_suspend callback.
- *
- * Note: If the we have already performed these operations without an intervening call to
- *       &gpu_pm_power_on_top, then we take no action.
- *
- * Context: Process context. Takes and releases the PM lock.
  */
-static void gpu_pm_power_off_top(struct kbase_device *kbdev)
+static void gpu_pm_power_off_top_nolock(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
-
-	gpu_pm_rail_state_start_transition_lock(pc);
 
 	if (pc->pm.state == GPU_POWER_LEVEL_STACKS) {
 		pm_runtime_put_sync(pc->pm.domain_devs[GPU_PM_DOMAIN_CORES]);
@@ -350,7 +351,29 @@ static void gpu_pm_power_off_top(struct kbase_device *kbdev)
 #endif
 
 	}
+}
 
+/**
+ * gpu_pm_power_off_top() - Instruct GPU to transition to OFF.
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * Powers off the CORES domain if they are on. Marks the TOP domain for delayed
+ * suspend. The complete power down of all GPU domains will only occur after
+ * this delayed suspend, and the kernel notifies of this change via the
+ * &gpu_pm_callback_power_runtime_suspend callback.
+ *
+ * Note: If the we have already performed these operations without an intervening call to
+ *       &gpu_pm_power_on_top, then we take no action.
+ *
+ * Context: Process context. Takes and releases the PM lock.
+ */
+static void gpu_pm_power_off_top(struct kbase_device *kbdev)
+{
+	struct pixel_context *pc = kbdev->platform_context;
+
+	gpu_pm_rail_state_start_transition_lock(pc);
+	gpu_pm_power_off_top_nolock(kbdev);
 	gpu_pm_rail_state_end_transition_unlock(pc);
 }
 
@@ -573,6 +596,22 @@ static void gpu_pm_callback_power_sc_rails_off(struct kbase_device *kbdev) {
 }
 #endif /* CONFIG_MALI_HOST_CONTROLS_SC_RAILS */
 
+static void gpu_pm_hw_reset(struct kbase_device *kbdev)
+{
+	struct pixel_context *pc = kbdev->platform_context;
+
+	/* Ensure the power cycle happens inside one critical section */
+	gpu_pm_rail_state_start_transition_lock(pc);
+
+	dev_warn(kbdev->dev, "pixel: performing GPU hardware reset");
+
+	gpu_pm_power_off_top_nolock(kbdev);
+	/* GPU state loss is intended */
+	(void)gpu_pm_power_on_top_nolock(kbdev);
+
+	gpu_pm_rail_state_end_transition_unlock(pc);
+}
+
 /*
  * struct pm_callbacks - Callbacks for linking to core Mali KMD power management
  *
@@ -621,6 +660,7 @@ struct kbase_pm_callback_conf pm_callbacks = {
 	.power_runtime_idle_callback = NULL,
 #endif /* KBASE_PM_RUNTIME */
 	.soft_reset_callback = NULL,
+	.hardware_reset_callback = gpu_pm_hw_reset,
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 	.power_on_sc_rails_callback = gpu_pm_callback_power_sc_rails_on,
 	.power_off_sc_rails_callback = gpu_pm_callback_power_sc_rails_off,
