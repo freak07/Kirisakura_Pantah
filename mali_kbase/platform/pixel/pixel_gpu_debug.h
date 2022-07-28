@@ -12,9 +12,48 @@
 #define PIXEL_MALI_SC_COUNT 0x7
 
 /**
+ * enum pixel_gpu_pdc_state - PDC internal state
+ */
+enum pixel_gpu_pdc_state {
+	PIXEL_GPU_PDC_STATE_POWER_OFF,
+	PIXEL_GPU_PDC_STATE_UP_POWER,
+	PIXEL_GPU_PDC_STATE_UP_ISOLATE,
+	PIXEL_GPU_PDC_STATE_UP_RESET,
+	PIXEL_GPU_PDC_STATE_UP_CLOCK,
+	PIXEL_GPU_PDC_STATE_UP_FUNC_ISOLATE,
+	PIXEL_GPU_PDC_STATE_UP_RESP,
+	PIXEL_GPU_PDC_STATE_UNUSED7,
+	PIXEL_GPU_PDC_STATE_UNUSED8,
+	PIXEL_GPU_PDC_STATE_POWER_ON,
+	PIXEL_GPU_PDC_STATE_DOWN_FUNC_ISOLATE,
+	PIXEL_GPU_PDC_STATE_DOWN_CLOCK,
+	PIXEL_GPU_PDC_STATE_DOWN_RESET,
+	PIXEL_GPU_PDC_STATE_DOWN_ISOLATE,
+	PIXEL_GPU_PDC_STATE_DOWN_POWER,
+	PIXEL_GPU_PDC_STATE_DOWN_RESP,
+	PIXEL_GPU_PDC_STATE_FAST_FUNC_ISOLATE,
+	PIXEL_GPU_PDC_STATE_FAST_CLOCK,
+	PIXEL_GPU_PDC_STATE_FAST_RESET,
+	PIXEL_GPU_PDC_STATE_FAST_RESP,
+	PIXEL_GPU_PDC_STATE_FAST_WAIT,
+	PIXEL_GPU_PDC_STATE_UNUSED11,
+	PIXEL_GPU_PDC_STATE_UNUSED12,
+	PIXEL_GPU_PDC_STATE_UNUSED13,
+	PIXEL_GPU_PDC_STATE_UNUSED14,
+	PIXEL_GPU_PDC_STATE_UNUSED15,
+	PIXEL_GPU_PDC_STATE_UNUSED16,
+	PIXEL_GPU_PDC_STATE_UNUSED17,
+	PIXEL_GPU_PDC_STATE_UNUSED1A,
+	PIXEL_GPU_PDC_STATE_UNUSED1B,
+	PIXEL_GPU_PDC_STATE_UNUSED1F,
+};
+
+/**
  * struct pixel_gpu_pdc_status_bits - PDC status layout
  *
- * @_reserved_0:   Undocumented
+ * @state:         PDC state, see enum pixel_gpu_pdc_state for details
+ * @func_iso_n:    Functional isolation request
+ * @func_iso_ack_n Functional isolation complete
  * @pwrup:         Power up request
  * @pwrup_ack      Power up request acknowledged by PDC
  * @reset_n        Reset request
@@ -25,10 +64,12 @@
  * @clken_ack      Clock enable request acknowledged from internal gating
  * @power_is_on    PDC thinks power domain is fully on
  * @power_is_off   PDC thinks power domain is fully off
- * @_reserved_1    Undocumented
+ * @_reserved      Undocumented
  **/
 struct pixel_gpu_pdc_status_bits {
-	uint32_t _reserved_0 : 7;
+	uint32_t state : 5;
+	uint32_t func_iso_n : 1;
+	uint32_t func_iso_ack_n : 1;
 	uint32_t pwrup : 1;
 	uint32_t pwrup_ack : 1;
 	uint32_t reset_n : 1;
@@ -39,7 +80,7 @@ struct pixel_gpu_pdc_status_bits {
 	uint32_t clken_ack : 1;
 	uint32_t power_is_on : 1;
 	uint32_t power_is_off : 1;
-	uint32_t _reserved_1 : 15;
+	uint32_t _reserved : 15;
 };
 _Static_assert(sizeof(struct pixel_gpu_pdc_status_bits) == sizeof(uint32_t),
 	       "Incorrect pixel_gpu_pdc_status_bits size");
