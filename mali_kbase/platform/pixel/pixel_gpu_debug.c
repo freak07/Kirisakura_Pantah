@@ -54,8 +54,7 @@ static u32 gpu_debug_read_pdc(struct kbase_device *kbdev, u32 pdc_offset)
 
 void gpu_debug_read_pdc_status(struct kbase_device *kbdev, struct pixel_gpu_pdc_status *status)
 {
-	int i;
-
+	int sparse_idx, logical_idx = 0;
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	status->meta = (struct pixel_gpu_pdc_status_metadata) {
@@ -64,7 +63,7 @@ void gpu_debug_read_pdc_status(struct kbase_device *kbdev, struct pixel_gpu_pdc_
 	};
 
 	/* If there's no external power we skip the register read/writes,
-	 * We know all the PDC states will be 0 in this case
+	 * We know all the PDC signals will be 0 in this case
 	 */
 	if (!kbdev->pm.backend.gpu_powered) {
 		memset(&status->state, 0, sizeof(status->state));
@@ -72,7 +71,16 @@ void gpu_debug_read_pdc_status(struct kbase_device *kbdev, struct pixel_gpu_pdc_
 	}
 
 	status->state.core_group = gpu_debug_read_pdc(kbdev, PIXEL_CG_PDC_ADDR);
-	for (i = 0; i < PIXEL_MALI_SC_COUNT; i++) {
-		status->state.shader_cores[i] = gpu_debug_read_pdc(kbdev, PIXEL_SC_PDC_ADDR + i);
+
+	for (sparse_idx = 0; sparse_idx < BITS_PER_TYPE(u64) && logical_idx < PIXEL_MALI_SC_COUNT; ++sparse_idx) {
+		/* Skip if we don't have this core in our configuration */
+		if (!(kbdev->pm.backend.shaders_avail & BIT_ULL(sparse_idx)))
+			continue;
+
+		/* GPU debug command expects the sparse core index */
+		status->state.shader_cores[logical_idx] =
+			gpu_debug_read_pdc(kbdev, PIXEL_SC_PDC_ADDR + sparse_idx);
+
+		++logical_idx;
 	}
 }
