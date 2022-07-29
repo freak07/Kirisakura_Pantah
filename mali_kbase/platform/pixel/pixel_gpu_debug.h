@@ -10,6 +10,7 @@
 
 /* This is currently only supported for Odin */
 #define PIXEL_MALI_SC_COUNT 0x7
+#define PIXEL_MALI_STACK_COUNT 0x3
 
 /**
  * enum pixel_gpu_pdc_state - PDC internal state
@@ -112,6 +113,7 @@ struct pixel_gpu_pdc_status {
 	struct {
 		uint32_t core_group;
 		uint32_t shader_cores[PIXEL_MALI_SC_COUNT];
+		uint32_t stacks[PIXEL_MALI_STACK_COUNT];
 	} state;
 } __attribute__((packed));
 

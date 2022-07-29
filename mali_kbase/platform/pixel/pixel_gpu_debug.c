@@ -13,6 +13,7 @@
 #include "pixel_gpu_debug.h"
 
 #define GPU_DBG_LO               0x00000FE8
+#define PIXEL_STACK_PDC_ADDR     0x000770DB
 #define PIXEL_CG_PDC_ADDR        0x000760DB
 #define PIXEL_SC_PDC_ADDR        0x000740DB
 #define GPU_DBG_ACTIVE_BIT         (1 << 31)
@@ -52,14 +53,32 @@ static u32 gpu_debug_read_pdc(struct kbase_device *kbdev, u32 pdc_offset)
 	return kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_DBG_LO));
 }
 
-void gpu_debug_read_pdc_status(struct kbase_device *kbdev, struct pixel_gpu_pdc_status *status)
+static void gpu_debug_read_sparse_pdcs(struct kbase_device *kbdev, u32 *out, u64 available,
+				       u64 offset, u64 logical_max)
 {
 	int sparse_idx, logical_idx = 0;
+
+	for (sparse_idx = 0; sparse_idx < BITS_PER_TYPE(u64) && logical_idx < logical_max; ++sparse_idx) {
+		/* Skip if we don't have this core in our configuration */
+		if (!(available & BIT_ULL(sparse_idx)))
+			continue;
+
+		/* GPU debug command expects the sparse core index */
+		out[logical_idx] = gpu_debug_read_pdc(kbdev, offset + sparse_idx);
+
+		++logical_idx;
+	}
+}
+
+void gpu_debug_read_pdc_status(struct kbase_device *kbdev, struct pixel_gpu_pdc_status *status)
+{
+	struct gpu_raw_gpu_props *raw_props;
+
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
 	status->meta = (struct pixel_gpu_pdc_status_metadata) {
 		.magic = "pdcs",
-		.version = 1,
+		.version = 2,
 	};
 
 	/* If there's no external power we skip the register read/writes,
@@ -70,17 +89,11 @@ void gpu_debug_read_pdc_status(struct kbase_device *kbdev, struct pixel_gpu_pdc_
 		return;
 	}
 
+	raw_props = &kbdev->gpu_props.props.raw_props;
+
 	status->state.core_group = gpu_debug_read_pdc(kbdev, PIXEL_CG_PDC_ADDR);
-
-	for (sparse_idx = 0; sparse_idx < BITS_PER_TYPE(u64) && logical_idx < PIXEL_MALI_SC_COUNT; ++sparse_idx) {
-		/* Skip if we don't have this core in our configuration */
-		if (!(kbdev->pm.backend.shaders_avail & BIT_ULL(sparse_idx)))
-			continue;
-
-		/* GPU debug command expects the sparse core index */
-		status->state.shader_cores[logical_idx] =
-			gpu_debug_read_pdc(kbdev, PIXEL_SC_PDC_ADDR + sparse_idx);
-
-		++logical_idx;
-	}
+	gpu_debug_read_sparse_pdcs(kbdev, status->state.shader_cores, raw_props->shader_present,
+				   PIXEL_SC_PDC_ADDR, PIXEL_MALI_SC_COUNT);
+	gpu_debug_read_sparse_pdcs(kbdev, status->state.stacks, raw_props->stack_present,
+				   PIXEL_STACK_PDC_ADDR, PIXEL_MALI_STACK_COUNT);
 }
