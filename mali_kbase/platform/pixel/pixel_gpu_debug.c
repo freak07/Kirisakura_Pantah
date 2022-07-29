@@ -66,14 +66,13 @@ void gpu_debug_read_pdc_status(struct kbase_device *kbdev, struct pixel_gpu_pdc_
 	/* If there's no external power we skip the register read/writes,
 	 * We know all the PDC states will be 0 in this case
 	 */
-	if (kbdev->pm.backend.gpu_powered == 0) {
-		status->core_group = 0;
-		memset(status->shader_cores, 0, sizeof(status->shader_cores));
+	if (!kbdev->pm.backend.gpu_powered) {
+		memset(&status->state, 0, sizeof(status->state));
 		return;
 	}
 
-	status->core_group = gpu_debug_read_pdc(kbdev, PIXEL_CG_PDC_ADDR);
+	status->state.core_group = gpu_debug_read_pdc(kbdev, PIXEL_CG_PDC_ADDR);
 	for (i = 0; i < PIXEL_MALI_SC_COUNT; i++) {
-		status->shader_cores[i] = gpu_debug_read_pdc(kbdev, PIXEL_SC_PDC_ADDR + i);
+		status->state.shader_cores[i] = gpu_debug_read_pdc(kbdev, PIXEL_SC_PDC_ADDR + i);
 	}
 }

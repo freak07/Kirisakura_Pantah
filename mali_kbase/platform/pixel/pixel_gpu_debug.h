@@ -68,14 +68,10 @@ _Static_assert(sizeof(struct pixel_gpu_pdc_status_metadata) == 16,
  **/
 struct pixel_gpu_pdc_status {
 	struct pixel_gpu_pdc_status_metadata meta;
-	union {
-		struct pixel_gpu_pdc_status_bits core_group_bits;
+	struct {
 		uint32_t core_group;
-	};
-	union {
-		struct pixel_gpu_pdc_status_bits shader_cores_bits[PIXEL_MALI_SC_COUNT];
 		uint32_t shader_cores[PIXEL_MALI_SC_COUNT];
-	};
+	} state;
 } __attribute__((packed));
 
 #if MALI_USE_CSF
