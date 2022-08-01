@@ -596,7 +596,7 @@ static void gpu_pm_callback_power_sc_rails_off(struct kbase_device *kbdev) {
 }
 #endif /* CONFIG_MALI_HOST_CONTROLS_SC_RAILS */
 
-static void __maybe_unused gpu_pm_hw_reset(struct kbase_device *kbdev)
+static void gpu_pm_hw_reset(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
@@ -660,7 +660,7 @@ struct kbase_pm_callback_conf pm_callbacks = {
 	.power_runtime_idle_callback = NULL,
 #endif /* KBASE_PM_RUNTIME */
 	.soft_reset_callback = NULL,
-	.hardware_reset_callback = NULL,
+	.hardware_reset_callback = gpu_pm_hw_reset,
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 	.power_on_sc_rails_callback = gpu_pm_callback_power_sc_rails_on,
 	.power_off_sc_rails_callback = gpu_pm_callback_power_sc_rails_off,
