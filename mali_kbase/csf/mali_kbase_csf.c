@@ -34,6 +34,8 @@
 #include <csf/ipa_control/mali_kbase_csf_ipa_control.h>
 #include <mali_kbase_hwaccess_time.h>
 #include "mali_kbase_csf_event.h"
+#include <mali_linux_trace.h>
+
 
 #define CS_REQ_EXCEPTION_MASK (CS_REQ_FAULT_MASK | CS_REQ_FATAL_MASK)
 #define CS_ACK_EXCEPTION_MASK (CS_ACK_FAULT_MASK | CS_ACK_FATAL_MASK)
@@ -2830,6 +2832,7 @@ static inline void check_protm_enter_req_complete(struct kbase_device *kbdev,
 	dev_dbg(kbdev->dev, "Protected mode entry interrupt received");
 
 	kbdev->protected_mode = true;
+	trace_mali_protected_mode(kbdev->protected_mode);
 	kbase_ipa_protection_mode_switch_event(kbdev);
 	kbase_ipa_control_protm_entered(kbdev);
 	kbase_hwcnt_backend_csf_protm_entered(&kbdev->hwcnt_gpu_iface);
@@ -2868,6 +2871,7 @@ static inline void process_protm_exit(struct kbase_device *kbdev, u32 glb_ack)
 
 	if (!WARN_ON(!kbdev->protected_mode)) {
 		kbdev->protected_mode = false;
+		trace_mali_protected_mode(kbdev->protected_mode);
 		kbase_ipa_control_protm_exited(kbdev);
 		kbase_hwcnt_backend_csf_protm_exited(&kbdev->hwcnt_gpu_iface);
 	}
