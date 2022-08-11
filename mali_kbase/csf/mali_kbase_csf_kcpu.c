@@ -2099,7 +2099,8 @@ int kbase_csf_kcpu_queue_enqueue(struct kbase_context *kctx,
 		}
 
 		queue->num_pending_cmds += enq->nr_commands;
-		kcpu_queue_process(queue, false);
+		kthread_queue_work(&kctx->csf.kcpu_queues.csf_kcpu_worker,
+			   &queue->work);
 	} else {
 		/* Roll back the number of enqueued commands */
 		kctx->csf.kcpu_queues.num_cmds -= i;
