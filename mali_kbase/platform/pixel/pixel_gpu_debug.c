@@ -16,6 +16,7 @@
 #define PIXEL_STACK_PDC_ADDR     0x000770DB
 #define PIXEL_CG_PDC_ADDR        0x000760DB
 #define PIXEL_SC_PDC_ADDR        0x000740DB
+#define GPU_PDC_ADDR(offset, val)    ((offset) + ((val) << 8))
 #define GPU_DBG_ACTIVE_BIT         (1 << 31)
 #define GPU_DBG_ACTIVE_MAX_LOOPS    1000000
 #define GPU_DBG_INVALID                (~0U)
@@ -64,7 +65,7 @@ static void gpu_debug_read_sparse_pdcs(struct kbase_device *kbdev, u32 *out, u64
 			continue;
 
 		/* GPU debug command expects the sparse core index */
-		out[logical_idx] = gpu_debug_read_pdc(kbdev, offset + sparse_idx);
+		out[logical_idx] = gpu_debug_read_pdc(kbdev, GPU_PDC_ADDR(offset, sparse_idx));
 
 		++logical_idx;
 	}
