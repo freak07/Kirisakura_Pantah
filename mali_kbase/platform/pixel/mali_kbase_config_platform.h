@@ -100,7 +100,7 @@ extern struct protected_mode_ops pixel_protected_ops;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 
 /* All port specific fields go here */
-#define OF_DATA_NUM_MAX 128
+#define OF_DATA_NUM_MAX 140
 #define CPU_FREQ_MAX INT_MAX
 
 enum gpu_power_state {
