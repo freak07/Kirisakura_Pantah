@@ -31,13 +31,11 @@
 #include <linux/fs.h>
 #include <linux/version.h>
 #include <linux/dma-mapping.h>
-#if (KERNEL_VERSION(4, 8, 0) > LINUX_VERSION_CODE)
-#include <linux/dma-attrs.h>
-#endif /* LINUX_VERSION_CODE < 4.8.0 */
 #include <linux/dma-buf.h>
 #include <linux/shrinker.h>
 #include <linux/cache.h>
 #include <linux/memory_group_manager.h>
+#include <linux/math64.h>
 
 #include <mali_kbase.h>
 #include <mali_kbase_mem_linux.h>
@@ -86,10 +84,8 @@
 #define IR_THRESHOLD_STEPS (256u)
 
 #if MALI_USE_CSF
-static int kbase_csf_cpu_mmap_user_reg_page(struct kbase_context *kctx,
-			struct vm_area_struct *vma);
-static int kbase_csf_cpu_mmap_user_io_pages(struct kbase_context *kctx,
-			struct vm_area_struct *vma);
+static int kbase_csf_cpu_mmap_user_reg_page(struct kbase_context *kctx, struct vm_area_struct *vma);
+static int kbase_csf_cpu_mmap_user_io_pages(struct kbase_context *kctx, struct vm_area_struct *vma);
 #endif
 
 static int kbase_vmap_phy_pages(struct kbase_context *kctx,
@@ -103,6 +99,23 @@ static int kbase_tracking_page_setup(struct kbase_context *kctx, struct vm_area_
 static int kbase_mem_shrink_gpu_mapping(struct kbase_context *kctx,
 		struct kbase_va_region *reg,
 		u64 new_pages, u64 old_pages);
+
+static bool is_process_exiting(struct vm_area_struct *vma)
+{
+	/* PF_EXITING flag can't be reliably used here for the detection
+	 * of process exit, as 'mm_users' counter could still be non-zero
+	 * when all threads of the process have exited. Later when the
+	 * thread (which took a reference on the 'mm' of process that
+	 * exited) drops it reference, the vm_ops->close method would be
+	 * called for all the vmas (owned by 'mm' of process that exited)
+	 * but the PF_EXITING flag may not be neccessarily set for the
+	 * thread at that time.
+	 */
+	if (atomic_read(&vma->vm_mm->mm_users))
+		return false;
+
+	return true;
+}
 
 /* Retrieve the associated region pointer if the GPU address corresponds to
  * one of the event memory pages. The enclosing region, if found, shouldn't
@@ -716,6 +729,9 @@ unsigned long kbase_mem_evictable_reclaim_scan_objects(struct shrinker *s,
 	list_for_each_entry_safe(alloc, tmp, &kctx->evict_list, evict_node) {
 		int err;
 
+		if (!alloc->reg)
+			continue;
+
 		err = kbase_mem_shrink_gpu_mapping(kctx, alloc->reg,
 				0, alloc->nents);
 		if (err != 0) {
@@ -1103,19 +1119,7 @@ int kbase_mem_do_sync_imported(struct kbase_context *kctx,
 			ret = 0;
 		}
 #else
-	/* Though the below version check could be superfluous depending upon the version condition
-	 * used for enabling KBASE_MEM_ION_SYNC_WORKAROUND, we still keep this check here to allow
-	 * ease of modification for non-ION systems or systems where ION has been patched.
-	 */
-#if KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE && !defined(CONFIG_CHROMEOS)
-		dma_buf_end_cpu_access(dma_buf,
-				0, dma_buf->size,
-				dir);
-		ret = 0;
-#else
-		ret = dma_buf_end_cpu_access(dma_buf,
-				dir);
-#endif
+		ret = dma_buf_end_cpu_access(dma_buf, dir);
 #endif /* KBASE_MEM_ION_SYNC_WORKAROUND */
 		break;
 	case KBASE_SYNC_TO_CPU:
@@ -1132,11 +1136,7 @@ int kbase_mem_do_sync_imported(struct kbase_context *kctx,
 			ret = 0;
 		}
 #else
-		ret = dma_buf_begin_cpu_access(dma_buf,
-#if KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE && !defined(CONFIG_CHROMEOS)
-				0, dma_buf->size,
-#endif
-				dir);
+		ret = dma_buf_begin_cpu_access(dma_buf, dir);
 #endif /* KBASE_MEM_ION_SYNC_WORKAROUND */
 		break;
 	}
@@ -1312,11 +1312,8 @@ int kbase_mem_umm_map(struct kbase_context *kctx,
 	return 0;
 
 bad_pad_insert:
-	kbase_mmu_teardown_pages(kctx->kbdev,
-				 &kctx->mmu,
-				 reg->start_pfn,
-				 alloc->nents,
-				 kctx->as_nr);
+	kbase_mmu_teardown_pages(kctx->kbdev, &kctx->mmu, reg->start_pfn, alloc->pages,
+				 alloc->nents, kctx->as_nr);
 bad_insert:
 	kbase_mem_umm_unmap_attachment(kctx, alloc);
 bad_map_attachment:
@@ -1344,11 +1341,8 @@ void kbase_mem_umm_unmap(struct kbase_context *kctx,
 	if (!kbase_is_region_invalid_or_free(reg) && reg->gpu_alloc == alloc) {
 		int err;
 
-		err = kbase_mmu_teardown_pages(kctx->kbdev,
-					       &kctx->mmu,
-					       reg->start_pfn,
-					       reg->nr_pages,
-					       kctx->as_nr);
+		err = kbase_mmu_teardown_pages(kctx->kbdev, &kctx->mmu, reg->start_pfn,
+					       alloc->pages, reg->nr_pages, kctx->as_nr);
 		WARN_ON(err);
 	}
 
@@ -1541,13 +1535,15 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 		struct kbase_context *kctx, unsigned long address,
 		unsigned long size, u64 *va_pages, u64 *flags)
 {
-	long i;
+	long i, dma_mapped_pages;
 	struct kbase_va_region *reg;
 	struct rb_root *rbtree;
 	long faulted_pages;
 	int zone = KBASE_REG_ZONE_CUSTOM_VA;
 	bool shared_zone = false;
 	u32 cache_line_alignment = kbase_get_cache_line_alignment(kctx->kbdev);
+	unsigned long offset_within_page;
+	unsigned long remaining_size;
 	struct kbase_alloc_import_user_buf *user_buf;
 	struct page **pages = NULL;
 	int write;
@@ -1666,18 +1662,7 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 
 	write = reg->flags & (KBASE_REG_CPU_WR | KBASE_REG_GPU_WR);
 
-#if KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE
-	faulted_pages = get_user_pages(current, current->mm, address, *va_pages,
-#if KERNEL_VERSION(4, 4, 168) <= LINUX_VERSION_CODE && \
-KERNEL_VERSION(4, 5, 0) > LINUX_VERSION_CODE
-			write ? FOLL_WRITE : 0, pages, NULL);
-#else
-			write, 0, pages, NULL);
-#endif
-#elif KERNEL_VERSION(4, 9, 0) > LINUX_VERSION_CODE
-	faulted_pages = get_user_pages(address, *va_pages,
-			write, 0, pages, NULL);
-#elif KERNEL_VERSION(5, 9, 0) > LINUX_VERSION_CODE
+#if KERNEL_VERSION(5, 9, 0) > LINUX_VERSION_CODE
 	faulted_pages = get_user_pages(address, *va_pages,
 			write ? FOLL_WRITE : 0, pages, NULL);
 #else
@@ -1704,29 +1689,27 @@ KERNEL_VERSION(4, 5, 0) > LINUX_VERSION_CODE
 
 	if (pages) {
 		struct device *dev = kctx->kbdev->dev;
-		unsigned long local_size = user_buf->size;
-		unsigned long offset = user_buf->address & ~PAGE_MASK;
 		struct tagged_addr *pa = kbase_get_gpu_phy_pages(reg);
 
 		/* Top bit signifies that this was pinned on import */
 		user_buf->current_mapping_usage_count |= PINNED_ON_IMPORT;
 
+		offset_within_page = user_buf->address & ~PAGE_MASK;
+		remaining_size = user_buf->size;
 		for (i = 0; i < faulted_pages; i++) {
-			dma_addr_t dma_addr;
-			unsigned long min;
+			unsigned long map_size =
+				MIN(PAGE_SIZE - offset_within_page, remaining_size);
+			dma_addr_t dma_addr = dma_map_page(dev, pages[i],
+				offset_within_page, map_size, DMA_BIDIRECTIONAL);
 
-			min = MIN(PAGE_SIZE - offset, local_size);
-			dma_addr = dma_map_page(dev, pages[i],
-					offset, min,
-					DMA_BIDIRECTIONAL);
 			if (dma_mapping_error(dev, dma_addr))
 				goto unwind_dma_map;
 
 			user_buf->dma_addrs[i] = dma_addr;
 			pa[i] = as_tagged(page_to_phys(pages[i]));
 
-			local_size -= min;
-			offset = 0;
+			remaining_size -= map_size;
+			offset_within_page = 0;
 		}
 
 		reg->gpu_alloc->nents = faulted_pages;
@@ -1735,13 +1718,26 @@ KERNEL_VERSION(4, 5, 0) > LINUX_VERSION_CODE
 	return reg;
 
 unwind_dma_map:
-	while (i--) {
+	offset_within_page = user_buf->address & ~PAGE_MASK;
+	remaining_size = user_buf->size;
+	dma_mapped_pages = i;
+	/* Run the unmap loop in the same order as map loop */
+	for (i = 0; i < dma_mapped_pages; i++) {
+		unsigned long unmap_size =
+			MIN(PAGE_SIZE - offset_within_page, remaining_size);
+
 		dma_unmap_page(kctx->kbdev->dev,
 				user_buf->dma_addrs[i],
-				PAGE_SIZE, DMA_BIDIRECTIONAL);
+				unmap_size, DMA_BIDIRECTIONAL);
+		remaining_size -= unmap_size;
+		offset_within_page = 0;
 	}
 fault_mismatch:
 	if (pages) {
+		/* In this case, the region was not yet in the region tracker,
+		 * and so there are no CPU mappings to remove before we unpin
+		 * the page
+		 */
 		for (i = 0; i < faulted_pages; i++)
 			kbase_unpin_user_buf_page(pages[i]);
 	}
@@ -1766,6 +1762,7 @@ u64 kbase_mem_alias(struct kbase_context *kctx, u64 *flags, u64 stride,
 	u64 gpu_va;
 	size_t i;
 	bool coherent;
+	uint64_t max_stride;
 
 	/* Calls to this function are inherently asynchronous, with respect to
 	 * MMU operations.
@@ -1797,6 +1794,11 @@ u64 kbase_mem_alias(struct kbase_context *kctx, u64 *flags, u64 stride,
 
 	if (!nents)
 		goto bad_nents;
+
+	max_stride = div64_u64(U64_MAX, nents);
+
+	if (stride > max_stride)
+		goto bad_size;
 
 	if ((nents * stride) > (U64_MAX / PAGE_SIZE))
 		/* 64-bit address range is the max */
@@ -2187,10 +2189,11 @@ static int kbase_mem_shrink_gpu_mapping(struct kbase_context *const kctx,
 		u64 const new_pages, u64 const old_pages)
 {
 	u64 delta = old_pages - new_pages;
+	struct kbase_mem_phy_alloc *alloc = reg->gpu_alloc;
 	int ret = 0;
 
-	ret = kbase_mmu_teardown_pages(kctx->kbdev, &kctx->mmu,
-			reg->start_pfn + new_pages, delta, kctx->as_nr);
+	ret = kbase_mmu_teardown_pages(kctx->kbdev, &kctx->mmu, reg->start_pfn + new_pages,
+				       alloc->pages + new_pages, delta, kctx->as_nr);
 
 	return ret;
 }
@@ -2408,7 +2411,7 @@ static void kbase_cpu_vm_close(struct vm_area_struct *vma)
 		/* Avoid freeing memory on the process death which results in
 		 * GPU Page Fault. Memory will be freed in kbase_destroy_context
 		 */
-		if (!(current->flags & PF_EXITING))
+		if (!is_process_exiting(vma))
 			kbase_mem_free_region(map->kctx, map->region);
 	}
 
@@ -2640,7 +2643,6 @@ static void kbase_free_unused_jit_allocations(struct kbase_context *kctx)
 	while (kbase_jit_evict(kctx))
 		;
 }
-#endif
 
 static int kbase_mmu_dump_mmap(struct kbase_context *kctx,
 			struct vm_area_struct *vma,
@@ -2657,9 +2659,7 @@ static int kbase_mmu_dump_mmap(struct kbase_context *kctx,
 	size = (vma->vm_end - vma->vm_start);
 	nr_pages = size >> PAGE_SHIFT;
 
-#ifdef CONFIG_MALI_VECTOR_DUMP
 	kbase_free_unused_jit_allocations(kctx);
-#endif
 
 	kaddr = kbase_mmu_dump(kctx, nr_pages);
 
@@ -2707,7 +2707,7 @@ out_va_region:
 out:
 	return err;
 }
-
+#endif
 
 void kbase_os_mem_map_lock(struct kbase_context *kctx)
 {
@@ -2848,6 +2848,7 @@ int kbase_context_mmap(struct kbase_context *const kctx,
 		err = -EINVAL;
 		goto out_unlock;
 	case PFN_DOWN(BASE_MEM_MMU_DUMP_HANDLE):
+#if defined(CONFIG_MALI_VECTOR_DUMP)
 		/* MMU dump */
 		err = kbase_mmu_dump_mmap(kctx, vma, &reg, &kaddr);
 		if (err != 0)
@@ -2855,6 +2856,11 @@ int kbase_context_mmap(struct kbase_context *const kctx,
 		/* free the region on munmap */
 		free_on_close = 1;
 		break;
+#else
+		/* Illegal handle for direct map */
+		err = -EINVAL;
+		goto out_unlock;
+#endif /* defined(CONFIG_MALI_VECTOR_DUMP) */
 #if MALI_USE_CSF
 	case PFN_DOWN(BASEP_MEM_CSF_USER_REG_PAGE_HANDLE):
 		kbase_gpu_vm_unlock(kctx);
@@ -2942,7 +2948,7 @@ int kbase_context_mmap(struct kbase_context *const kctx,
 
 	err = kbase_cpu_mmap(kctx, reg, vma, kaddr, nr_pages, aligned_offset,
 			free_on_close);
-
+#if defined(CONFIG_MALI_VECTOR_DUMP)
 	if (vma->vm_pgoff == PFN_DOWN(BASE_MEM_MMU_DUMP_HANDLE)) {
 		/* MMU dump - userspace should now have a reference on
 		 * the pages, so we can now free the kernel mapping
@@ -2961,7 +2967,7 @@ int kbase_context_mmap(struct kbase_context *const kctx,
 		 */
 		vma->vm_pgoff = PFN_DOWN(vma->vm_start);
 	}
-
+#endif /* defined(CONFIG_MALI_VECTOR_DUMP) */
 out_unlock:
 	kbase_gpu_vm_unlock(kctx);
 out:
@@ -3278,9 +3284,27 @@ static unsigned long get_queue_doorbell_pfn(struct kbase_device *kbdev,
 			 (u64)queue->doorbell_nr * CSF_HW_DOORBELL_PAGE_SIZE));
 }
 
+static int
+#if (KERNEL_VERSION(5, 13, 0) <= LINUX_VERSION_CODE || \
+	KERNEL_VERSION(5, 11, 0) > LINUX_VERSION_CODE)
+kbase_csf_user_io_pages_vm_mremap(struct vm_area_struct *vma)
+#else
+kbase_csf_user_io_pages_vm_mremap(struct vm_area_struct *vma, unsigned long flags)
+#endif
+{
+	pr_debug("Unexpected call to mremap method for User IO pages mapping vma\n");
+	return -EINVAL;
+}
+
+static int kbase_csf_user_io_pages_vm_split(struct vm_area_struct *vma, unsigned long addr)
+{
+	pr_debug("Unexpected call to split method for User IO pages mapping vma\n");
+	return -EINVAL;
+}
+
 static void kbase_csf_user_io_pages_vm_open(struct vm_area_struct *vma)
 {
-	WARN(1, "Unexpected attempt to clone private vma\n");
+	pr_debug("Unexpected call to the open method for User IO pages mapping vma\n");
 	vma->vm_private_data = NULL;
 }
 
@@ -3292,8 +3316,10 @@ static void kbase_csf_user_io_pages_vm_close(struct vm_area_struct *vma)
 	int err;
 	bool reset_prevented = false;
 
-	if (WARN_ON(!queue))
+	if (!queue) {
+		pr_debug("Close method called for the new User IO pages mapping vma\n");
 		return;
+	}
 
 	kctx = queue->kctx;
 	kbdev = kctx->kbdev;
@@ -3308,7 +3334,7 @@ static void kbase_csf_user_io_pages_vm_close(struct vm_area_struct *vma)
 		reset_prevented = true;
 
 	mutex_lock(&kctx->csf.lock);
-	kbase_csf_queue_unbind(queue);
+	kbase_csf_queue_unbind(queue, is_process_exiting(vma));
 	mutex_unlock(&kctx->csf.lock);
 
 	if (reset_prevented)
@@ -3337,9 +3363,12 @@ static vm_fault_t kbase_csf_user_io_pages_vm_fault(struct vm_fault *vmf)
 	struct memory_group_manager_device *mgm_dev;
 
 	/* Few sanity checks up front */
-	if ((nr_pages != BASEP_QUEUE_NR_MMAP_USER_PAGES) ||
-	    (vma->vm_pgoff != queue->db_file_offset))
+	if (!queue || (nr_pages != BASEP_QUEUE_NR_MMAP_USER_PAGES) ||
+	    (vma->vm_pgoff != queue->db_file_offset)) {
+		pr_warn("Unexpected CPU page fault on User IO pages mapping for process %s tgid %d pid %d\n",
+			current->comm, current->tgid, current->pid);
 		return VM_FAULT_SIGBUS;
+	}
 
 	kbdev = queue->kctx->kbdev;
 	mgm_dev = kbdev->mgm_dev;
@@ -3349,13 +3378,6 @@ static vm_fault_t kbase_csf_user_io_pages_vm_fault(struct vm_fault *vmf)
 	/* Always map the doorbell page as uncached */
 	doorbell_pgprot = pgprot_device(vma->vm_page_prot);
 
-#if ((KERNEL_VERSION(4, 4, 147) >= LINUX_VERSION_CODE) || \
-		((KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE) && \
-		 (KERNEL_VERSION(4, 5, 0) <= LINUX_VERSION_CODE)))
-	vma->vm_page_prot = doorbell_pgprot;
-	input_page_pgprot = doorbell_pgprot;
-	output_page_pgprot = doorbell_pgprot;
-#else
 	if (kbdev->system_coherency == COHERENCY_NONE) {
 		input_page_pgprot = pgprot_writecombine(vma->vm_page_prot);
 		output_page_pgprot = pgprot_writecombine(vma->vm_page_prot);
@@ -3363,7 +3385,6 @@ static vm_fault_t kbase_csf_user_io_pages_vm_fault(struct vm_fault *vmf)
 		input_page_pgprot = vma->vm_page_prot;
 		output_page_pgprot = vma->vm_page_prot;
 	}
-#endif
 
 	doorbell_cpu_addr = vma->vm_start;
 
@@ -3402,6 +3423,12 @@ exit:
 static const struct vm_operations_struct kbase_csf_user_io_pages_vm_ops = {
 	.open = kbase_csf_user_io_pages_vm_open,
 	.close = kbase_csf_user_io_pages_vm_close,
+#if KERNEL_VERSION(5, 11, 0) <= LINUX_VERSION_CODE
+	.may_split = kbase_csf_user_io_pages_vm_split,
+#else
+	.split = kbase_csf_user_io_pages_vm_split,
+#endif
+	.mremap = kbase_csf_user_io_pages_vm_mremap,
 	.fault = kbase_csf_user_io_pages_vm_fault
 };
 
@@ -3481,13 +3508,71 @@ map_failed:
 	return err;
 }
 
+/**
+ * kbase_csf_user_reg_vm_open - VMA open function for the USER page
+ *
+ * @vma:  Pointer to the struct containing information about
+ *        the userspace mapping of USER page.
+ * Note:
+ * This function isn't expected to be called. If called (i.e> mremap),
+ * set private_data as NULL to indicate to close() and fault() functions.
+ */
+static void kbase_csf_user_reg_vm_open(struct vm_area_struct *vma)
+{
+	pr_debug("Unexpected call to the open method for USER register mapping");
+	vma->vm_private_data = NULL;
+}
+
+/**
+ * kbase_csf_user_reg_vm_close - VMA close function for the USER page
+ *
+ * @vma:  Pointer to the struct containing information about
+ *        the userspace mapping of USER page.
+ */
 static void kbase_csf_user_reg_vm_close(struct vm_area_struct *vma)
 {
 	struct kbase_context *kctx = vma->vm_private_data;
 
-	WARN_ON(!kctx->csf.user_reg_vma);
+	if (!kctx) {
+		pr_debug("Close function called for the unexpected mapping");
+		return;
+	}
+
+	if (unlikely(!kctx->csf.user_reg_vma))
+		dev_warn(kctx->kbdev->dev, "user_reg_vma pointer unexpectedly NULL");
 
 	kctx->csf.user_reg_vma = NULL;
+
+	mutex_lock(&kctx->kbdev->csf.reg_lock);
+	if (unlikely(kctx->kbdev->csf.nr_user_page_mapped == 0))
+		dev_warn(kctx->kbdev->dev, "Unexpected value for the USER page mapping counter");
+	else
+		kctx->kbdev->csf.nr_user_page_mapped--;
+	mutex_unlock(&kctx->kbdev->csf.reg_lock);
+}
+
+/**
+ * kbase_csf_user_reg_vm_mremap - VMA mremap function for the USER page
+ *
+ * @vma:  Pointer to the struct containing information about
+ *        the userspace mapping of USER page.
+ *
+ * Return: -EINVAL
+ *
+ * Note:
+ * User space must not attempt mremap on USER page mapping.
+ * This function will return an error to fail the attempt.
+ */
+static int
+#if ((KERNEL_VERSION(5, 13, 0) <= LINUX_VERSION_CODE) || \
+	(KERNEL_VERSION(5, 11, 0) > LINUX_VERSION_CODE))
+kbase_csf_user_reg_vm_mremap(struct vm_area_struct *vma)
+#else
+kbase_csf_user_reg_vm_mremap(struct vm_area_struct *vma, unsigned long flags)
+#endif
+{
+	pr_debug("Unexpected call to mremap method for USER page mapping vma\n");
+	return -EINVAL;
 }
 
 #if (KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE)
@@ -3500,19 +3585,24 @@ static vm_fault_t kbase_csf_user_reg_vm_fault(struct vm_fault *vmf)
 	struct vm_area_struct *vma = vmf->vma;
 #endif
 	struct kbase_context *kctx = vma->vm_private_data;
-	struct kbase_device *kbdev = kctx->kbdev;
-	struct memory_group_manager_device *mgm_dev = kbdev->mgm_dev;
-	unsigned long pfn = PFN_DOWN(kbdev->reg_start + USER_BASE);
+	struct kbase_device *kbdev;
+	struct memory_group_manager_device *mgm_dev;
+	unsigned long pfn;
 	size_t nr_pages = PFN_DOWN(vma->vm_end - vma->vm_start);
 	vm_fault_t ret = VM_FAULT_SIGBUS;
 	unsigned long flags;
 
 	/* Few sanity checks up front */
-	if (WARN_ON(nr_pages != 1) ||
-	    WARN_ON(vma != kctx->csf.user_reg_vma) ||
-	    WARN_ON(vma->vm_pgoff !=
-			PFN_DOWN(BASEP_MEM_CSF_USER_REG_PAGE_HANDLE)))
+	if (!kctx || (nr_pages != 1) || (vma != kctx->csf.user_reg_vma) ||
+	    (vma->vm_pgoff != PFN_DOWN(BASEP_MEM_CSF_USER_REG_PAGE_HANDLE))) {
+		pr_warn("Unexpected CPU page fault on USER page mapping for process %s tgid %d pid %d\n",
+			current->comm, current->tgid, current->pid);
 		return VM_FAULT_SIGBUS;
+	}
+
+	kbdev = kctx->kbdev;
+	mgm_dev = kbdev->mgm_dev;
+	pfn = PFN_DOWN(kbdev->reg_start + USER_BASE);
 
 	mutex_lock(&kbdev->csf.reg_lock);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
@@ -3537,14 +3627,31 @@ static vm_fault_t kbase_csf_user_reg_vm_fault(struct vm_fault *vmf)
 }
 
 static const struct vm_operations_struct kbase_csf_user_reg_vm_ops = {
+	.open = kbase_csf_user_reg_vm_open,
 	.close = kbase_csf_user_reg_vm_close,
+	.mremap = kbase_csf_user_reg_vm_mremap,
 	.fault = kbase_csf_user_reg_vm_fault
 };
 
+/**
+ * kbase_csf_cpu_mmap_user_reg_page - Memory map method for USER page.
+ *
+ * @kctx: Pointer of the kernel context.
+ * @vma:  Pointer to the struct containing the information about
+ *        the userspace mapping of USER page.
+ *
+ * Return: 0 on success, error code otherwise.
+ *
+ * Note:
+ * New Base will request Kbase to read the LATEST_FLUSH of USER page on its behalf.
+ * But this function needs to be kept for backward-compatibility as old Base (<=1.12)
+ * will try to mmap USER page for direct access when it creates a base context.
+ */
 static int kbase_csf_cpu_mmap_user_reg_page(struct kbase_context *kctx,
 				struct vm_area_struct *vma)
 {
 	size_t nr_pages = PFN_DOWN(vma->vm_end - vma->vm_start);
+	struct kbase_device *kbdev = kctx->kbdev;
 
 	/* Few sanity checks */
 	if (kctx->csf.user_reg_vma)
@@ -3567,6 +3674,17 @@ static int kbase_csf_cpu_mmap_user_reg_page(struct kbase_context *kctx,
 	vma->vm_flags |= VM_PFNMAP;
 
 	kctx->csf.user_reg_vma = vma;
+
+	mutex_lock(&kbdev->csf.reg_lock);
+	kbdev->csf.nr_user_page_mapped++;
+
+	if (!kbdev->csf.mali_file_inode)
+		kbdev->csf.mali_file_inode = kctx->filp->f_inode;
+
+	if (unlikely(kbdev->csf.mali_file_inode != kctx->filp->f_inode))
+		dev_warn(kbdev->dev, "Device file inode pointer not same for all contexts");
+
+	mutex_unlock(&kbdev->csf.reg_lock);
 
 	vma->vm_ops = &kbase_csf_user_reg_vm_ops;
 	vma->vm_private_data = kctx;
