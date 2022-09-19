@@ -149,7 +149,6 @@ static int wait_ready(struct kbase_device *kbdev,
 	return 0;
 }
 
-void gpu_dvfs_debug_dump(struct kbase_device *kbdev);
 static int write_cmd(struct kbase_device *kbdev, int as_nr, u32 cmd)
 {
 	int status;
@@ -162,7 +161,6 @@ static int write_cmd(struct kbase_device *kbdev, int as_nr, u32 cmd)
 		dev_err(kbdev->dev,
 			"Wait for AS_ACTIVE bit failed for as %u, before sending MMU command %u",
 			as_nr, cmd);
-		gpu_dvfs_debug_dump(kbdev);
 	}
 
 	return status;

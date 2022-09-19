@@ -30,34 +30,6 @@
 #define DVFS_TABLES_MAX (2)
 static struct gpu_dvfs_opp gpu_dvfs_table[DVFS_TABLE_ROW_MAX];
 
-static void gpu_dvfs_debug_push(struct kbase_device *kbdev)
-{
-	struct pixel_context *pc = kbdev->platform_context;
-	unsigned long flags;
-
-	spin_lock_irqsave(&pc->dvfs.debug.lock, flags);
-	pc->dvfs.debug.log[pc->dvfs.debug.idx].timestamp = ktime_get_ns();
-	pc->dvfs.debug.log[pc->dvfs.debug.idx].level = pc->dvfs.level;
-
-	pc->dvfs.debug.idx = (pc->dvfs.debug.idx + 1) % PIXEL_GPU_DVFS_DEBUG_NUM;
-	spin_unlock_irqrestore(&pc->dvfs.debug.lock, flags);
-}
-
-void gpu_dvfs_debug_dump(struct kbase_device *kbdev)
-{
-	struct pixel_context *pc = kbdev->platform_context;
-	unsigned long flags;
-	int i;
-
-	spin_lock_irqsave(&pc->dvfs.debug.lock, flags);
-	dev_info(kbdev->dev, "Dumping DVFS history: ");
-	for (i = 0; i < PIXEL_GPU_DVFS_DEBUG_NUM; ++i) {
-		dev_info(kbdev->dev, "{%llu, %d}", pc->dvfs.debug.log[i].timestamp,
-			 pc->dvfs.debug.log[i].level);
-	}
-	spin_unlock_irqrestore(&pc->dvfs.debug.lock, flags);
-}
-
 /* DVFS event handling code */
 
 /**
@@ -126,7 +98,6 @@ static int gpu_dvfs_set_new_level(struct kbase_device *kbdev, int next_level)
 #endif /* CONFIG_MALI_PIXEL_GPU_QOS */
 
 	pc->dvfs.level = next_level;
-	gpu_dvfs_debug_push(kbdev);
 
 	return 0;
 }
@@ -729,7 +700,6 @@ static int gpu_dvfs_set_initial_level(struct kbase_device *kbdev)
 	}
 
 	mutex_unlock(&pc->pm.domain->access_lock);
-	gpu_dvfs_debug_push(kbdev);
 
 	return ret;
 }
@@ -752,7 +722,6 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 
 	/* Initialize lock */
 	mutex_init(&pc->dvfs.lock);
-	spin_lock_init(&pc->dvfs.debug.lock);
 
 	/* Initialize DVFS fields that are non-zero */
 	for (i = 0; i < GPU_DVFS_LEVEL_LOCK_COUNT; i++) {

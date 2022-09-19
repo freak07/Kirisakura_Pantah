@@ -10,13 +10,6 @@
 
 /* Clocks & domains */
 
-#define PIXEL_GPU_DVFS_DEBUG_NUM 100
-struct gpu_dvfs_debug {
-	ktime_t timestamp;
-	int level;
-};
-void gpu_dvfs_debug_dump(struct kbase_device *kbdev);
-
 /**
  * enum gpu_dvfs_clk_index - GPU clock & power domains
  *

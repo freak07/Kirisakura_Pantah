@@ -400,11 +400,6 @@ struct pixel_context {
 			struct thermal_cooling_device *cdev;
 		} tmu;
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
-		struct {
-			spinlock_t lock;
-			struct gpu_dvfs_debug log[PIXEL_GPU_DVFS_DEBUG_NUM];
-			int idx;
-		} debug;
 	} dvfs;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 };

@@ -4145,7 +4145,6 @@ static void scheduler_rotate_ctxs(struct kbase_device *kbdev)
 	}
 }
 
-void gpu_dvfs_debug_dump(struct kbase_device *kbdev);
 /**
  * scheduler_update_idle_slots_status() - Get the status update for the CSG
  *                       slots for which the IDLE notification was received
@@ -4232,7 +4231,6 @@ static void scheduler_update_idle_slots_status(struct kbase_device *kbdev,
 				kbase_backend_get_cycle_cnt(kbdev),
 				kbdev->csf.fw_timeout_ms,
 				csg_bitmap[0]);
-			gpu_dvfs_debug_dump(kbdev);
 
 			/* Store the bitmap of timed out slots */
 			bitmap_copy(failed_csg_bitmap, csg_bitmap, num_groups);

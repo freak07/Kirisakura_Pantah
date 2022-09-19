@@ -272,7 +272,6 @@ static void boot_csf_firmware(struct kbase_device *kbdev)
 	wait_for_firmware_boot(kbdev);
 }
 
-void gpu_dvfs_debug_dump(struct kbase_device *kbdev);
 static void wait_ready(struct kbase_device *kbdev)
 {
 	u32 max_loops = KBASE_AS_INACTIVE_MAX_LOOPS;
@@ -287,7 +286,6 @@ static void wait_ready(struct kbase_device *kbdev)
 	if (max_loops == 0) {
 		dev_err(kbdev->dev, "AS_ACTIVE bit stuck when enabling AS0 for MCU, might be caused by slow/unstable GPU clock or possible faulty FPGA connector\n");
 		queue_work(system_highpri_wq, &kbdev->csf.coredump_work);
-		gpu_dvfs_debug_dump(kbdev);
 	}
 }
 

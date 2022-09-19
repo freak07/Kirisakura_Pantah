@@ -48,9 +48,6 @@
 #define GPU_ACTIVE_SCALING_FACTOR ((u64)1E9)
 #endif
 
-void gpu_dvfs_debug_dump(struct kbase_device *kbdev);
-
-
 #ifdef CONFIG_MALI_MIDGARD_DVFS
 static enum hrtimer_restart dvfs_callback(struct hrtimer *timer)
 {
@@ -245,7 +242,6 @@ static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev)
 					"GPU activity takes longer than time interval: %llu ns > %llu ns",
 					(unsigned long long)gpu_active_counter,
 					(unsigned long long)diff_ns);
-				gpu_dvfs_debug_dump(kbdev);
 			}
 		}
 #endif
