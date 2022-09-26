@@ -253,6 +253,24 @@ void kbasep_ktrace_dump(struct kbase_device *kbdev)
 	spin_unlock_irqrestore(&kbdev->ktrace.lock, flags);
 }
 
+u32 kbasep_ktrace_copy(struct kbase_device* kbdev, struct kbase_ktrace_msg* msgs, u32 num_msgs)
+{
+	u32 start = kbdev->ktrace.first_out;
+	u32 end = kbdev->ktrace.next_in;
+	u32 i = 0;
+	u32 distance = min(ktrace_buffer_distance(start, end), num_msgs);
+
+	lockdep_assert_held(&kbdev->ktrace.lock);
+
+	for (i = 0; i < distance; ++i) {
+		struct kbase_ktrace_msg *trace_msg = &kbdev->ktrace.rbuf[end];
+		memcpy(&msgs[i], trace_msg, sizeof(struct kbase_ktrace_msg));
+		end = (end + 1) & KBASE_KTRACE_MASK;
+	}
+
+	return i;
+}
+
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 struct trace_seq_state {
 	struct kbase_ktrace_msg trace_buf[KBASE_KTRACE_SIZE];

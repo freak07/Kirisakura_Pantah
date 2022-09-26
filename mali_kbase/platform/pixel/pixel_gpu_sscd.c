@@ -50,6 +50,7 @@ enum
 	PM_EVENT_LOG = 0x6,
 	POWER_RAIL_LOG = 0x7,
 	PDC_STATUS = 0x8,
+	KTRACE = 0x9,
 	NUM_SEGMENTS
 } sscd_segs;
 
@@ -130,6 +131,70 @@ static void get_fw_trace(struct kbase_device *kbdev, struct sscd_segment *seg)
 
 	return;
 }
+
+/**
+ * struct pixel_ktrace_metadata - Info about the ktrace log
+ *
+ * @magic:          Always 'ktra', helps find the log in memory dumps
+ * @trace_address:  The memory address of the ktrace log
+ * @trace_start:    Start of the ktrace ringbuffer
+ * @trace_end:      End of the ktrace ringbuffer
+ * @version_major:  Ktrace major version.
+ * @version_minor:  Ktrace minor version.
+ * @_reserved:      Bytes reserved for future use
+ **/
+struct pixel_ktrace_metadata {
+	char magic[4];
+	uint64_t trace_address;
+	uint32_t trace_start;
+	uint32_t trace_end;
+	uint8_t version_major;
+	uint8_t version_minor;
+	char _reserved[28];
+} __attribute__((packed));
+_Static_assert(sizeof(struct pixel_ktrace_metadata) == 50,
+	       "Incorrect pixel_ktrace_metadata size");
+
+struct pixel_ktrace {
+	struct pixel_ktrace_metadata meta;
+#if KBASE_KTRACE_TARGET_RBUF
+	struct kbase_ktrace_msg trace_log[KBASE_KTRACE_SIZE];
+#endif
+};
+static void get_ktrace(struct kbase_device *kbdev,
+			  struct sscd_segment *seg)
+{
+	struct pixel_ktrace *ktrace = seg->addr;
+#if KBASE_KTRACE_TARGET_RBUF
+	unsigned long flags;
+	u32 entries_copied = 0;
+#endif
+
+	if (seg->addr == NULL)
+		return;
+
+	ktrace->meta = (struct pixel_ktrace_metadata) { .magic = "ktra" };
+#if KBASE_KTRACE_TARGET_RBUF
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+	spin_lock_irqsave(&kbdev->ktrace.lock, flags);
+	ktrace->meta.trace_address = (uint64_t)kbdev->ktrace.rbuf;
+	ktrace->meta.trace_start = kbdev->ktrace.first_out;
+	ktrace->meta.trace_end = kbdev->ktrace.next_in;
+	ktrace->meta.version_major = KBASE_KTRACE_VERSION_MAJOR;
+	ktrace->meta.version_minor = KBASE_KTRACE_VERSION_MINOR;
+
+	entries_copied = kbasep_ktrace_copy(kbdev, seg->addr, KBASE_KTRACE_SIZE);
+	if (entries_copied != KBASE_KTRACE_SIZE)
+		dev_warn(kbdev->dev, "only copied %i of %i ktrace entries",
+			entries_copied, KBASE_KTRACE_SIZE);
+	spin_unlock_irqrestore(&kbdev->ktrace.lock, flags);
+
+	KBASE_KTRACE_RBUF_DUMP(kbdev);
+#else
+	dev_warn(kbdev->dev, "ktrace information not present");
+#endif
+}
+
 /*
  * Stub pending FW support
  */
@@ -223,6 +288,14 @@ static int segments_init(struct kbase_device *kbdev, struct sscd_segment* segmen
 		return -ENOMEM;
 	}
 
+	segments[KTRACE].size = sizeof(struct pixel_ktrace);
+	segments[KTRACE].addr = kzalloc(sizeof(struct pixel_ktrace), GFP_KERNEL);
+	if (segments[KTRACE].addr == NULL) {
+		segments[KTRACE].size = 0;
+		dev_err(kbdev->dev, "pixel: failed to allocate for ktrace buffer");
+		return -ENOMEM;
+	}
+
 	return 0;
 }
 
@@ -232,6 +305,7 @@ static void segments_term(struct kbase_device *kbdev, struct sscd_segment* segme
 
 	kfree(segments[FW_TRACE].addr);
 	kfree(segments[PM_EVENT_LOG].addr);
+	kfree(segments[KTRACE].addr);
 	/* Null out the pointers */
 	memset(segments, 0, sizeof(struct sscd_segment) * NUM_SEGMENTS);
 }
@@ -290,6 +364,8 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 	get_fw_trace(kbdev, &segs[FW_TRACE]);
 
 	get_pm_event_log(kbdev, &segs[PM_EVENT_LOG]);
+
+	get_ktrace(kbdev, &segs[KTRACE]);
 
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
