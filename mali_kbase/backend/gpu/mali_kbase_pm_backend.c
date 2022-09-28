@@ -1260,8 +1260,10 @@ void kbase_pm_turn_on_sc_power_rails_locked(struct kbase_device *kbdev)
 	lockdep_assert_held(&kbdev->pm.lock);
 	WARN_ON(!kbdev->pm.backend.gpu_powered);
 	if (kbdev->pm.backend.sc_power_rails_off) {
-		if (kbdev->pm.backend.callback_power_on_sc_rails)
+		if (kbdev->pm.backend.callback_power_on_sc_rails) {
 			kbdev->pm.backend.callback_power_on_sc_rails(kbdev);
+			KBASE_KTRACE_ADD(kbdev, PM_RAIL_ON, NULL, 0);
+		}
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 		kbdev->pm.backend.sc_power_rails_off = false;
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
@@ -1288,8 +1290,10 @@ void kbase_pm_turn_off_sc_power_rails(struct kbase_device *kbdev)
 		/* Work around for b/234962632 */
 		abort = WARN_ON(!kbdev->pm.backend.sc_pwroff_safe);
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		if (kbdev->pm.backend.callback_power_off_sc_rails && !abort)
+		if (kbdev->pm.backend.callback_power_off_sc_rails && !abort) {
 			kbdev->pm.backend.callback_power_off_sc_rails(kbdev);
+			KBASE_KTRACE_ADD(kbdev, PM_RAIL_OFF, NULL, 0);
+		}
 	}
 	kbase_pm_unlock(kbdev);
 }

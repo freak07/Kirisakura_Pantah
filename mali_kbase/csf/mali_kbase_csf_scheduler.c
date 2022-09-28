@@ -5028,6 +5028,9 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 		return false;
 	}
 
+	KBASE_KTRACE_ADD_CSF_GRP(kbdev, CSG_SLOT_IDLE_SET, NULL,
+				 scheduler->csg_slots_idle_mask[0]);
+
 	ack_gpu_idle_event(kbdev);
 	for_each_set_bit(i, scheduler->csg_slots_idle_mask, num_groups) {
 		struct kbase_csf_cmd_stream_group_info *const ginfo =
@@ -5070,10 +5073,12 @@ static bool recheck_gpu_idleness(struct kbase_device *kbdev)
 				kbase_csf_ring_cs_kernel_doorbell(kbdev,
 					queue->csi_index, group->csg_nr, true);
 				spin_unlock_irqrestore(&scheduler->interrupt_lock, flags);
+				KBASE_KTRACE_ADD_CSF_GRP(kbdev, SC_RAIL_RECHECK_NOT_IDLE, group, i);
 				return false;
 			}
 		}
 	}
+	KBASE_KTRACE_ADD_CSF_GRP(kbdev, SC_RAIL_RECHECK_IDLE, NULL, (u64)scheduler->csg_slots_idle_mask);
 	return true;
 }
 
@@ -5096,6 +5101,9 @@ static bool can_turn_off_sc_rails(struct kbase_device *kbdev)
 {
 	struct kbase_csf_scheduler *const scheduler = &kbdev->csf.scheduler;
 	bool turn_off_sc_rails;
+	bool idle_event_pending;
+	bool all_csg_idle;
+	bool non_idle_offslot;
 	unsigned long flags;
 
 	lockdep_assert_held(&scheduler->lock);
@@ -5117,12 +5125,22 @@ static bool can_turn_off_sc_rails(struct kbase_device *kbdev)
 		dev_info(kbdev->dev, "SC Rail off aborted, power sequence incomplete");
 	}
 
+	idle_event_pending = gpu_idle_event_is_pending(kbdev);
+	all_csg_idle = kbase_csf_scheduler_all_csgs_idle(kbdev);
+	non_idle_offslot = !atomic_read(&scheduler->non_idle_offslot_grps);
 	turn_off_sc_rails = kbdev->pm.backend.sc_pwroff_safe &&
-			    gpu_idle_event_is_pending(kbdev) &&
-			    kbase_csf_scheduler_all_csgs_idle(kbdev) &&
-			    !atomic_read(&scheduler->non_idle_offslot_grps) &&
+			    idle_event_pending &&
+			    all_csg_idle &&
+			    non_idle_offslot &&
 			    !kbase_pm_no_mcu_core_pwroff(kbdev) &&
 			    !scheduler->sc_power_rails_off;
+	KBASE_KTRACE_ADD_CSF_GRP(kbdev, SC_RAIL_CAN_TURN_OFF, NULL,
+		kbdev->pm.backend.sc_pwroff_safe |
+		idle_event_pending                  << 1 |
+		all_csg_idle                        << 2 |
+		non_idle_offslot                    << 3 |
+		!kbase_pm_no_mcu_core_pwroff(kbdev) << 4 |
+		!scheduler->sc_power_rails_off      << 5);
 
 	spin_unlock(&scheduler->interrupt_lock);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
@@ -5136,6 +5154,8 @@ static void sc_rails_off_worker(struct work_struct *work)
 		work, struct kbase_device, csf.scheduler.sc_rails_off_work);
 	struct kbase_csf_scheduler *const scheduler = &kbdev->csf.scheduler;
 
+	KBASE_KTRACE_ADD(kbdev, SCHEDULER_ENTER_SC_RAIL, NULL,
+			 kbase_csf_ktrace_gpu_cycle_cnt(kbdev));
 	if (kbase_reset_gpu_try_prevent(kbdev)) {
 		dev_warn(kbdev->dev, "Skip SC rails off for failing to prevent gpu reset");
 		return;
@@ -5165,6 +5185,8 @@ static void sc_rails_off_worker(struct work_struct *work)
 
 	mutex_unlock(&scheduler->lock);
 	kbase_reset_gpu_allow(kbdev);
+	KBASE_KTRACE_ADD(kbdev, SCHEDULER_EXIT_SC_RAIL, NULL,
+			 kbase_csf_ktrace_gpu_cycle_cnt(kbdev));
 }
 #endif
 
