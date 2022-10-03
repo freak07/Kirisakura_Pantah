@@ -900,7 +900,7 @@ static inline void kbase_pm_lock(struct kbase_device *kbdev)
 #if !MALI_USE_CSF
 	mutex_lock(&kbdev->js_data.runpool_mutex);
 #endif /* !MALI_USE_CSF */
-	mutex_lock(&kbdev->pm.lock);
+	rt_mutex_lock(&kbdev->pm.lock);
 }
 
 /**
@@ -910,7 +910,7 @@ static inline void kbase_pm_lock(struct kbase_device *kbdev)
  */
 static inline void kbase_pm_unlock(struct kbase_device *kbdev)
 {
-	mutex_unlock(&kbdev->pm.lock);
+	rt_mutex_unlock(&kbdev->pm.lock);
 #if !MALI_USE_CSF
 	mutex_unlock(&kbdev->js_data.runpool_mutex);
 #endif /* !MALI_USE_CSF */

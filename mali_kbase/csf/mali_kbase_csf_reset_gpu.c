@@ -316,7 +316,7 @@ static enum kbasep_soft_reset_status kbase_csf_reset_gpu_once(struct kbase_devic
 		"The flush has completed so reset the active indicator\n");
 	kbdev->irq_reset_flush = false;
 
-	mutex_lock(&kbdev->pm.lock);
+	rt_mutex_lock(&kbdev->pm.lock);
 	if (!silent)
 		dev_err(kbdev->dev, "Resetting GPU (allowing up to %d ms)",
 								RESET_TIMEOUT);
@@ -344,7 +344,7 @@ static enum kbasep_soft_reset_status kbase_csf_reset_gpu_once(struct kbase_devic
 	/* Reset the GPU */
 	err = kbase_pm_init_hw(kbdev, 0);
 
-	mutex_unlock(&kbdev->pm.lock);
+	rt_mutex_unlock(&kbdev->pm.lock);
 
 	if (WARN_ON(err))
 		return SOFT_RESET_FAILED;
@@ -358,11 +358,11 @@ static enum kbasep_soft_reset_status kbase_csf_reset_gpu_once(struct kbase_devic
 
 	kbase_pm_enable_interrupts(kbdev);
 
-	mutex_lock(&kbdev->pm.lock);
+	rt_mutex_lock(&kbdev->pm.lock);
 	kbase_pm_reset_complete(kbdev);
 	/* Synchronously wait for the reload of firmware to complete */
 	err = kbase_pm_wait_for_desired_state(kbdev);
-	mutex_unlock(&kbdev->pm.lock);
+	rt_mutex_unlock(&kbdev->pm.lock);
 
 	if (err) {
 		if (!kbase_pm_l2_is_in_desired_state(kbdev))

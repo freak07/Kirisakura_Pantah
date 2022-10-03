@@ -153,7 +153,7 @@ int kbase_hwaccess_pm_init(struct kbase_device *kbdev)
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 
-	mutex_init(&kbdev->pm.lock);
+	rt_mutex_init(&kbdev->pm.lock);
 
 	kbase_pm_init_event_log(kbdev);
 
@@ -821,9 +821,9 @@ void kbase_hwaccess_pm_halt(struct kbase_device *kbdev)
 #if MALI_USE_CSF && defined(KBASE_PM_RUNTIME)
 	WARN_ON(kbase_pm_do_poweroff_sync(kbdev));
 #else
-	mutex_lock(&kbdev->pm.lock);
+	rt_mutex_lock(&kbdev->pm.lock);
 	kbase_pm_do_poweroff(kbdev);
-	mutex_unlock(&kbdev->pm.lock);
+	rt_mutex_unlock(&kbdev->pm.lock);
 
 	kbase_pm_wait_for_poweroff_work_complete(kbdev);
 #endif

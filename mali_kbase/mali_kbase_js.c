@@ -1808,7 +1808,7 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 	 *
 	 * Assert about out calling contract
 	 */
-	mutex_lock(&kbdev->pm.lock);
+	rt_mutex_lock(&kbdev->pm.lock);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	KBASE_DEBUG_ASSERT(kctx_as_nr == kctx->as_nr);
@@ -1911,7 +1911,7 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 
 		kbase_backend_release_ctx_noirq(kbdev, kctx);
 
-		mutex_unlock(&kbdev->pm.lock);
+		rt_mutex_unlock(&kbdev->pm.lock);
 
 		/* Note: Don't reuse kctx_as_nr now */
 
@@ -1934,7 +1934,7 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 				katom_retained_state, runpool_ctx_attr_change);
 
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		mutex_unlock(&kbdev->pm.lock);
+		rt_mutex_unlock(&kbdev->pm.lock);
 	}
 
 	return release_result;

@@ -2634,7 +2634,7 @@ static ssize_t core_mask_store(struct device *dev, struct device_attribute *attr
 		new_core_mask[1] = new_core_mask[2] = new_core_mask[0];
 #endif
 
-	mutex_lock(&kbdev->pm.lock);
+	rt_mutex_lock(&kbdev->pm.lock);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
 	shader_present = kbdev->gpu_props.props.raw_props.shader_present;
@@ -2704,7 +2704,7 @@ static ssize_t core_mask_store(struct device *dev, struct device_attribute *attr
 
 unlock:
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-	mutex_unlock(&kbdev->pm.lock);
+	rt_mutex_unlock(&kbdev->pm.lock);
 end:
 	return err;
 }

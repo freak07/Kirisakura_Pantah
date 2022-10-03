@@ -432,7 +432,7 @@ struct kbase_clk_rate_trace_manager {
  * @clk_rtm: The state of the GPU clock rate trace manager
  */
 struct kbase_pm_device_data {
-	struct mutex lock;
+	struct rt_mutex lock;
 	int active_count;
 	bool suspending;
 #if MALI_USE_CSF
