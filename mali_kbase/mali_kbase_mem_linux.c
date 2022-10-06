@@ -1818,7 +1818,10 @@ u64 kbase_mem_alias(struct kbase_context *kctx, u64 *flags, u64 stride,
 	if (!nents)
 		goto bad_nents;
 
-	if (nents > (U64_MAX / PAGE_SIZE) / stride)
+	if (stride > U64_MAX / nents)
+		goto bad_size;
+
+	if ((nents * stride) > (U64_MAX / PAGE_SIZE))
 		/* 64-bit address range is the max */
 		goto bad_size;
 
