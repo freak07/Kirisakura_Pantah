@@ -714,6 +714,9 @@ unsigned long kbase_mem_evictable_reclaim_scan_objects(struct shrinker *s,
 	list_for_each_entry_safe(alloc, tmp, &kctx->evict_list, evict_node) {
 		int err;
 
+		if (!alloc->reg)
+			continue;
+
 		err = kbase_mem_shrink_gpu_mapping(kctx, alloc->reg,
 				0, alloc->nents);
 		if (err != 0) {

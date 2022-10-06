@@ -1650,8 +1650,6 @@ void kbase_free_alloced_region(struct kbase_va_region *reg)
 		 * on the list at termination time of the region tracker.
 		 */
 		if (!list_empty(&reg->gpu_alloc->evict_node)) {
-			mutex_unlock(&kctx->jit_evict_lock);
-
 			/*
 			 * Unlink the physical allocation before unmaking it
 			 * evictable so that the allocation isn't grown back to
@@ -1661,6 +1659,8 @@ void kbase_free_alloced_region(struct kbase_va_region *reg)
 			reg->cpu_alloc->reg = NULL;
 			if (reg->cpu_alloc != reg->gpu_alloc)
 				reg->gpu_alloc->reg = NULL;
+
+			mutex_unlock(&kctx->jit_evict_lock);
 
 			/*
 			 * If a region has been made evictable then we must
@@ -2187,27 +2187,6 @@ int kbase_mem_free_region(struct kbase_context *kctx, struct kbase_va_region *re
 	if (reg->flags & KBASE_REG_NO_USER_FREE) {
 		dev_warn(kctx->kbdev->dev, "Attempt to free GPU memory whose freeing by user space is forbidden!\n");
 		return -EINVAL;
-	}
-
-	/*
-	 * Unlink the physical allocation before unmaking it evictable so
-	 * that the allocation isn't grown back to its last backed size
-	 * as we're going to unmap it anyway.
-	 */
-	reg->cpu_alloc->reg = NULL;
-	if (reg->cpu_alloc != reg->gpu_alloc)
-		reg->gpu_alloc->reg = NULL;
-
-	/*
-	 * If a region has been made evictable then we must unmake it
-	 * before trying to free it.
-	 * If the memory hasn't been reclaimed it will be unmapped and freed
-	 * below, if it has been reclaimed then the operations below are no-ops.
-	 */
-	if (reg->flags & KBASE_REG_DONT_NEED) {
-		KBASE_DEBUG_ASSERT(reg->cpu_alloc->type ==
-				   KBASE_MEM_TYPE_NATIVE);
-		kbase_mem_evictable_unmake(reg->gpu_alloc);
 	}
 
 	err = kbase_gpu_munmap(kctx, reg);
@@ -4624,7 +4603,6 @@ bool kbase_jit_evict(struct kbase_context *kctx)
 		reg = list_entry(kctx->jit_pool_head.prev,
 				struct kbase_va_region, jit_node);
 		list_del(&reg->jit_node);
-		list_del_init(&reg->gpu_alloc->evict_node);
 	}
 	mutex_unlock(&kctx->jit_evict_lock);
 
@@ -4649,10 +4627,12 @@ void kbase_jit_term(struct kbase_context *kctx)
 		walker = list_first_entry(&kctx->jit_pool_head,
 				struct kbase_va_region, jit_node);
 		list_del(&walker->jit_node);
-		list_del_init(&walker->gpu_alloc->evict_node);
 		mutex_unlock(&kctx->jit_evict_lock);
-		walker->flags &= ~KBASE_REG_NO_USER_FREE;
-		kbase_mem_free_region(kctx, walker);
+		/* As context is terminating, directly free the backing pages
+		 * without unmapping them from the GPU as done in
+		 * kbase_region_tracker_erase_rbtree().
+		 */
+		kbase_free_alloced_region(walker);
 		mutex_lock(&kctx->jit_evict_lock);
 	}
 
@@ -4661,10 +4641,8 @@ void kbase_jit_term(struct kbase_context *kctx)
 		walker = list_first_entry(&kctx->jit_active_head,
 				struct kbase_va_region, jit_node);
 		list_del(&walker->jit_node);
-		list_del_init(&walker->gpu_alloc->evict_node);
 		mutex_unlock(&kctx->jit_evict_lock);
-		walker->flags &= ~KBASE_REG_NO_USER_FREE;
-		kbase_mem_free_region(kctx, walker);
+		kbase_free_alloced_region(walker);
 		mutex_lock(&kctx->jit_evict_lock);
 	}
 #if MALI_JIT_PRESSURE_LIMIT_BASE
