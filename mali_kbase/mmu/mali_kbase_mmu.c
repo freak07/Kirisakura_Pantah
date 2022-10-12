@@ -237,9 +237,9 @@ static void mmu_flush_invalidate(struct kbase_device *kbdev, struct kbase_contex
 		mmu_flush_invalidate_as(kbdev, &kbdev->as[as_nr], op_param);
 	} else {
 #if !MALI_USE_CSF
-		mutex_lock(&kbdev->js_data.queue_mutex);
+		rt_mutex_lock(&kbdev->js_data.queue_mutex);
 		ctx_is_in_runpool = kbase_ctx_sched_inc_refcount(kctx);
-		mutex_unlock(&kbdev->js_data.queue_mutex);
+		rt_mutex_unlock(&kbdev->js_data.queue_mutex);
 #else
 		ctx_is_in_runpool = kbase_ctx_sched_inc_refcount_if_as_valid(kctx);
 #endif /* !MALI_USE_CSF */
