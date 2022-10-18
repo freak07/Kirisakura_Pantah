@@ -2749,7 +2749,7 @@ cannot_expand:
 	if (vma_iter_prealloc(&vmi)) {
 		error = -ENOMEM;
 		if (file)
-			goto unmap_and_free_vma;
+			goto close_and_free_vma;
 		else
 			goto free_vma;
 	}
