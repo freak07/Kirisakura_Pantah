@@ -1015,6 +1015,8 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 				katom[idx]->gpu_rb_state =
 					KBASE_ATOM_GPU_RB_SUBMITTED;
 
+				kbasep_platform_event_work_begin(katom[idx]);
+
 				/* ***TRANSITION TO HIGHER STATE*** */
 				fallthrough;
 			case KBASE_ATOM_GPU_RB_SUBMITTED:
@@ -1025,8 +1027,6 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 				 */
 				kbase_pm_metrics_update(kbdev,
 						&katom[idx]->start_timestamp);
-
-				kbasep_platform_event_work_begin(katom[idx]);
 
 				break;
 
