@@ -2352,6 +2352,14 @@ static void kbase_pm_timed_out(struct kbase_device *kbdev)
 		kbase_pm_is_mcu_desired(kbdev));
 	dev_err(kbdev->dev, "\tMCU sw state = %d\n",
 		kbdev->pm.backend.mcu_state);
+	dev_err(kbdev->dev, "\tL2 desired = %d (locked_off: %d)\n",
+		kbase_pm_is_l2_desired(kbdev), kbdev->pm.backend.policy_change_clamp_state_to_off);
+	dev_err(kbdev->dev, "\tL2 sw state = %d\n",
+		kbdev->pm.backend.l2_state);
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	dev_err(kbdev->dev, "\tbackend.sc_power_rails_off = %d\n",
+		kbdev->pm.backend.sc_power_rails_off);
+#endif
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 #endif
 	dev_err(kbdev->dev, "Current state :\n");
@@ -2391,6 +2399,7 @@ static void kbase_pm_timed_out(struct kbase_device *kbdev)
 			kbase_reg_read(kbdev, GPU_CONTROL_REG(
 					L2_PWRTRANS_LO)));
 
+	dump_stack();
 	dev_err(kbdev->dev, "Sending reset to GPU - all running jobs will be lost\n");
 	if (kbase_prepare_to_reset_gpu(kbdev,
 				       RESET_FLAGS_HWC_UNRECOVERABLE_ERROR))
