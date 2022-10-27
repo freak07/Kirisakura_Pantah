@@ -2170,6 +2170,9 @@ static ssize_t kbase_read(struct file *filp, char __user *buf, size_t count, lof
 	if (unlikely(!kctx))
 		return -EPERM;
 
+	if (count < data_size)
+		return -ENOBUFS;
+
 	if (atomic_read(&kctx->event_count))
 		read_event = true;
 	else
@@ -5686,6 +5689,7 @@ MODULE_VERSION(MALI_RELEASE_NAME " (UK version " \
 		__stringify(BASE_UK_VERSION_MAJOR) "." \
 		__stringify(BASE_UK_VERSION_MINOR) ")");
 MODULE_SOFTDEP("pre: mali_pixel");
+MODULE_SOFTDEP("pre: exynos-pd-dbg");
 MODULE_INFO(import_ns, "DMA_BUF");
 
 #define CREATE_TRACE_POINTS

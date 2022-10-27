@@ -323,6 +323,9 @@ int kbase_device_init(struct kbase_device *kbdev)
 		}
 	}
 
+	if (err)
+		return err;
+
 	kthread_init_worker(&kbdev->job_done_worker);
 	kbdev->job_done_worker_thread = kbase_create_realtime_thread(kbdev,
 		kthread_worker_fn, &kbdev->job_done_worker, "mali_jd_thread");

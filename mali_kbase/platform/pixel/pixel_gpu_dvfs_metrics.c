@@ -125,11 +125,7 @@ static void gpu_dvfs_metrics_uid_level_change(struct kbase_device *kbdev, u64 ev
 	struct pixel_context *pc = kbdev->platform_context;
 	struct gpu_dvfs_metrics_uid_stats *stats;
 	int i;
-#if !MALI_USE_CSF
-	int const nr_slots = BASE_JM_MAX_NR_SLOTS;
-#else
-	int const nr_slots = MAX_SUPPORTED_CSGS;
-#endif
+	int const nr_slots = ARRAY_SIZE(pc->dvfs.metrics.work_uid_stats);
 
 	lockdep_assert_held(&pc->dvfs.lock);
 	lockdep_assert_held(&pc->dvfs.metrics.lock);
@@ -222,6 +218,16 @@ void gpu_dvfs_metrics_work_begin(void* param)
 
 	spin_lock_irqsave(&pc->dvfs.metrics.lock, flags);
 
+#if !MALI_USE_CSF
+	/*
+	* JM slots can have 2 Atoms submitted per slot, with different UIDs
+	* Use the secondary slot if the first is occupied
+	*/
+	if (*work_stats != NULL) {
+		work_stats = &pc->dvfs.metrics.work_uid_stats[slot + BASE_JM_MAX_NR_SLOTS];
+	}
+#endif
+
 	/* Nothing should be mapped to this slot */
 	WARN_ON_ONCE(*work_stats != NULL);
 
@@ -266,6 +272,16 @@ void gpu_dvfs_metrics_work_end(void *param)
 	dev_dbg(kbdev->dev, "work_end, slot: %d, uid: %d", slot, uid_stats->uid.val);
 
 	spin_lock_irqsave(&pc->dvfs.metrics.lock, flags);
+
+#if !MALI_USE_CSF
+	/*
+	* JM slots can have 2 Atoms submitted per slot, with different UIDs
+	* If the primary slot is not for this uid, then check the secondary slot
+	*/
+	if (*work_stats != uid_stats) {
+		work_stats = &pc->dvfs.metrics.work_uid_stats[slot + BASE_JM_MAX_NR_SLOTS];
+	}
+#endif
 
 	/* We should have something mapped to this slot */
 	WARN_ON_ONCE(*work_stats == NULL);
