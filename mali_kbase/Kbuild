@@ -71,7 +71,7 @@ endif
 #
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= '"r38p1-01eac0"'
+MALI_RELEASE_NAME ?= '"r36p0-01eac0"'
 
 # We are building for Pixel
 CONFIG_MALI_PLATFORM_NAME="pixel"
@@ -116,7 +116,7 @@ endif
 #
 # Experimental features must default to disabled, e.g.:
 # MALI_EXPERIMENTAL_FEATURE ?= 0
-MALI_INCREMENTAL_RENDERING_JM ?= 0
+MALI_INCREMENTAL_RENDERING ?= 0
 
 #
 # ccflags
@@ -129,7 +129,7 @@ ccflags-y += \
     -DMALI_COVERAGE=$(MALI_COVERAGE) \
     -DMALI_RELEASE_NAME=$(MALI_RELEASE_NAME) \
     -DMALI_JIT_PRESSURE_LIMIT_BASE=$(MALI_JIT_PRESSURE_LIMIT_BASE) \
-    -DMALI_INCREMENTAL_RENDERING_JM=$(MALI_INCREMENTAL_RENDERING_JM) \
+    -DMALI_INCREMENTAL_RENDERING=$(MALI_INCREMENTAL_RENDERING) \
     -DMALI_PLATFORM_DIR=$(MALI_PLATFORM_DIR)
 
 ifeq ($(KBUILD_EXTMOD),)
@@ -187,7 +187,6 @@ mali_kbase-y := \
     mali_kbase_mem_profile_debugfs.o \
     mali_kbase_disjoint_events.o \
     mali_kbase_debug_mem_view.o \
-    mali_kbase_debug_mem_zones.o \
     mali_kbase_smc.o \
     mali_kbase_mem_pool.o \
     mali_kbase_mem_pool_debugfs.o \

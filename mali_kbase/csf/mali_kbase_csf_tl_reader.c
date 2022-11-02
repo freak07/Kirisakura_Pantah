@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2019-2022 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -38,7 +38,10 @@
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 #include "tl/mali_kbase_timeline_priv.h"
 #include <linux/debugfs.h>
-#include <linux/version_compat_defs.h>
+
+#if (KERNEL_VERSION(4, 7, 0) > LINUX_VERSION_CODE)
+#define DEFINE_DEBUGFS_ATTRIBUTE DEFINE_SIMPLE_ATTRIBUTE
+#endif
 #endif
 
 /* Name of the CSFFW timeline tracebuffer. */
@@ -298,7 +301,7 @@ int kbase_csf_tl_reader_flush_buffer(struct kbase_csf_tl_reader *self)
 			dev_warn(
 				kbdev->dev,
 				"Unable to parse CSFFW tracebuffer event header.");
-			ret = -EBUSY;
+				ret = -EBUSY;
 			break;
 		}
 
@@ -319,7 +322,7 @@ int kbase_csf_tl_reader_flush_buffer(struct kbase_csf_tl_reader *self)
 			dev_warn(kbdev->dev,
 				"event_id: %u, can't read with event_size: %u.",
 				event_id, event_size);
-			ret = -EBUSY;
+				ret = -EBUSY;
 			break;
 		}
 

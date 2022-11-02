@@ -462,12 +462,11 @@ static enum hrtimer_restart kbase_pm_apc_timer_callback(struct hrtimer *timer)
 
 int kbase_pm_apc_init(struct kbase_device *kbdev)
 {
-	int ret;
-
-	ret = kbase_create_realtime_thread(kbdev,
+	kthread_init_worker(&kbdev->apc.worker);
+	kbdev->apc.thread = kbase_create_realtime_thread(kbdev,
 		kthread_worker_fn, &kbdev->apc.worker, "mali_apc_thread");
-	if (ret)
-		return ret;
+	if (IS_ERR(kbdev->apc.thread))
+		return PTR_ERR(kbdev->apc.thread);
 
 	/*
 	 * We initialize power off and power on work on init as they will each
@@ -487,5 +486,6 @@ int kbase_pm_apc_init(struct kbase_device *kbdev)
 void kbase_pm_apc_term(struct kbase_device *kbdev)
 {
 	hrtimer_cancel(&kbdev->apc.timer);
-	kbase_destroy_kworker_stack(&kbdev->apc.worker);
+	kthread_flush_worker(&kbdev->apc.worker);
+	kthread_stop(kbdev->apc.thread);
 }

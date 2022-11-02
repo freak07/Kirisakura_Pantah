@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2019-2022 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2021 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -45,7 +45,6 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/version.h>
-#include <linux/version_compat_defs.h>
 #include <linux/wait.h>
 
 /* Define static_assert().
@@ -59,6 +58,10 @@
 // Stringify the expression if no message is given.
 #define static_assert(e, ...)  __static_assert(e, #__VA_ARGS__, #e)
 #define __static_assert(e, msg, ...) _Static_assert(e, msg)
+#endif
+
+#if KERNEL_VERSION(4, 16, 0) >= LINUX_VERSION_CODE
+typedef unsigned int __poll_t;
 #endif
 
 #ifndef ENOTSUP
@@ -634,11 +637,11 @@ static __poll_t reader_poll(struct file *const file,
 	struct reader_changes *changes;
 
 	if (unlikely(!file || !wait))
-		return (__poll_t)-EINVAL;
+		return -EINVAL;
 
 	reader = file->private_data;
 	if (unlikely(!reader))
-		return (__poll_t)-EBADF;
+		return -EBADF;
 
 	changes = &reader->changes;
 
@@ -663,7 +666,7 @@ static const struct file_operations file_operations = {
 static const size_t kbase_kinstr_jm_readers_max = 16;
 
 /**
- * kbase_kinstr_jm_release() - Invoked when the reference count is dropped
+ * kbasep_kinstr_jm_release() - Invoked when the reference count is dropped
  * @ref: the context reference count
  */
 static void kbase_kinstr_jm_release(struct kref *const ref)
@@ -734,7 +737,7 @@ static int kbase_kinstr_jm_readers_add(struct kbase_kinstr_jm *const ctx,
 }
 
 /**
- * kbase_kinstr_jm_readers_del() - Deletes a reader from the list of readers
+ * readers_del() - Deletes a reader from the list of readers
  * @ctx: the instrumentation context
  * @reader: the reader to delete
  */
