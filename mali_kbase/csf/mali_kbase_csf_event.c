@@ -102,7 +102,7 @@ static void sync_update_notify_gpu(struct kbase_context *kctx)
 
 	if (can_notify_gpu) {
 		kbase_csf_ring_doorbell(kctx->kbdev, CSF_KERNEL_DOORBELL_NR);
-		KBASE_KTRACE_ADD(kctx->kbdev, SYNC_UPDATE_EVENT_NOTIFY_GPU, kctx, 0u);
+		KBASE_KTRACE_ADD(kctx->kbdev, CSF_SYNC_UPDATE_NOTIFY_GPU_EVENT, kctx, 0u);
 	}
 
 	spin_unlock_irqrestore(&kctx->kbdev->hwaccess_lock, flags);
