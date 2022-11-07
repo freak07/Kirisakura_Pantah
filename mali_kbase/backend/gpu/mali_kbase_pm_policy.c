@@ -310,7 +310,7 @@ void kbase_pm_set_policy(struct kbase_device *kbdev,
 	mutex_lock(&kbdev->pm.backend.policy_change_lock);
 
 	if (kbase_reset_gpu_prevent_and_wait(kbdev)) {
-		dev_warn(kbdev->dev, "Set PM policy failed to prevent gpu reset");
+		dev_warn(kbdev->dev, "Set PM policy failing to prevent gpu reset");
 		reset_op_prevented = false;
 	}
 
@@ -332,7 +332,7 @@ void kbase_pm_set_policy(struct kbase_device *kbdev,
 	 * the always_on policy, reflected by the CSF_DYNAMIC_PM_CORE_KEEP_ON
 	 * flag bit.
 	 */
-	sched_suspend = kbdev->csf.firmware_inited && reset_op_prevented &&
+	sched_suspend = reset_op_prevented &&
 			(CSF_DYNAMIC_PM_CORE_KEEP_ON &
 			 (new_policy_csf_pm_sched_flags | kbdev->pm.backend.csf_pm_sched_flags));
 

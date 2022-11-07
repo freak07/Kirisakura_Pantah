@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2019-2021 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2022 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -24,6 +24,7 @@
 
 #include "mali_kbase_csf.h"
 #include "mali_kbase_csf_event.h"
+#include "mali_kbase_csf_tiler_heap_def.h"
 
 /**
  * kbase_csf_scheduler_queue_start() - Enable the running of GPU command queue
@@ -472,7 +473,7 @@ static inline bool kbase_csf_scheduler_all_csgs_idle(struct kbase_device *kbdev)
 }
 
 /**
- * kbase_csf_scheduler_advance_tick_nolock() - Advance the scheduling tick
+ * kbase_csf_scheduler_tick_advance_nolock() - Advance the scheduling tick
  *
  * @kbdev: Pointer to the device
  *
@@ -482,23 +483,23 @@ static inline bool kbase_csf_scheduler_all_csgs_idle(struct kbase_device *kbdev)
  * The caller must hold the interrupt lock.
  */
 static inline void
-kbase_csf_scheduler_advance_tick_nolock(struct kbase_device *kbdev)
+kbase_csf_scheduler_tick_advance_nolock(struct kbase_device *kbdev)
 {
 	struct kbase_csf_scheduler *const scheduler = &kbdev->csf.scheduler;
 
 	lockdep_assert_held(&scheduler->interrupt_lock);
 
 	if (scheduler->tick_timer_active) {
-		KBASE_KTRACE_ADD(kbdev, SCHEDULER_ADVANCE_TICK, NULL, 0u);
+		KBASE_KTRACE_ADD(kbdev, SCHEDULER_TICK_ADVANCE, NULL, 0u);
 		scheduler->tick_timer_active = false;
 		kthread_queue_work(&scheduler->csf_worker, &scheduler->tick_work);
 	} else {
-		KBASE_KTRACE_ADD(kbdev, SCHEDULER_NOADVANCE_TICK, NULL, 0u);
+		KBASE_KTRACE_ADD(kbdev, SCHEDULER_TICK_NOADVANCE, NULL, 0u);
 	}
 }
 
 /**
- * kbase_csf_scheduler_advance_tick() - Advance the scheduling tick
+ * kbase_csf_scheduler_tick_advance() - Advance the scheduling tick
  *
  * @kbdev: Pointer to the device
  *
@@ -506,13 +507,13 @@ kbase_csf_scheduler_advance_tick_nolock(struct kbase_device *kbdev)
  * immediate execution, but only if the tick hrtimer is active. If the timer
  * is inactive then the tick work item is already in flight.
  */
-static inline void kbase_csf_scheduler_advance_tick(struct kbase_device *kbdev)
+static inline void kbase_csf_scheduler_tick_advance(struct kbase_device *kbdev)
 {
 	struct kbase_csf_scheduler *const scheduler = &kbdev->csf.scheduler;
 	unsigned long flags;
 
 	spin_lock_irqsave(&scheduler->interrupt_lock, flags);
-	kbase_csf_scheduler_advance_tick_nolock(kbdev);
+	kbase_csf_scheduler_tick_advance_nolock(kbdev);
 	spin_unlock_irqrestore(&scheduler->interrupt_lock, flags);
 }
 
@@ -534,6 +535,22 @@ static inline void kbase_csf_scheduler_invoke_tick(struct kbase_device *kbdev)
 	if (!scheduler->tick_timer_active)
 		kthread_queue_work(&scheduler->csf_worker, &scheduler->tick_work);
 	spin_unlock_irqrestore(&scheduler->interrupt_lock, flags);
+}
+
+/**
+ * kbase_csf_scheduler_invoke_tock() - Invoke the scheduling tock
+ *
+ * @kbdev: Pointer to the device
+ *
+ * This function will queue the scheduling tock work item for immediate
+ * execution.
+ */
+static inline void kbase_csf_scheduler_invoke_tock(struct kbase_device *kbdev)
+{
+	struct kbase_csf_scheduler *const scheduler = &kbdev->csf.scheduler;
+
+	if (atomic_cmpxchg(&scheduler->pending_tock_work, false, true) == false)
+		kthread_mod_delayed_work(&scheduler->csf_worker, &scheduler->tock_work, 0);
 }
 
 /**
@@ -673,5 +690,36 @@ bool kbase_csf_scheduler_process_gpu_idle_event(struct kbase_device *kbdev);
  */
 void turn_on_sc_power_rails(struct kbase_device *kbdev);
 #endif
+
+/* Forward declaration */
+struct kbase_csf_tiler_heap_shrink_control;
+
+/**
+ * kbase_csf_scheduler_count_free_heap_pages() - Undertake shrinker reclaim count action
+ *
+ * @kbdev:        Pointer to the device
+ * @shrink_ctrl:  Pointer to the kbase CSF schrink control object.
+ *
+ * This function is called from CSF tiler heap memory shrinker reclaim 'count_objects' operation.
+ *
+ * Return: number of potentially freeable tiler heap pages.
+ */
+unsigned long
+kbase_csf_scheduler_count_free_heap_pages(struct kbase_device *kbdev,
+					  struct kbase_csf_tiler_heap_shrink_control *shrink_ctrl);
+
+/**
+ * kbase_csf_scheduler_scan_free_heap_pages() - Undertake shrinker reclaim scan action
+ *
+ * @kbdev:        Pointer to the device
+ * @shrink_ctrl:  Pointer to the kbase CSF schrink control object.
+ *
+ * This function is called from CSF tiler heap memory shrinker reclaim 'scan_objects' operation.
+ *
+ * Return: number of actually freed tiler heap pagess.
+ */
+unsigned long
+kbase_csf_scheduler_scan_free_heap_pages(struct kbase_device *kbdev,
+					 struct kbase_csf_tiler_heap_shrink_control *shrink_ctrl);
 
 #endif /* _KBASE_CSF_SCHEDULER_H_ */
