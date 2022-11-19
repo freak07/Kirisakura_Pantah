@@ -746,7 +746,7 @@ int gpu_pm_init(struct kbase_device *kbdev)
 	}
 
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-	pc->pm.ifpo_enabled = false;
+	pc->pm.ifpo_enabled = true;
 #endif
 
 	if (of_property_read_u32(np, "gpu_pm_autosuspend_delay", &pc->pm.autosuspend_delay)) {
