@@ -7213,6 +7213,9 @@ reclaim_free_counted_heap_pages(struct kbase_device *kbdev,
 		/* Attempt freeing all the counted heap pages from the kctx */
 		u32 n = shrink_ctrl->scan_cb(kctx, info->nr_scan_pages);
 
+		if (n)
+			schedule_work(&kctx->jit_work);
+
 		/* The free is attempted on all the counted heap pages. If the kctx has
 		 * all its counted heap pages freed, or, it can't offer anymore, drop
 		 * it from the reclaim manger, otherwise leave it remaining in. If the
