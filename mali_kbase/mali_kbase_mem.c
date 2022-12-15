@@ -44,6 +44,8 @@
 #include <mali_kbase_config_defaults.h>
 #include <mali_kbase_trace_gpu_mem.h>
 
+#if MALI_JIT_PRESSURE_LIMIT_BASE
+
 /*
  * Alignment of objects allocated by the GPU inside a just-in-time memory
  * region whose size is given by an end address
@@ -66,6 +68,7 @@
  */
 #define KBASE_GPU_ALLOCATED_OBJECT_MAX_BYTES (512u)
 
+#endif /* MALI_JIT_PRESSURE_LIMIT_BASE */
 
 /* Forward declarations */
 static void free_partial_locked(struct kbase_context *kctx,
@@ -429,15 +432,15 @@ void kbase_remove_va_region(struct kbase_device *kbdev,
 			next->nr_pages += reg->nr_pages;
 			rb_erase(&(reg->rblink), reg_rbtree);
 			merged_back = 1;
-			if (merged_front) {
-				/* We already merged with prev, free it */
-				kfree(reg);
-			}
 		}
 	}
 
-	/* If we failed to merge then we need to add a new block */
-	if (!(merged_front || merged_back)) {
+	if (merged_front && merged_back) {
+		/* We already merged with prev, free it */
+		kfree(reg);
+	} else if (!(merged_front || merged_back)) {
+		/* If we failed to merge then we need to add a new block */
+
 		/*
 		 * We didn't merge anything. Try to add a new free
 		 * placeholder, and in any case, remove the original one.
@@ -1416,6 +1419,7 @@ int kbase_mem_init(struct kbase_device *kbdev)
 
 	memdev = &kbdev->memdev;
 
+	kbase_mem_migrate_init(kbdev);
 	kbase_mem_pool_group_config_set_max_size(&kbdev->mem_pool_defaults,
 		KBASE_MEM_POOL_MAX_SIZE_KCTX);
 
@@ -1478,8 +1482,7 @@ int kbase_mem_init(struct kbase_device *kbdev)
 		kbase_mem_pool_group_config_set_max_size(&mem_pool_defaults,
 			KBASE_MEM_POOL_MAX_SIZE_KBDEV);
 
-		err = kbase_mem_pool_group_init(&kbdev->mem_pools, kbdev,
-			&mem_pool_defaults, NULL);
+		err = kbase_mem_pool_group_init(&kbdev->mem_pools, kbdev, &mem_pool_defaults, NULL);
 	}
 
 	return err;
@@ -1504,6 +1507,8 @@ void kbase_mem_term(struct kbase_device *kbdev)
 		dev_warn(kbdev->dev, "%s: %d pages in use!\n", __func__, pages);
 
 	kbase_mem_pool_group_term(&kbdev->mem_pools);
+
+	kbase_mem_migrate_term(kbdev);
 
 	WARN_ON(kbdev->total_gpu_pages);
 	WARN_ON(!RB_EMPTY_ROOT(&kbdev->process_root));
@@ -1613,6 +1618,7 @@ static struct kbase_context *kbase_reg_flags_to_kctx(
  * alloc object will be released.
  * It is a bug if no alloc object exists for non-free regions.
  *
+ * If region is KBASE_REG_ZONE_MCU_SHARED it is freed
  */
 void kbase_free_alloced_region(struct kbase_va_region *reg)
 {
@@ -1636,6 +1642,13 @@ void kbase_free_alloced_region(struct kbase_va_region *reg)
 			(void *)reg);
 #if MALI_USE_CSF
 		if (reg->flags & KBASE_REG_CSF_EVENT)
+			/*
+			 * This should not be reachable if called from 'mcu_shared' functions
+			 * such as:
+			 * kbase_csf_firmware_mcu_shared_mapping_init
+			 * kbase_csf_firmware_mcu_shared_mapping_term
+			 */
+
 			kbase_unlink_event_mem_page(kctx, reg);
 #endif
 
@@ -2004,7 +2017,8 @@ void kbase_sync_single(struct kbase_context *kctx,
 		BUG_ON(!cpu_page);
 		BUG_ON(offset + size > PAGE_SIZE);
 
-		dma_addr = kbase_dma_addr(cpu_page) + offset;
+		dma_addr = kbase_dma_addr_from_tagged(t_cpu_pa) + offset;
+
 		if (sync_fn == KBASE_SYNC_TO_CPU)
 			dma_sync_single_for_cpu(kctx->kbdev->dev, dma_addr,
 					size, DMA_BIDIRECTIONAL);
@@ -2015,19 +2029,20 @@ void kbase_sync_single(struct kbase_context *kctx,
 		void *src = NULL;
 		void *dst = NULL;
 		struct page *gpu_page;
+		dma_addr_t dma_addr;
 
 		if (WARN(!gpu_pa, "No GPU PA found for infinite cache op"))
 			return;
 
 		gpu_page = pfn_to_page(PFN_DOWN(gpu_pa));
+		dma_addr = kbase_dma_addr_from_tagged(t_gpu_pa) + offset;
 
 		if (sync_fn == KBASE_SYNC_TO_DEVICE) {
 			src = ((unsigned char *)kmap(cpu_page)) + offset;
 			dst = ((unsigned char *)kmap(gpu_page)) + offset;
 		} else if (sync_fn == KBASE_SYNC_TO_CPU) {
-			dma_sync_single_for_cpu(kctx->kbdev->dev,
-					kbase_dma_addr(gpu_page) + offset,
-					size, DMA_BIDIRECTIONAL);
+			dma_sync_single_for_cpu(kctx->kbdev->dev, dma_addr, size,
+						DMA_BIDIRECTIONAL);
 			src = ((unsigned char *)kmap(gpu_page)) + offset;
 			dst = ((unsigned char *)kmap(cpu_page)) + offset;
 		}
@@ -2035,9 +2050,8 @@ void kbase_sync_single(struct kbase_context *kctx,
 		kunmap(gpu_page);
 		kunmap(cpu_page);
 		if (sync_fn == KBASE_SYNC_TO_DEVICE)
-			dma_sync_single_for_device(kctx->kbdev->dev,
-					kbase_dma_addr(gpu_page) + offset,
-					size, DMA_BIDIRECTIONAL);
+			dma_sync_single_for_device(kctx->kbdev->dev, dma_addr, size,
+						   DMA_BIDIRECTIONAL);
 	}
 }
 
@@ -2186,6 +2200,25 @@ int kbase_mem_free_region(struct kbase_context *kctx, struct kbase_va_region *re
 	if (reg->flags & KBASE_REG_NO_USER_FREE) {
 		dev_warn(kctx->kbdev->dev, "Attempt to free GPU memory whose freeing by user space is forbidden!\n");
 		return -EINVAL;
+	}
+
+	/* If a region has been made evictable then we must unmake it
+	 * before trying to free it.
+	 * If the memory hasn't been reclaimed it will be unmapped and freed
+	 * below, if it has been reclaimed then the operations below are no-ops.
+	 */
+	if (reg->flags & KBASE_REG_DONT_NEED) {
+		WARN_ON(reg->cpu_alloc->type != KBASE_MEM_TYPE_NATIVE);
+		mutex_lock(&kctx->jit_evict_lock);
+		/* Unlink the physical allocation before unmaking it evictable so
+		 * that the allocation isn't grown back to its last backed size
+		 * as we're going to unmap it anyway.
+		 */
+		reg->cpu_alloc->reg = NULL;
+		if (reg->cpu_alloc != reg->gpu_alloc)
+			reg->gpu_alloc->reg = NULL;
+		mutex_unlock(&kctx->jit_evict_lock);
+		kbase_mem_evictable_unmake(reg->gpu_alloc);
 	}
 
 	err = kbase_gpu_munmap(kctx, reg);
@@ -2443,11 +2476,8 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc,
 	if (nr_left >= (SZ_2M / SZ_4K)) {
 		int nr_lp = nr_left / (SZ_2M / SZ_4K);
 
-		res = kbase_mem_pool_alloc_pages(
-			&kctx->mem_pools.large[alloc->group_id],
-			 nr_lp * (SZ_2M / SZ_4K),
-			 tp,
-			 true);
+		res = kbase_mem_pool_alloc_pages(&kctx->mem_pools.large[alloc->group_id],
+						 nr_lp * (SZ_2M / SZ_4K), tp, true);
 
 		if (res > 0) {
 			nr_left -= res;
@@ -2546,9 +2576,8 @@ no_new_partial:
 #endif
 
 	if (nr_left) {
-		res = kbase_mem_pool_alloc_pages(
-			&kctx->mem_pools.small[alloc->group_id],
-			nr_left, tp, false);
+		res = kbase_mem_pool_alloc_pages(&kctx->mem_pools.small[alloc->group_id], nr_left,
+						 tp, false);
 		if (res <= 0)
 			goto alloc_failed;
 	}
@@ -3420,10 +3449,6 @@ int kbase_check_alloc_sizes(struct kbase_context *kctx, unsigned long flags,
 #undef KBASE_MSG_PRE
 }
 
-/**
- * kbase_gpu_vm_lock() - Acquire the per-context region list lock
- * @kctx:  KBase context
- */
 void kbase_gpu_vm_lock(struct kbase_context *kctx)
 {
 	KBASE_DEBUG_ASSERT(kctx != NULL);
@@ -3432,10 +3457,6 @@ void kbase_gpu_vm_lock(struct kbase_context *kctx)
 
 KBASE_EXPORT_TEST_API(kbase_gpu_vm_lock);
 
-/**
- * kbase_gpu_vm_unlock() - Release the per-context region list lock
- * @kctx:  KBase context
- */
 void kbase_gpu_vm_unlock(struct kbase_context *kctx)
 {
 	KBASE_DEBUG_ASSERT(kctx != NULL);
@@ -3760,7 +3781,7 @@ int kbase_jit_init(struct kbase_context *kctx)
 	INIT_WORK(&kctx->jit_work, kbase_jit_destroy_worker);
 
 #if MALI_USE_CSF
-	spin_lock_init(&kctx->csf.kcpu_queues.jit_lock);
+	mutex_init(&kctx->csf.kcpu_queues.jit_lock);
 	INIT_LIST_HEAD(&kctx->csf.kcpu_queues.jit_cmds_head);
 	INIT_LIST_HEAD(&kctx->csf.kcpu_queues.jit_blocked_queues);
 #else /* !MALI_USE_CSF */
@@ -4200,7 +4221,9 @@ static bool jit_allow_allocate(struct kbase_context *kctx,
 {
 #if !MALI_USE_CSF
 	lockdep_assert_held(&kctx->jctx.lock);
-#endif
+#else /* MALI_USE_CSF */
+	lockdep_assert_held(&kctx->csf.kcpu_queues.jit_lock);
+#endif /* !MALI_USE_CSF */
 
 #if MALI_JIT_PRESSURE_LIMIT_BASE
 	if (!ignore_pressure_limit &&
@@ -4293,7 +4316,9 @@ struct kbase_va_region *kbase_jit_allocate(struct kbase_context *kctx,
 
 #if !MALI_USE_CSF
 	lockdep_assert_held(&kctx->jctx.lock);
-#endif
+#else /* MALI_USE_CSF */
+	lockdep_assert_held(&kctx->csf.kcpu_queues.jit_lock);
+#endif /* !MALI_USE_CSF */
 
 	if (!jit_allow_allocate(kctx, info, ignore_pressure_limit))
 		return NULL;
@@ -4501,6 +4526,12 @@ void kbase_jit_free(struct kbase_context *kctx, struct kbase_va_region *reg)
 {
 	u64 old_pages;
 
+#if !MALI_USE_CSF
+	lockdep_assert_held(&kctx->jctx.lock);
+#else /* MALI_USE_CSF */
+	lockdep_assert_held(&kctx->csf.kcpu_queues.jit_lock);
+#endif /* !MALI_USE_CSF */
+
 	/* JIT id not immediately available here, so use 0u */
 	trace_mali_jit_free(reg, 0u);
 
@@ -4594,6 +4625,7 @@ bool kbase_jit_evict(struct kbase_context *kctx)
 		reg = list_entry(kctx->jit_pool_head.prev,
 				struct kbase_va_region, jit_node);
 		list_del(&reg->jit_node);
+		list_del_init(&reg->gpu_alloc->evict_node);
 	}
 	mutex_unlock(&kctx->jit_evict_lock);
 
@@ -4618,12 +4650,10 @@ void kbase_jit_term(struct kbase_context *kctx)
 		walker = list_first_entry(&kctx->jit_pool_head,
 				struct kbase_va_region, jit_node);
 		list_del(&walker->jit_node);
+		list_del_init(&walker->gpu_alloc->evict_node);
 		mutex_unlock(&kctx->jit_evict_lock);
-		/* As context is terminating, directly free the backing pages
-		 * without unmapping them from the GPU as done in
-		 * kbase_region_tracker_erase_rbtree().
-		 */
-		kbase_free_alloced_region(walker);
+		walker->flags &= ~KBASE_REG_NO_USER_FREE;
+		kbase_mem_free_region(kctx, walker);
 		mutex_lock(&kctx->jit_evict_lock);
 	}
 
@@ -4632,8 +4662,10 @@ void kbase_jit_term(struct kbase_context *kctx)
 		walker = list_first_entry(&kctx->jit_active_head,
 				struct kbase_va_region, jit_node);
 		list_del(&walker->jit_node);
+		list_del_init(&walker->gpu_alloc->evict_node);
 		mutex_unlock(&kctx->jit_evict_lock);
-		kbase_free_alloced_region(walker);
+		walker->flags &= ~KBASE_REG_NO_USER_FREE;
+		kbase_mem_free_region(kctx, walker);
 		mutex_lock(&kctx->jit_evict_lock);
 	}
 #if MALI_JIT_PRESSURE_LIMIT_BASE

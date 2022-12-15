@@ -64,10 +64,18 @@
  * - Added ioctl to query a register of USER page.
  * 1.14:
  * - Added support for passing down the buffer descriptor VA in tiler heap init
+ * 1.15:
+ * - Enable new sync_wait GE condition
+ * 1.16:
+ * - Remove legacy definitions:
+ *   - base_jit_alloc_info_10_2
+ *   - base_jit_alloc_info_11_5
+ *   - kbase_ioctl_mem_jit_init_10_2
+ *   - kbase_ioctl_mem_jit_init_11_5
  */
 
 #define BASE_UK_VERSION_MAJOR 1
-#define BASE_UK_VERSION_MINOR 14
+#define BASE_UK_VERSION_MINOR 16
 
 /**
  * struct kbase_ioctl_version_check - Check version compatibility between
@@ -275,9 +283,9 @@ union kbase_ioctl_cs_queue_group_create {
 		__u8 csi_handlers;
 		__u8 padding[2];
 		/**
-		 * @in.reserved: Reserved
+		 * @in.dvs_buf: buffer for deferred vertex shader
 		 */
-		__u64 reserved;
+		__u64 dvs_buf;
 	} in;
 	struct {
 		__u8 group_handle;
