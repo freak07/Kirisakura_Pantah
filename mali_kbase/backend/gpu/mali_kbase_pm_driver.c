@@ -1142,6 +1142,54 @@ static void kbase_pm_l2_clear_backend_slot_submit_kctx(struct kbase_device *kbde
 }
 #endif
 
+/* wait_as_active_int - Wait for AS_ACTIVE_INT bits to become 0 for all AS
+ *
+ * @kbdev: Pointer to the device.
+ *
+ * This function is supposed to be called before the write to L2_PWROFF register
+ * to wait for AS_ACTIVE_INT bit to become 0 for all the GPU address space slots.
+ * AS_ACTIVE_INT bit can become 1 for an AS, only when L2_READY becomes 1, based
+ * on the value in TRANSCFG register and would become 0 once AS has been reconfigured.
+ */
+static void wait_as_active_int(struct kbase_device *kbdev)
+{
+#if MALI_USE_CSF && !IS_ENABLED(CONFIG_MALI_NO_MALI)
+	int as_no;
+
+	lockdep_assert_held(&kbdev->hwaccess_lock);
+
+	if (!kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_GPU2019_3878))
+		return;
+
+	for (as_no = 0; as_no != kbdev->nr_hw_address_spaces; as_no++) {
+		unsigned int max_loops = KBASE_AS_INACTIVE_MAX_LOOPS;
+
+		/* Wait for the AS_ACTIVE_INT bit to become 0 for the AS.
+		 * The wait is actually needed only for the enabled AS.
+		 */
+		while (--max_loops &&
+			kbase_reg_read(kbdev, MMU_AS_REG(as_no, AS_STATUS)) &
+				AS_STATUS_AS_ACTIVE_INT)
+			;
+
+#ifdef CONFIG_MALI_DEBUG
+		/* For a disabled AS the loop should run for a single iteration only. */
+		if (!kbdev->as_to_kctx[as_no] && (max_loops != (KBASE_AS_INACTIVE_MAX_LOOPS -1)))
+			dev_warn(kbdev->dev, "AS_ACTIVE_INT bit found to be set for disabled AS %d", as_no);
+#endif
+
+		if (max_loops)
+			continue;
+
+		dev_warn(kbdev->dev, "AS_ACTIVE_INT bit stuck for AS %d", as_no);
+
+		if (kbase_prepare_to_reset_gpu(kbdev, 0))
+			kbase_reset_gpu(kbdev);
+		return;
+	}
+#endif
+}
+
 static bool can_power_down_l2(struct kbase_device *kbdev)
 {
 #if MALI_USE_CSF
@@ -1460,14 +1508,15 @@ static int kbase_pm_l2_update_state(struct kbase_device *kbdev)
 			if (kbase_pm_is_l2_desired(kbdev))
 				backend->l2_state = KBASE_L2_PEND_ON;
 			else if (can_power_down_l2(kbdev)) {
-				if (!backend->l2_always_on)
+				if (!backend->l2_always_on) {
+					wait_as_active_int(kbdev);
 					/* Powering off the L2 will also power off the
 					 * tiler.
 					 */
 					kbase_pm_invoke(kbdev, KBASE_PM_CORE_L2,
 							l2_present,
 							ACTION_PWROFF);
-				else
+				} else
 					/* If L2 cache is powered then we must flush it
 					 * before we power off the GPU. Normally this
 					 * would have been handled when the L2 was
