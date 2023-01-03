@@ -688,7 +688,7 @@ static int parse_memory_setup_entry(struct kbase_device *kbdev,
 		protected_mode = true;
 
 	if (protected_mode && kbdev->csf.pma_dev == NULL) {
-		dev_err(kbdev->dev,
+		dev_warn(kbdev->dev,
 			"Protected memory allocator not found, Firmware protected mode entry will not be supported");
 		return 0;
 	}
@@ -696,9 +696,16 @@ static int parse_memory_setup_entry(struct kbase_device *kbdev,
 	num_pages = (virtual_end - virtual_start)
 		>> PAGE_SHIFT;
 
-	reuse_pages =
-		entry_find_large_page_to_reuse(kbdev, virtual_start, virtual_end, flags, &phys,
-					       &pma, num_pages, &num_pages_aligned, &is_small_page);
+	if(!protected_mode) {
+		reuse_pages = entry_find_large_page_to_reuse(
+			kbdev, virtual_start, virtual_end, flags, &phys, &pma,
+			num_pages, &num_pages_aligned, &is_small_page);
+	}
+	else {
+		num_pages_aligned = num_pages;
+		dev_warn(kbdev->dev, "Protected memory allocation requested for %u bytes (%u pages), serving with small pages and tight allocation.", (virtual_end - virtual_start), num_pages);
+	}
+
 	if (!reuse_pages)
 		phys = kmalloc_array(num_pages_aligned, sizeof(*phys), GFP_KERNEL);
 
@@ -711,8 +718,15 @@ static int parse_memory_setup_entry(struct kbase_device *kbdev,
 				kbdev, phys, num_pages_aligned, is_small_page);
 		}
 
-		if (!pma)
-			ret = -ENOMEM;
+		if (!pma) {
+			/* If we can't allocate sufficient memory for FW - bail out and leave protected execution unsupported by termintating the allocator. */
+			dev_warn(kbdev->dev,
+			"Protected memory allocation failed during FW initialization - Firmware protected mode entry will not be supported");
+			kbase_csf_protected_memory_term(kbdev);
+			kbdev->csf.pma_dev = NULL;
+			kfree(phys);
+			return 0;
+		}
 	} else {
 		if (!reuse_pages) {
 			ret = kbase_mem_pool_alloc_pages(
