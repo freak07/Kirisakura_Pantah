@@ -728,6 +728,27 @@ struct kbase_ioctl_apc_request {
 #define KBASE_IOCTL_APC_REQUEST \
 	_IOW(KBASE_IOCTL_TYPE, 66, struct kbase_ioctl_apc_request)
 
+/**
+ * struct kbase_ioctl_buffer_liveness_update - Update the live ranges of buffers from previous frame
+ *
+ * @live_ranges_address: Array of live ranges
+ * @live_ranges_count: Number of elements in the live ranges buffer
+ * @buffer_va_address: Array of buffer base virtual addresses
+ * @buffer_sizes_address: Array of buffer sizes
+ * @buffer_count: Number of buffers
+ * @padding: Unused
+ */
+struct kbase_ioctl_buffer_liveness_update {
+	__u64 live_ranges_address;
+	__u64 live_ranges_count;
+	__u64 buffer_va_address;
+	__u64 buffer_sizes_address;
+	__u64 buffer_count;
+};
+
+#define KBASE_IOCTL_BUFFER_LIVENESS_UPDATE \
+	_IOW(KBASE_IOCTL_TYPE, 67, struct kbase_ioctl_buffer_liveness_update)
+
 /***************
  * test ioctls *
  ***************/

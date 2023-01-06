@@ -822,6 +822,14 @@ static int kbase_api_apc_request(struct kbase_file *kfile,
 }
 #endif
 
+static int kbase_api_buffer_liveness_update(struct kbase_context *kctx,
+		struct kbase_ioctl_buffer_liveness_update *update)
+{
+	CSTD_UNUSED(kctx);
+	CSTD_UNUSED(update);
+	return 0;
+}
+
 #if !MALI_USE_CSF
 static int kbase_api_job_submit(struct kbase_context *kctx,
 		struct kbase_ioctl_job_submit *submit)
@@ -2199,6 +2207,12 @@ static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_SET_LIMITED_CORE_COUNT,
 				kbasep_ioctl_set_limited_core_count,
 				struct kbase_ioctl_set_limited_core_count,
+				kctx);
+		break;
+	case KBASE_IOCTL_BUFFER_LIVENESS_UPDATE:
+		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_BUFFER_LIVENESS_UPDATE,
+				kbase_api_buffer_liveness_update,
+				struct kbase_ioctl_buffer_liveness_update,
 				kctx);
 		break;
 	}
