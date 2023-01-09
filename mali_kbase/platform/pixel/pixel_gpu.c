@@ -171,6 +171,50 @@ static int gpu_fw_cfg_init(struct kbase_device *kbdev) {
 }
 
 /**
+ * gpu_pixel_kctx_init() - Called when a kernel context is created
+ *
+ * @kctx: The &struct kbase_context that is being initialized
+ *
+ * This function is called when the GPU driver is initializing a new kernel context.
+ *
+ * Return: Returns 0 on success, or an error code on failure.
+ */
+static int gpu_pixel_kctx_init(struct kbase_context *kctx)
+{
+	struct kbase_device* kbdev = kctx->kbdev;
+	int err;
+
+	kctx->platform_data = kzalloc(sizeof(struct pixel_platform_data), GFP_KERNEL);
+	if (kctx->platform_data == NULL) {
+		dev_err(kbdev->dev, "pixel: failed to alloc platform_data for kctx");
+		err = -ENOMEM;
+		goto done;
+	}
+
+	err = gpu_dvfs_kctx_init(kctx);
+	if (err) {
+		dev_err(kbdev->dev, "pixel: DVFS kctx init failed\n");
+		goto done;
+	}
+
+done:
+	return err;
+}
+
+/**
+ * gpu_pixel_kctx_term() - Called when a kernel context is terminated
+ *
+ * @kctx: The &struct kbase_context that is being terminated
+ */
+static void gpu_pixel_kctx_term(struct kbase_context *kctx)
+{
+	gpu_dvfs_kctx_term(kctx);
+
+	kfree(kctx->platform_data);
+	kctx->platform_data = NULL;
+}
+
+/**
  * gpu_pixel_init() - Initializes the Pixel integration for the Mali GPU.
  *
  * @kbdev: The &struct kbase_device for the GPU.
@@ -243,8 +287,8 @@ static void gpu_pixel_term(struct kbase_device *kbdev)
 struct kbase_platform_funcs_conf platform_funcs = {
 	.platform_init_func = &gpu_pixel_init,
 	.platform_term_func = &gpu_pixel_term,
-	.platform_handler_context_init_func = &gpu_dvfs_kctx_init,
-	.platform_handler_context_term_func = &gpu_dvfs_kctx_term,
+	.platform_handler_context_init_func = &gpu_pixel_kctx_init,
+	.platform_handler_context_term_func = &gpu_pixel_kctx_term,
 	.platform_handler_work_begin_func = &gpu_dvfs_metrics_work_begin,
 	.platform_handler_work_end_func = &gpu_dvfs_metrics_work_end,
 	.platform_fw_cfg_init_func = &gpu_fw_cfg_init,

@@ -404,4 +404,13 @@ struct pixel_context {
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 };
 
+/**
+ * struct pixel_platform_data - Per kbase_context Pixel specific platform data
+ *
+ * @stats:                      Tracks the dvfs metrics for the UID associated with this context
+ */
+struct pixel_platform_data {
+	struct gpu_dvfs_metrics_uid_stats* stats;
+};
+
 #endif /* _KBASE_CONFIG_PLATFORM_H_ */
