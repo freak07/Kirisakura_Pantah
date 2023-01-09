@@ -504,6 +504,9 @@ bool kbase_prepare_to_reset_gpu(struct kbase_device *kbdev, unsigned int flags)
 		/* Some other thread is already resetting the GPU */
 		return false;
 
+	if (flags & RESET_FLAGS_FORCE_PM_HW_RESET)
+		kbdev->csf.reset.force_pm_hw_reset = true;
+
 	return true;
 }
 KBASE_EXPORT_TEST_API(kbase_prepare_to_reset_gpu);
@@ -622,6 +625,7 @@ int kbase_reset_gpu_init(struct kbase_device *kbdev)
 
 	init_waitqueue_head(&kbdev->csf.reset.wait);
 	init_rwsem(&kbdev->csf.reset.sem);
+	kbdev->csf.reset.force_pm_hw_reset = false;
 
 	return 0;
 }
