@@ -222,6 +222,24 @@ static void gpu_pixel_kctx_term(struct kbase_context *kctx)
 	kctx->platform_data = NULL;
 }
 
+static const struct kbase_device_init dev_init[] = {
+	{ gpu_pm_init, gpu_pm_term, "PM init failed" },
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+	{ gpu_dvfs_init, gpu_dvfs_term, "DVFS init failed" },
+#endif
+	{ gpu_sysfs_init, gpu_sysfs_term, "sysfs init failed" },
+	{ gpu_sscd_init, gpu_sscd_term, "SSCD init failed" },
+};
+
+static void gpu_pixel_term_partial(struct kbase_device *kbdev,
+		unsigned int i)
+{
+	while (i-- > 0) {
+		if (dev_init[i].term)
+			dev_init[i].term(kbdev);
+	}
+}
+
 /**
  * gpu_pixel_init() - Initializes the Pixel integration for the Mali GPU.
  *
@@ -231,8 +249,8 @@ static void gpu_pixel_kctx_term(struct kbase_context *kctx)
  */
 static int gpu_pixel_init(struct kbase_device *kbdev)
 {
-	int ret;
-
+	int ret = 0;
+	unsigned int i;
 	struct pixel_context *pc;
 
 	pc = kzalloc(sizeof(struct pixel_context), GFP_KERNEL);
@@ -245,30 +263,22 @@ static int gpu_pixel_init(struct kbase_device *kbdev)
 	kbdev->platform_context = pc;
 	pc->kbdev = kbdev;
 
-	ret = gpu_pm_init(kbdev);
-	if (ret)
-		goto done;
-
-#ifdef CONFIG_MALI_MIDGARD_DVFS
-	ret = gpu_dvfs_init(kbdev);
-	if (ret) {
-		dev_err(kbdev->dev, "DVFS init failed\n");
-		goto done;
-	}
-#endif /* CONFIG_MALI_MIDGARD_DVFS */
-
-	ret = gpu_sysfs_init(kbdev);
-	if (ret) {
-		dev_err(kbdev->dev, "sysfs init failed\n");
-		goto done;
+	for (i = 0; i < ARRAY_SIZE(dev_init); i++) {
+		if (dev_init[i].init) {
+			ret = dev_init[i].init(kbdev);
+			if (ret) {
+				dev_err(kbdev->dev, "%s error = %d\n",
+					dev_init[i].err_mes, ret);
+				break;
+			}
+		}
 	}
 
-	ret = gpu_sscd_init(kbdev);
 	if (ret) {
-		dev_err(kbdev->dev, "SSCD init failed\n");
-		goto done;
+		gpu_pixel_term_partial(kbdev, i);
+		kbdev->platform_context = NULL;
+		kfree(pc);
 	}
-	ret = 0;
 
 done:
 	return ret;
@@ -283,11 +293,7 @@ static void gpu_pixel_term(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
-	gpu_sscd_term(kbdev);
-	gpu_sysfs_term(kbdev);
-	gpu_dvfs_term(kbdev);
-	gpu_pm_term(kbdev);
-
+	gpu_pixel_term_partial(kbdev, ARRAY_SIZE(dev_init));
 	kbdev->platform_context = NULL;
 	kfree(pc);
 }
