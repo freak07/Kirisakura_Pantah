@@ -80,6 +80,9 @@
 #include "mali_kbase_pbha_debugfs.h"
 #endif
 
+/* Pixel includes */
+#include "platform/pixel/pixel_gpu_slc.h"
+
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/poll.h>
@@ -825,9 +828,8 @@ static int kbase_api_apc_request(struct kbase_file *kfile,
 static int kbase_api_buffer_liveness_update(struct kbase_context *kctx,
 		struct kbase_ioctl_buffer_liveness_update *update)
 {
-	CSTD_UNUSED(kctx);
-	CSTD_UNUSED(update);
-	return 0;
+	/* Defer handling to platform */
+	return gpu_pixel_handle_buffer_liveness_update_ioctl(kctx, update);
 }
 
 #if !MALI_USE_CSF

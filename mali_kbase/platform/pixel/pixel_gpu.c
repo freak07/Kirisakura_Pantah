@@ -29,6 +29,7 @@
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
 #include "pixel_gpu_sscd.h"
+#include "pixel_gpu_slc.h"
 
 #define CREATE_TRACE_POINTS
 #include "pixel_gpu_trace.h"
@@ -197,6 +198,12 @@ static int gpu_pixel_kctx_init(struct kbase_context *kctx)
 		goto done;
 	}
 
+	err = gpu_slc_kctx_init(kctx);
+	if (err) {
+		dev_err(kbdev->dev, "pixel: SLC kctx init failed\n");
+		goto done;
+	}
+
 done:
 	return err;
 }
@@ -208,6 +215,7 @@ done:
  */
 static void gpu_pixel_kctx_term(struct kbase_context *kctx)
 {
+	gpu_slc_kctx_term(kctx);
 	gpu_dvfs_kctx_term(kctx);
 
 	kfree(kctx->platform_data);

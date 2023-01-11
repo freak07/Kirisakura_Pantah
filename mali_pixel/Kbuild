@@ -25,6 +25,7 @@ CONFIG_MALI_MEMORY_GROUP_MANAGER ?= m
 CONFIG_MALI_PRIORITY_CONTROL_MANAGER ?= m
 CONFIG_MALI_PROTECTED_MEMORY_ALLOCATOR ?= m
 CONFIG_MALI_PIXEL_STATS ?= m
+CONFIG_MALI_PIXEL_GPU_SLC=y
 
 mali_pixel-objs :=
 
@@ -44,6 +45,9 @@ endif
 ifeq ($(CONFIG_MALI_PROTECTED_MEMORY_ALLOCATOR),m)
 	DEFINES += -DCONFIG_MALI_PROTECTED_MEMORY_ALLOCATOR
 	mali_pixel-objs += protected_memory_allocator.o
+endif
+ifeq ($(CONFIG_MALI_PIXEL_GPU_SLC),y)
+	DEFINES += -DCONFIG_MALI_PIXEL_GPU_SLC
 endif
 
 # Use our defines when compiling, and include mali platform module headers
