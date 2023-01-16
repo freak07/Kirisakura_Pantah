@@ -224,36 +224,47 @@ int kbase_job_hw_submit(struct kbase_device *kbdev, struct kbase_jd_atom *katom,
 	 */
 	cfg = kctx->as_nr;
 
-	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_FLUSH_REDUCTION) &&
-			!(kbdev->serialize_jobs & KBASE_SERIALIZE_RESET))
-		cfg |= JS_CONFIG_ENABLE_FLUSH_REDUCTION;
+	if(!kbase_jd_katom_is_protected(katom)) {
+		if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_FLUSH_REDUCTION) &&
+		    !(kbdev->serialize_jobs & KBASE_SERIALIZE_RESET))
+			cfg |= JS_CONFIG_ENABLE_FLUSH_REDUCTION;
 
-	if (0 != (katom->core_req & BASE_JD_REQ_SKIP_CACHE_START)) {
-		/* Force a cache maintenance operation if the newly submitted
-		 * katom to the slot is from a different kctx. For a JM GPU
-		 * that has the feature BASE_HW_FEATURE_FLUSH_INV_SHADER_OTHER,
-		 * applies a FLUSH_INV_SHADER_OTHER. Otherwise, do a
-		 * FLUSH_CLEAN_INVALIDATE.
-		 */
-		u64 tagged_kctx = ptr_slot_rb->last_kctx_tagged;
+		if (0 != (katom->core_req & BASE_JD_REQ_SKIP_CACHE_START)) {
+			/* Force a cache maintenance operation if the newly submitted
+			 * katom to the slot is from a different kctx. For a JM GPU
+			 * that has the feature BASE_HW_FEATURE_FLUSH_INV_SHADER_OTHER,
+			 * applies a FLUSH_INV_SHADER_OTHER. Otherwise, do a
+			 * FLUSH_CLEAN_INVALIDATE.
+			 */
+			u64 tagged_kctx = ptr_slot_rb->last_kctx_tagged;
 
-		if (tagged_kctx != SLOT_RB_NULL_TAG_VAL && tagged_kctx != SLOT_RB_TAG_KCTX(kctx)) {
-			if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_FLUSH_INV_SHADER_OTHER))
-				cfg |= JS_CONFIG_START_FLUSH_INV_SHADER_OTHER;
-			else
-				cfg |= JS_CONFIG_START_FLUSH_CLEAN_INVALIDATE;
+			if (tagged_kctx != SLOT_RB_NULL_TAG_VAL &&
+			    tagged_kctx != SLOT_RB_TAG_KCTX(kctx)) {
+				if (kbase_hw_has_feature(kbdev,
+							 BASE_HW_FEATURE_FLUSH_INV_SHADER_OTHER))
+					cfg |= JS_CONFIG_START_FLUSH_INV_SHADER_OTHER;
+				else
+					cfg |= JS_CONFIG_START_FLUSH_CLEAN_INVALIDATE;
+			} else
+				cfg |= JS_CONFIG_START_FLUSH_NO_ACTION;
 		} else
-			cfg |= JS_CONFIG_START_FLUSH_NO_ACTION;
-	} else
-		cfg |= JS_CONFIG_START_FLUSH_CLEAN_INVALIDATE;
+			cfg |= JS_CONFIG_START_FLUSH_CLEAN_INVALIDATE;
 
-	if (0 != (katom->core_req & BASE_JD_REQ_SKIP_CACHE_END) &&
-			!(kbdev->serialize_jobs & KBASE_SERIALIZE_RESET))
-		cfg |= JS_CONFIG_END_FLUSH_NO_ACTION;
-	else if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_CLEAN_ONLY_SAFE))
+		if (0 != (katom->core_req & BASE_JD_REQ_SKIP_CACHE_END) &&
+		    !(kbdev->serialize_jobs & KBASE_SERIALIZE_RESET))
+			cfg |= JS_CONFIG_END_FLUSH_NO_ACTION;
+		else if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_CLEAN_ONLY_SAFE))
+			cfg |= JS_CONFIG_END_FLUSH_CLEAN;
+		else
+			cfg |= JS_CONFIG_END_FLUSH_CLEAN_INVALIDATE;
+	} else {
+		/* Force cache flush on job chain start/end if katom is protected.
+		 * Valhall JM GPUs have BASE_HW_FEATURE_CLEAN_ONLY_SAFE feature,
+		 * so DDK set JS_CONFIG_END_FLUSH_CLEAN config
+		 */
+		cfg |= JS_CONFIG_START_FLUSH_CLEAN_INVALIDATE;
 		cfg |= JS_CONFIG_END_FLUSH_CLEAN;
-	else
-		cfg |= JS_CONFIG_END_FLUSH_CLEAN_INVALIDATE;
+	}
 
 	cfg |= JS_CONFIG_THREAD_PRI(8);
 
