@@ -763,6 +763,7 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	unsigned long stack_size;
 	unsigned long stack_expand;
 	unsigned long rlim_stack;
+	struct vma_iterator vmi;
 
 #ifdef CONFIG_STACK_GROWSUP
 	/* Limit stack size */
@@ -817,7 +818,8 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	vm_flags |= mm->def_flags;
 	vm_flags |= VM_STACK_INCOMPLETE_SETUP;
 
-	ret = mprotect_fixup(vma, &prev, vma->vm_start, vma->vm_end,
+	vma_iter_init(&vmi, mm, vma->vm_start);
+	ret = mprotect_fixup(&vmi, vma, &prev, vma->vm_start, vma->vm_end,
 			vm_flags);
 	if (ret)
 		goto out_unlock;
