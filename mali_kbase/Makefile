@@ -33,6 +33,9 @@ endif
 # Pixel integration configuration values
 #
 
+# Debug Ftrace configuration options
+CONFIG_MALI_SYSTEM_TRACE=y
+
 # Core kbase configuration options
 CONFIG_MALI_EXPERT=y
 CONFIG_MALI_MIDGARD_DVFS=y
@@ -122,7 +125,6 @@ ifeq ($(CONFIG_MALI_MIDGARD),m)
         else
             # Prevent misuse when CONFIG_MALI_DEBUG=n
             CONFIG_MALI_MIDGARD_ENABLE_TRACE = n
-            CONFIG_MALI_SYSTEM_TRACE = n
             CONFIG_MALI_FENCE_DEBUG = n
         endif
     else
@@ -140,7 +142,6 @@ ifeq ($(CONFIG_MALI_MIDGARD),m)
         CONFIG_MALI_PRFCNT_SET_SELECT_VIA_DEBUG_FS = n
         CONFIG_MALI_DEBUG = n
         CONFIG_MALI_MIDGARD_ENABLE_TRACE = n
-        CONFIG_MALI_SYSTEM_TRACE = n
         CONFIG_MALI_FENCE_DEBUG = n
     endif
 
