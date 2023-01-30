@@ -293,6 +293,11 @@ struct gpu_dvfs_metrics_uid_stats;
  * @dvfs.qos.bts.enabled:   Stores whether Bus Traffic Shaping (BTS) is currently enabled
  * @dvfs.qos.bts.threshold: The G3D shader stack clock at which BTS will be enabled. Set via DT.
  * @dvfs.qos.bts.scenario:  The index of the BTS scenario to be used. Set via DT.
+ *
+ * @slc.lock:           Synchronize updates to the SLC partition accounting variables.
+ * @slc.partition_size: The size of the GPU's SLC partition.
+ * @slc.demand:         The total demand for SLC space, an aggregation of each kctx's demand.
+ * @slc.usage:          The total amount of SLC space used, an aggregation of each kctx's usage.
  */
 struct pixel_context {
 	struct kbase_device *kbdev;
@@ -402,15 +407,29 @@ struct pixel_context {
 #endif /* CONFIG_MALI_PIXEL_GPU_THERMAL */
 	} dvfs;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
+
+	struct {
+		struct mutex lock;
+		u64 partition_size;
+		u64 demand;
+		u64 usage;
+	} slc;
 };
 
 /**
  * struct pixel_platform_data - Per kbase_context Pixel specific platform data
  *
- * @stats:                      Tracks the dvfs metrics for the UID associated with this context
+ * @stats:      Tracks the dvfs metrics for the UID associated with this context
+ *
+ * @slc.peak_demand: The parent context's maximum demand for SLC space
+ * @slc.peak_usage:  The parent context's maximum use of SLC space
  */
 struct pixel_platform_data {
 	struct gpu_dvfs_metrics_uid_stats* stats;
+	struct {
+		u64 peak_demand;
+		u64 peak_usage;
+	} slc;
 };
 
 #endif /* _KBASE_CONFIG_PLATFORM_H_ */
