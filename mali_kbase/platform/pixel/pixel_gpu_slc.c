@@ -10,6 +10,8 @@
 
 /* UAPI includes */
 #include <uapi/gpu/arm/midgard/platform/pixel/pixel_gpu_common_slc.h>
+/* Back-door mali_pixel include */
+#include <uapi/gpu/arm/midgard/platform/pixel/pixel_memory_group_manager.h>
 
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
@@ -61,8 +63,7 @@ static void gpu_slc_unlock_as(struct kbase_context *kctx)
  */
 static bool gpu_slc_in_group(struct kbase_va_region* reg)
 {
-	/* TODO */
-	return false;
+	return reg->gpu_alloc->group_id == MGM_SLC_GROUP_ID;
 }
 
 /**
@@ -105,9 +106,21 @@ invalid:
  */
 static void gpu_slc_migrate_region(struct kbase_context *kctx, struct kbase_va_region* reg)
 {
-	/* TODO */
-	(void)kctx;
-	(void)reg;
+	int err;
+
+	KBASE_DEBUG_ASSERT(kctx);
+	KBASE_DEBUG_ASSERT(reg);
+
+	err = kbase_mmu_update_pages(kctx, reg->start_pfn,
+			kbase_get_gpu_phy_pages(reg),
+			kbase_reg_current_backed_size(reg),
+			reg->flags,
+			MGM_SLC_GROUP_ID);
+	if (err)
+		dev_warn(kctx->kbdev->dev, "pixel: failed to move region to SLC: %d", err);
+	else
+		/* If everything is good, then set the new group on the region. */
+		reg->gpu_alloc->group_id = MGM_SLC_GROUP_ID;
 }
 
 /**
@@ -118,9 +131,15 @@ static void gpu_slc_migrate_region(struct kbase_context *kctx, struct kbase_va_r
 static void gpu_slc_resize_partition(struct kbase_device* kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
-	dev_dbg(kbdev->dev, "pixel: resizing GPU SLC partition to meet demand: %llu", pc->slc.demand);
 
-	/* TODO */
+	/* Request that the mgm select an SLC partition that fits our demand */
+	pc->slc.partition_size =
+	    pixel_mgm_resize_group_to_fit(kbdev->mgm_dev, MGM_SLC_GROUP_ID, pc->slc.demand);
+
+	dev_dbg(kbdev->dev,
+	        "pixel: resized GPU SLC partition to: %llu, to meet demand: %llu",
+	        pc->slc.partition_size,
+	        pc->slc.demand);
 }
 
 /**
