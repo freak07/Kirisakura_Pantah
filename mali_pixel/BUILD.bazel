@@ -22,6 +22,7 @@ kernel_module(
     ],
     kernel_build = "//private/gs-google:cloudripper",
     visibility = [
+        "//private/google-modules/gpu/mali_kbase:__pkg__",
         "//private/gs-google:__pkg__",
     ],
 )

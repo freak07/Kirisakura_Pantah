@@ -24,4 +24,7 @@ kernel_module(
     visibility = [
         "//private/gs-google:__pkg__",
     ],
+    deps = [
+        "//private/google-modules/gpu/mali_pixel",
+    ],
 )
