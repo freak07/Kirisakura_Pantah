@@ -437,6 +437,83 @@ static void enable_partition(struct mgm_groups* data, enum pixel_mgm_group_id gr
 	data->groups[group_id].state = MGM_GROUP_STATE_ENABLED;
 }
 
+static void set_group_partition(struct mgm_groups* data,
+                                enum pixel_mgm_group_id group_id,
+                                int new_pt_index)
+{
+	int ptid, pbha;
+	int active_id = group_active_pt_id(data, group_id);
+	int new_id = group_pt_id(data, group_id, new_pt_index);
+
+	/* Early out if no changes are needed */
+	if (new_id == active_id)
+		return;
+
+	ptid = pt_client_mutate(data->pt_handle, active_id, new_id);
+	if (ptid == -EINVAL)
+		dev_err(data->dev, "Failed to get partition for group: %d\n", group_id);
+	else
+		dev_info(data->dev, "pt_client_enable returned ptid=%d for group=%d", ptid, group_id);
+
+	pbha = pt_pbha(data->dev->of_node, new_id);
+	if (pbha == PT_PBHA_INVALID)
+		dev_err(data->dev, "Failed to get PBHA for group: %d\n", group_id);
+	else
+		dev_info(data->dev, "pt_pbha returned PBHA=%d for group=%d", pbha, group_id);
+
+	data->groups[group_id].ptid = ptid;
+	data->groups[group_id].pbha = pbha;
+	data->groups[group_id].active_pt_idx = new_pt_index;
+}
+
+u64 pixel_mgm_resize_group_to_fit(struct memory_group_manager_device* mgm_dev,
+                                  enum pixel_mgm_group_id group_id,
+                                  u64 demand)
+{
+	struct mgm_groups *data;
+	struct mgm_group *group;
+	s64 diff, cur_size, min_diff = S64_MAX;
+	int pt_idx;
+	u64 ret = 0;
+	/* Convert demand to nearest KB */
+	s64 demand_kb = demand >> 10;
+
+	/* Early out if the group doesn't exist */
+	if (INVALID_GROUP_ID(group_id))
+		goto done;
+
+	data = mgm_dev->data;
+	group = &data->groups[group_id];
+
+	/* Early out if the group has no partitions */
+	if (group->pt_num == 0)
+		goto done;
+
+	/* Calculate best partition to use, by finding the nearest size */
+	for (pt_idx = 0; pt_idx < group->pt_num; ++pt_idx)
+	{
+		cur_size = data->pt_sizes[group_pt_id(data, group_id, pt_idx)];
+		diff = abs(demand_kb - cur_size);
+
+		if (diff > min_diff)
+			break;
+
+		min_diff = diff;
+	}
+
+	set_group_partition(data, group_id, pt_idx - 1);
+
+	/* Get the new partition size, in bytes */
+	ret = data->pt_sizes[group_active_pt_id(data, group_id)] << 10;
+
+	dev_dbg(data->dev, "%s: resized memory_group_%d to %lluB for demand: %lldB",
+		__func__, group_id, ret, demand);
+
+done:
+	return ret;
+}
+EXPORT_SYMBOL(pixel_mgm_resize_group_to_fit);
+
 static struct page *mgm_alloc_page(
 	struct memory_group_manager_device *mgm_dev, int group_id,
 	gfp_t gfp_mask, unsigned int order)

@@ -254,6 +254,7 @@ EXTRA_CFLAGS += -DCONFIG_MALI_PLATFORM_NAME=$(CONFIG_MALI_PLATFORM_NAME)
 #
 # KBUILD_EXTRA_SYMBOLS to prevent warnings about unknown functions
 #
+EXTRA_SYMBOLS += $(OUT_DIR)/../google-modules/gpu/mali_pixel/Module.symvers
 
 # The following were added to align with W=1 in scripts/Makefile.extrawarn
 # from the Linux source tree
