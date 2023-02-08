@@ -808,6 +808,11 @@ static int mgm_initialize_data(struct mgm_groups *mgm_data)
 	if ((ret = mgm_sysfs_init(mgm_data)))
 		goto out_err;
 
+#ifdef CONFIG_MALI_PIXEL_GPU_SLC
+	/* We enable the SLC partition by default to support dynamic SLC caching */
+	enable_partition(mgm_data, MGM_SLC_GROUP_ID);
+#endif
+
 	return ret;
 
 out_err:
