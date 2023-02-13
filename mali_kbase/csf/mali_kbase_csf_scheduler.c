@@ -6622,6 +6622,8 @@ int kbase_csf_scheduler_context_init(struct kbase_context *kctx)
 	int priority;
 	int err;
 
+	kbase_ctx_sched_init_ctx(kctx);
+
 	for (priority = 0; priority < KBASE_QUEUE_GROUP_PRIORITY_COUNT;
 	     ++priority) {
 		INIT_LIST_HEAD(&kctx->csf.sched.runnable_groups[priority]);
@@ -6638,7 +6640,8 @@ int kbase_csf_scheduler_context_init(struct kbase_context *kctx)
 	if (err) {
 		dev_err(kctx->kbdev->dev,
 			"Failed to initialize scheduler context kworker");
-		return -ENOMEM;
+		err = -ENOMEM;
+		goto alloc_wq_failed;
 	}
 
 	kthread_init_work(&kctx->csf.sched.sync_update_work,
@@ -6649,13 +6652,19 @@ int kbase_csf_scheduler_context_init(struct kbase_context *kctx)
 	if (err) {
 		dev_err(kctx->kbdev->dev,
 			"Failed to register a sync update callback");
-		kbase_destroy_kworker_stack(&kctx->csf.sched.sync_update_worker);
+		goto event_wait_add_failed;
 	}
 
 	/* Per-kctx heap_info object initialization */
 	memset(&kctx->csf.sched.heap_info, 0, sizeof(struct kbase_kctx_heap_info));
 	INIT_LIST_HEAD(&kctx->csf.sched.heap_info.mgr_link);
 
+	return err;
+
+event_wait_add_failed:
+	kbase_destroy_kworker_stack(&kctx->csf.sched.sync_update_worker);
+alloc_wq_failed:
+	kbase_ctx_sched_remove_ctx(kctx);
 	return err;
 }
 
@@ -6664,6 +6673,8 @@ void kbase_csf_scheduler_context_term(struct kbase_context *kctx)
 	kbase_csf_event_wait_remove(kctx, check_group_sync_update_cb, kctx);
 	kthread_cancel_work_sync(&kctx->csf.sched.sync_update_work);
 	kbase_destroy_kworker_stack(&kctx->csf.sched.sync_update_worker);
+
+	kbase_ctx_sched_remove_ctx(kctx);
 }
 
 int kbase_csf_scheduler_init(struct kbase_device *kbdev)
@@ -7234,6 +7245,9 @@ reclaim_free_counted_heap_pages(struct kbase_device *kbdev,
 			container_of(info, struct kbase_context, csf.sched.heap_info);
 		/* Attempt freeing all the counted heap pages from the kctx */
 		u32 n = shrink_ctrl->scan_cb(kctx, info->nr_scan_pages);
+
+		if (n)
+			schedule_work(&kctx->jit_work);
 
 		/* The free is attempted on all the counted heap pages. If the kctx has
 		 * all its counted heap pages freed, or, it can't offer anymore, drop

@@ -154,8 +154,7 @@
 /* Maximum number of pages of memory that require a permanent mapping, per
  * kbase_context
  */
-#define KBASE_PERMANENTLY_MAPPED_MEM_LIMIT_PAGES ((32 * 1024ul * 1024ul) >> \
-								PAGE_SHIFT)
+#define KBASE_PERMANENTLY_MAPPED_MEM_LIMIT_PAGES ((64 * 1024ul * 1024ul) >> PAGE_SHIFT)
 /* Minimum threshold period for hwcnt dumps between different hwcnt virtualizer
  * clients, to reduce undesired system load.
  * If a virtualizer client requests a dump within this threshold period after
