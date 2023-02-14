@@ -30,7 +30,25 @@
 #define ORDER_SMALL_PAGE 0
 #define ORDER_LARGE_PAGE 9
 
+/**
+ * Borr does not have "real" PBHA support. However, since we only use a 36-bit PA on the bus,
+ * AxADDR[39:36] is wired up to the GPU AxUSER[PBHA] field seen by the rest of the system.
+ * Those AxADDR bits come from [39:36] in the page descriptor.
+ *
+ * Odin and Turse have "real" PBHA support using a dedicated output signal and page descriptor field.
+ * The AxUSER[PBHA] field is driven by the GPU's PBHA signal, and AxADDR[39:36] is dropped.
+ * The page descriptor PBHA field is [62:59].
+ *
+ * We could write to both of these locations, as each SoC only reads from its respective PBHA
+ * location with the other being ignored or dropped.
+ *
+ * b/148988078 contains confirmation of the above description.
+ */
+#if IS_ENABLED(CONFIG_SOC_GS101)
 #define PBHA_BIT_POS  (36)
+#else
+#define PBHA_BIT_POS  (59)
+#endif
 #define PBHA_BIT_MASK (0xf)
 
 #define MGM_PBHA_DEFAULT 0
