@@ -2416,22 +2416,8 @@ static void kbase_pm_timed_out(struct kbase_device *kbdev)
 	dev_err(kbdev->dev, "Power transition timed out unexpectedly\n");
 	kbase_gpu_timeout_debug_message(kbdev);
 	dev_err(kbdev->dev, "Sending reset to GPU - all running jobs will be lost\n");
-
-	/* pixel: If either:
-	 *   1. L2/MCU power transition timed out, or,
-	 *   2. kbase state machine fell out of sync with the hw state,
-	 * a soft/hard reset (ie writing to SOFT/HARD_RESET regs) is insufficient to resume
-	 * operation.
-	 *
-	 * Besides, Odin TRM advises against touching SOFT/HARD_RESET
-	 * regs if L2_PWRTRANS is 1 to avoid undefined state.
-	 *
-	 * We have already lost work if we end up here, so send a powercycle to reset the hw,
-	 * which is more reliable.
-	 */
 	if (kbase_prepare_to_reset_gpu(kbdev,
-				       RESET_FLAGS_HWC_UNRECOVERABLE_ERROR |
-				       RESET_FLAGS_FORCE_PM_HW_RESET))
+				       RESET_FLAGS_HWC_UNRECOVERABLE_ERROR))
 		kbase_reset_gpu(kbdev);
 }
 
@@ -3191,14 +3177,6 @@ static int kbase_pm_do_reset(struct kbase_device *kbdev)
 	KBASE_KTRACE_ADD(kbdev, CORE_GPU_SOFT_RESET, NULL, 0);
 
 	KBASE_TLSTREAM_JD_GPU_SOFT_RESET(kbdev, kbdev);
-
-#if MALI_USE_CSF
-	if (kbdev->csf.reset.force_pm_hw_reset) {
-		dev_err(kbdev->dev, "Power Cycle reset mali");
-		kbdev->csf.reset.force_pm_hw_reset = false;
-		return kbase_pm_hw_reset(kbdev);
-	}
-#endif
 
 	if (kbdev->pm.backend.callback_soft_reset) {
 		ret = kbdev->pm.backend.callback_soft_reset(kbdev);
