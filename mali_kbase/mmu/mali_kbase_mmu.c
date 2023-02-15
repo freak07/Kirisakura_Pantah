@@ -299,13 +299,12 @@ static void kbase_mmu_sync_pgd_gpu(struct kbase_device *kbdev, struct kbase_cont
 
 static void kbase_mmu_sync_pgd_cpu(struct kbase_device *kbdev, dma_addr_t handle, size_t size)
 {
-	/* Ensure that the GPU can read the pages from memory.
-	 *
-	 * pixel: b/200555454 requires this sync to happen even if the system
-	 * is coherent.
+	/* In non-coherent system, ensure the GPU can read
+	 * the pages from memory
 	 */
-	dma_sync_single_for_device(kbdev->dev, handle, size,
-			DMA_TO_DEVICE);
+	if (kbdev->system_coherency == COHERENCY_NONE)
+		dma_sync_single_for_device(kbdev->dev, handle, size,
+				DMA_TO_DEVICE);
 }
 
 /**
