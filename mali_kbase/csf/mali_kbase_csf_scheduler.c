@@ -4523,7 +4523,7 @@ static void scheduler_update_idle_slots_status(struct kbase_device *kbdev,
 				kbdev->dev,
 				"[%llu] Timeout (%d ms) on CSG_REQ:STATUS_UPDATE, treat groups as not idle: slot mask=0x%lx",
 				kbase_backend_get_cycle_cnt(kbdev),
-				kbdev->csf.fw_timeout_ms,
+				CSG_STATUS_UPDATE_REQ_TIMEOUT_MS,
 				csg_bitmap[0]);
 
 			/* Store the bitmap of timed out slots */
