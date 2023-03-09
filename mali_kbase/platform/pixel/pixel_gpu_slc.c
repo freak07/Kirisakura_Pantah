@@ -94,7 +94,7 @@ static struct kbase_va_region* gpu_slc_get_region(struct kbase_context *kctx, u6
 	return reg;
 
 invalid:
-	dev_warn(kctx->kbdev->dev, "pixel: failed to find valid region for gpu_va: %llu", va);
+	dev_dbg(kctx->kbdev->dev, "pixel: failed to find valid region for gpu_va: %llu", va);
 	return NULL;
 }
 
