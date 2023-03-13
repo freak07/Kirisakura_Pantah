@@ -828,7 +828,6 @@ struct kbase_csf_context {
  *                 mechanism to check for deadlocks involving reset waits.
  * @state:         Tracks if the GPU reset is in progress or not.
  *                 The state is represented by enum @kbase_csf_reset_gpu_state.
- * @force_pm_hw_reset:	pixel: Powercycle the GPU instead of attempting a soft/hard reset.
  */
 struct kbase_csf_reset_gpu {
 	struct workqueue_struct *workq;
@@ -836,7 +835,6 @@ struct kbase_csf_reset_gpu {
 	wait_queue_head_t wait;
 	struct rw_semaphore sem;
 	atomic_t state;
-	bool force_pm_hw_reset;
 };
 
 /**

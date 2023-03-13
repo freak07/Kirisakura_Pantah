@@ -151,9 +151,6 @@ void kbase_reset_gpu_assert_failed_or_prevented(struct kbase_device *kbdev);
 /* This reset should be treated as an unrecoverable error by HW counter logic */
 #define RESET_FLAGS_HWC_UNRECOVERABLE_ERROR ((unsigned int)(1 << 0))
 
-/* pixel: Powercycle the GPU instead of attempting a soft/hard reset (only used on CSF hw). */
-#define RESET_FLAGS_FORCE_PM_HW_RESET ((unsigned int)(1 << 1))
-
 /**
  * kbase_prepare_to_reset_gpu_locked - Prepare for resetting the GPU.
  * @kbdev: Device pointer
