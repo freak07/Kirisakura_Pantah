@@ -1499,6 +1499,14 @@ static int kbase_kcpu_fence_wait_process(
 					 "Unexpected status for fence %s of ctx:%d_%d kcpu queue:%u",
 					 info.name, kctx->tgid, kctx->id, kcpu_queue->id);
 			}
+			/*
+			 * At this point the fence in question is already signalled without
+			 * any error. Its useful to print a FENCE_WAIT_END trace here to
+			 * indicate completion.
+			 */
+			KBASE_KTRACE_ADD_CSF_KCPU(kctx->kbdev,
+				KCPU_FENCE_WAIT_END, kcpu_queue,
+				fence->context, fence->seqno);
 		}
 	}
 
