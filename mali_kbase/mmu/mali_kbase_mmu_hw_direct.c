@@ -387,7 +387,7 @@ static int mmu_hw_do_lock_no_wait(struct kbase_device *kbdev, struct kbase_as *a
 	return ret;
 }
 
-static int mmu_hw_do_lock(struct kbase_device *kbdev, struct kbase_as *as,
+int kbase_mmu_hw_do_lock(struct kbase_device *kbdev, struct kbase_as *as,
 			  const struct kbase_mmu_hw_op_param *op_param)
 {
 	int ret;
@@ -550,7 +550,7 @@ int kbase_mmu_hw_do_flush_on_gpu_ctrl(struct kbase_device *kbdev, struct kbase_a
 		gpu_cmd = GPU_COMMAND_CACHE_CLN_INV_L2;
 
 	/* 1. Issue MMU_AS_CONTROL.COMMAND.LOCK operation. */
-	ret = mmu_hw_do_lock(kbdev, as, op_param);
+	ret = kbase_mmu_hw_do_lock(kbdev, as, op_param);
 	if (ret)
 		return ret;
 
