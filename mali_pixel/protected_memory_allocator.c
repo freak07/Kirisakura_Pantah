@@ -476,9 +476,20 @@ static void mali_pma_slab_remove(
  */
 static int protected_memory_allocator_probe(struct platform_device *pdev)
 {
+	struct dma_heap *pma_heap;
 	struct mali_pma_dev *mali_pma_dev;
 	struct protected_memory_allocator_device *pma_dev;
 	int ret = 0;
+
+	/* Try locating a PMA heap, defer if not present (yet). */
+	pma_heap = dma_heap_find(MALI_PMA_DMA_HEAP_NAME);
+	if (!pma_heap) {
+		dev_warn(&(pdev->dev),
+			"Failed to find \"%s\" DMA buffer heap. Deferring.\n",
+			MALI_PMA_DMA_HEAP_NAME);
+		ret = -EPROBE_DEFER;
+		goto out;
+	}
 
 	/* Create a Mali protected memory allocator device record. */
 	mali_pma_dev = kzalloc(sizeof(*mali_pma_dev), GFP_KERNEL);
@@ -486,6 +497,7 @@ static int protected_memory_allocator_probe(struct platform_device *pdev)
 		dev_err(&(pdev->dev),
 			"Failed to create a Mali protected memory allocator "
 			"device record\n");
+		dma_heap_put(pma_heap);
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -503,26 +515,14 @@ static int protected_memory_allocator_probe(struct platform_device *pdev)
 	pma_dev->ops.pma_get_phys_addr = mali_pma_get_phys_addr;
 	pma_dev->ops.pma_free_page = mali_pma_free_page;
 
-	/* Get the DMA buffer heap. */
-	mali_pma_dev->dma_heap = dma_heap_find(MALI_PMA_DMA_HEAP_NAME);
-	if (!mali_pma_dev->dma_heap) {
-		dev_err(&(pdev->dev),
-			"Failed to find \"%s\" DMA buffer heap\n",
-                        MALI_PMA_DMA_HEAP_NAME);
-		ret = -ENODEV;
-		goto out;
-	}
+	/* Assign the DMA buffer heap. */
+	mali_pma_dev->dma_heap = pma_heap;
 
 	/* Log that the protected memory allocator was successfully probed. */
 	dev_info(&(pdev->dev),
 		"Protected memory allocator probed successfully\n");
 
 out:
-	/* Clean up on error. */
-	if (ret) {
-		protected_memory_allocator_remove(pdev);
-	}
-
 	return ret;
 }
 
