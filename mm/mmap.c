@@ -589,7 +589,7 @@ inline int vma_expand(struct ma_state *mas, struct vm_area_struct *vma,
 	if (mas_preallocate(mas, vma, GFP_KERNEL))
 		goto nomem;
 
-	vma_start_write(vma);
+	vma_write_lock(vma);
 	vma_adjust_trans_huge(vma, start, end, 0);
 
 	if (file) {
@@ -636,7 +636,7 @@ inline int vma_expand(struct ma_state *mas, struct vm_area_struct *vma,
 	}
 
 	if (remove_next) {
-		vma_start_write(next);
+		vma_write_lock(next);
 		if (file) {
 			uprobe_munmap(next, next->vm_start, next->vm_end);
 			fput(file);
@@ -686,9 +686,9 @@ int __vma_adjust(struct vm_area_struct *vma, unsigned long start,
 	MA_STATE(mas, &mm->mm_mt, start, end - 1);
 	struct vm_area_struct *exporter = NULL, *importer = NULL;
 
-	vma_start_write(vma);
+	vma_write_lock(vma);
 	if (next)
-		vma_start_write(next);
+		vma_write_lock(next);
 
 	if (next && !insert) {
 		if (end >= next->vm_end) {
@@ -736,7 +736,7 @@ int __vma_adjust(struct vm_area_struct *vma, unsigned long start,
 			if (remove_next == 2 && !next->anon_vma) {
 				exporter = next_next;
 				if (exporter)
-					vma_start_write(exporter);
+					vma_write_lock(exporter);
 			}
 
 		} else if (end > next->vm_start) {
@@ -897,7 +897,7 @@ int __vma_adjust(struct vm_area_struct *vma, unsigned long start,
 
 	if (remove_next) {
 again:
-		vma_mark_detached(next, true);
+		vma_mark_detached(vp->remove, true);
 		if (file) {
 			uprobe_munmap(next, next->vm_start, next->vm_end);
 			fput(file);
@@ -918,7 +918,7 @@ again:
 			remove_next = 1;
 			next = next_next;
 			if (next)
-				vma_start_write(next);
+				vma_write_lock(next);
 			goto again;
 		}
 	}
@@ -2402,7 +2402,7 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	int count = 0;
 	int error = -ENOMEM;
 	MA_STATE(mas_detach, &mt_detach, 0, 0);
-	mt_init_flags(&mt_detach, mas->tree->ma_flags &
+	mt_init_flags(&mt_detach, vmi->mas.tree->ma_flags &
 		      (MT_FLAGS_LOCK_MASK | MT_FLAGS_USE_RCU));
 	mt_set_external_lock(&mt_detach, &mm->mmap_lock);
 
