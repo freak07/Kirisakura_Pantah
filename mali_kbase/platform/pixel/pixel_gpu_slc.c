@@ -133,13 +133,25 @@ static void gpu_slc_resize_partition(struct kbase_device* kbdev)
 	struct pixel_context *pc = kbdev->platform_context;
 
 	/* Request that the mgm select an SLC partition that fits our demand */
-	pc->slc.partition_size =
-	    pixel_mgm_resize_group_to_fit(kbdev->mgm_dev, MGM_SLC_GROUP_ID, pc->slc.demand);
+	pixel_mgm_resize_group_to_fit(kbdev->mgm_dev, MGM_SLC_GROUP_ID, pc->slc.demand);
 
-	dev_dbg(kbdev->dev,
-	        "pixel: resized GPU SLC partition to: %llu, to meet demand: %llu",
-	        pc->slc.partition_size,
-	        pc->slc.demand);
+	dev_dbg(kbdev->dev, "pixel: resized GPU SLC partition to meet demand: %llu", pc->slc.demand);
+}
+
+/**
+ * gpu_slc_get_partition_size - Query the current size of the GPU's SLC partition.
+ *
+ * @kbdev: The &struct kbase_device for the GPU.
+ *
+ * Returns the size of the GPU's SLC partition.
+ */
+static u64 gpu_slc_get_partition_size(struct kbase_device* kbdev)
+{
+	u64 const partition_size = pixel_mgm_query_group_size(kbdev->mgm_dev, MGM_SLC_GROUP_ID);
+
+	dev_dbg(kbdev->dev, "pixel: GPU SLC partition partition size: %llu", partition_size);
+
+	return partition_size;
 }
 
 /**
@@ -175,8 +187,9 @@ static void gpu_slc_liveness_update(struct kbase_context* kctx,
 	kctx_pd->slc.peak_demand = 0;
 	kctx_pd->slc.peak_usage = 0;
 
-	/* Calculate the remaining free space in the SLC partition */
-	free_space = pc->slc.partition_size - pc->slc.usage;
+	/* Calculate the remaining free space in the SLC partition (floored at 0) */
+	free_space = gpu_slc_get_partition_size(kbdev);
+	free_space -= min(free_space, pc->slc.usage);
 
 	for (i = 0; i < info->live_ranges_count; ++i)
 	{

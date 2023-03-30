@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/version.h>
+#include <linux/limits.h>
 
 #include <linux/memory_group_manager.h>
 
@@ -52,6 +53,8 @@
 #define PBHA_BIT_MASK (0xf)
 
 #define MGM_PBHA_DEFAULT 0
+
+#define MGM_SENTINEL_PT_SIZE U64_MAX
 
 #define INVALID_GROUP_ID(group_id) \
 	(WARN_ON((group_id) < 0) || \
@@ -111,12 +114,23 @@ struct mgm_group {
 };
 
 /**
+ * struct partition_stats - Structure for tracking sizing of a partition
+ *
+ * @capacity: The total capacity of each partition
+ * @size: The current size of each partition
+ */
+struct partition_stats {
+	u64 capacity;
+	atomic64_t size;
+};
+
+/**
  * struct mgm_groups - Structure for groups of memory group manager
  *
  * @groups: To keep track of the number of allocated pages of all groups
  * @ngroups: Number of groups actually used
  * @npartitions: Number of partitions used by all groups combined
- * @pt_sizes: The size of each partition
+ * @pt_stats: The sizing info for each partition
  * @dev: device attached
  * @pt_handle: Link to SLC partition data
  * @kobj: &sruct kobject used for linking to pixel_stats_sysfs node
@@ -129,7 +143,7 @@ struct mgm_groups {
 	struct mgm_group groups[MEMORY_GROUP_MANAGER_NR_GROUPS];
 	size_t ngroups;
 	size_t npartitions;
-	u32 *pt_sizes;
+	struct partition_stats *pt_stats;
 	struct device *dev;
 	struct pt_handle *pt_handle;
 	struct kobject kobj;
@@ -437,14 +451,25 @@ static void update_size(struct memory_group_manager_device *mgm_dev, int
 static void enable_partition(struct mgm_groups* data, enum pixel_mgm_group_id group_id)
 {
 	int ptid, pbha;
+	size_t size = 0;
+	int const active_idx = group_active_pt_id(data, group_id);
 
-	ptid = pt_client_enable(data->pt_handle, group_active_pt_id(data, group_id));
+	/* Set the size to a known sentinel value so that we can later detect an update */
+	atomic64_set(&data->pt_stats[active_idx].size, MGM_SENTINEL_PT_SIZE);
+
+	ptid = pt_client_enable_size(data->pt_handle, active_idx, &size);
 	if (ptid == -EINVAL)
 		dev_err(data->dev, "Failed to get partition for group: %d\n", group_id);
 	else
-		dev_info(data->dev, "pt_client_enable returned ptid=%d for group=%d", ptid, group_id);
+		dev_info(data->dev, "pt_client_enable returned ptid=%d with size=%zu, for group=%d", ptid, size, group_id);
 
-	pbha = pt_pbha(data->dev->of_node, group_active_pt_id(data, group_id));
+	/* The resize callback may have already been executed, which would have set
+	 * the correct size. Only update the size if this has not happened.
+	 * We can tell that no resize took place if the size is still sentinel.
+	 */
+	atomic64_cmpxchg(&data->pt_stats[active_idx].size, MGM_SENTINEL_PT_SIZE, size);
+
+	pbha = pt_pbha(data->dev->of_node, active_idx);
 	if (pbha == PT_PBHA_INVALID)
 		dev_err(data->dev, "Failed to get PBHA for group: %d\n", group_id);
 	else
@@ -460,20 +485,20 @@ static void set_group_partition(struct mgm_groups* data,
                                 int new_pt_index)
 {
 	int ptid, pbha;
-	int active_id = group_active_pt_id(data, group_id);
-	int new_id = group_pt_id(data, group_id, new_pt_index);
+	int const active_idx = group_active_pt_id(data, group_id);
+	int const new_idx = group_pt_id(data, group_id, new_pt_index);
 
 	/* Early out if no changes are needed */
-	if (new_id == active_id)
+	if (new_idx == active_idx)
 		return;
 
-	ptid = pt_client_mutate(data->pt_handle, active_id, new_id);
+	ptid = pt_client_mutate(data->pt_handle, active_idx, new_idx);
 	if (ptid == -EINVAL)
 		dev_err(data->dev, "Failed to get partition for group: %d\n", group_id);
 	else
-		dev_info(data->dev, "pt_client_enable returned ptid=%d for group=%d", ptid, group_id);
+		dev_info(data->dev, "pt_client_mutate returned ptid=%d for group=%d", ptid, group_id);
 
-	pbha = pt_pbha(data->dev->of_node, new_id);
+	pbha = pt_pbha(data->dev->of_node, new_idx);
 	if (pbha == PT_PBHA_INVALID)
 		dev_err(data->dev, "Failed to get PBHA for group: %d\n", group_id);
 	else
@@ -482,19 +507,17 @@ static void set_group_partition(struct mgm_groups* data,
 	data->groups[group_id].ptid = ptid;
 	data->groups[group_id].pbha = pbha;
 	data->groups[group_id].active_pt_idx = new_pt_index;
+
+	/* Reset old partition size */
+	atomic64_set(&data->pt_stats[active_idx].size, data->pt_stats[active_idx].capacity);
 }
 
-u64 pixel_mgm_resize_group_to_fit(struct memory_group_manager_device* mgm_dev,
-                                  enum pixel_mgm_group_id group_id,
-                                  u64 demand)
+u64 pixel_mgm_query_group_size(struct memory_group_manager_device* mgm_dev,
+                               enum pixel_mgm_group_id group_id)
 {
 	struct mgm_groups *data;
 	struct mgm_group *group;
-	s64 diff, cur_size, min_diff = S64_MAX;
-	int pt_idx;
-	u64 ret = 0;
-	/* Convert demand to nearest KB */
-	s64 demand_kb = demand >> 10;
+	u64 size = 0;
 
 	/* Early out if the group doesn't exist */
 	if (INVALID_GROUP_ID(group_id))
@@ -507,11 +530,38 @@ u64 pixel_mgm_resize_group_to_fit(struct memory_group_manager_device* mgm_dev,
 	if (group->pt_num == 0)
 		goto done;
 
-	/* Calculate best partition to use, by finding the nearest size */
+	size = atomic64_read(&data->pt_stats[group_active_pt_id(data, group_id)].size);
+
+done:
+	return size;
+}
+EXPORT_SYMBOL(pixel_mgm_query_group_size);
+
+void pixel_mgm_resize_group_to_fit(struct memory_group_manager_device* mgm_dev,
+                                  enum pixel_mgm_group_id group_id,
+                                  u64 demand)
+{
+	struct mgm_groups *data;
+	struct mgm_group *group;
+	s64 diff, cur_size, min_diff = S64_MAX;
+	int pt_idx;
+
+	/* Early out if the group doesn't exist */
+	if (INVALID_GROUP_ID(group_id))
+		goto done;
+
+	data = mgm_dev->data;
+	group = &data->groups[group_id];
+
+	/* Early out if the group has no partitions */
+	if (group->pt_num == 0)
+		goto done;
+
+	/* Calculate best partition to use, by finding the nearest capacity */
 	for (pt_idx = 0; pt_idx < group->pt_num; ++pt_idx)
 	{
-		cur_size = data->pt_sizes[group_pt_id(data, group_id, pt_idx)];
-		diff = abs(demand_kb - cur_size);
+		cur_size = data->pt_stats[group_pt_id(data, group_id, pt_idx)].capacity;
+		diff = abs(demand - cur_size);
 
 		if (diff > min_diff)
 			break;
@@ -521,14 +571,10 @@ u64 pixel_mgm_resize_group_to_fit(struct memory_group_manager_device* mgm_dev,
 
 	set_group_partition(data, group_id, pt_idx - 1);
 
-	/* Get the new partition size, in bytes */
-	ret = data->pt_sizes[group_active_pt_id(data, group_id)] << 10;
-
-	dev_dbg(data->dev, "%s: resized memory_group_%d to %lluB for demand: %lldB",
-		__func__, group_id, ret, demand);
+	dev_dbg(data->dev, "%s: resized memory_group_%d for demand: %lldB", __func__, group_id, demand);
 
 done:
-	return ret;
+	return;
 }
 EXPORT_SYMBOL(pixel_mgm_resize_group_to_fit);
 
@@ -736,10 +782,10 @@ static vm_fault_t mgm_vmf_insert_pfn_prot(
 
 static void mgm_resize_callback(void *data, int id, size_t size_allocated)
 {
-	/* Currently we don't do anything on partition resize */
 	struct mgm_groups *const mgm_data = (struct mgm_groups *)data;
-	dev_dbg(mgm_data->dev, "Resize callback called, size_allocated: %zu\n",
-		size_allocated);
+	dev_dbg(mgm_data->dev, "Resize callback called, size_allocated: %zu\n", size_allocated);
+	/* Update the partition size for the group */
+	atomic64_set(&mgm_data->pt_stats[id].size, size_allocated);
 }
 
 static int mgm_initialize_data(struct mgm_groups *mgm_data)
@@ -756,18 +802,26 @@ static int mgm_initialize_data(struct mgm_groups *mgm_data)
 	}
 	mgm_data->npartitions = of_property_count_strings(mgm_data->dev->of_node, "pt_id");
 
-	mgm_data->pt_sizes = kzalloc(mgm_data->npartitions * sizeof(*mgm_data), GFP_KERNEL);
-	if (mgm_data->pt_sizes == NULL) {
-		dev_err(mgm_data->dev, "failed to allocate space for pt_sizes");
+	mgm_data->pt_stats = kzalloc(mgm_data->npartitions * sizeof(struct partition_stats), GFP_KERNEL);
+	if (mgm_data->pt_stats == NULL) {
+		dev_err(mgm_data->dev, "failed to allocate space for pt_stats");
 		ret = -ENOMEM;
 		goto out_err;
 	}
 
-	ret = of_property_read_u32_array(
-	    mgm_data->dev->of_node, "pt_size", mgm_data->pt_sizes, mgm_data->npartitions);
-	if (ret) {
-		dev_err(mgm_data->dev, "failed to read pt_size");
-		goto out_err;
+	for (i = 0; i < mgm_data->npartitions; i++) {
+		struct partition_stats* stats;
+		u32 capacity_kb;
+		ret = of_property_read_u32_index(mgm_data->dev->of_node, "pt_size", i, &capacity_kb);
+		if (ret) {
+			dev_err(mgm_data->dev, "failed to read pt_size[%d]", i);
+			continue;
+		}
+
+		stats = &mgm_data->pt_stats[i];
+		// Convert from KB to bytes
+		stats->capacity = (u64)capacity_kb << 10;
+		atomic64_set(&stats->size, stats->capacity);
 	}
 
 	for (i = 0; i < MEMORY_GROUP_MANAGER_NR_GROUPS; i++) {
@@ -834,7 +888,7 @@ static int mgm_initialize_data(struct mgm_groups *mgm_data)
 	return ret;
 
 out_err:
-	kfree(mgm_data->pt_sizes);
+	kfree(mgm_data->pt_stats);
 	return ret;
 }
 

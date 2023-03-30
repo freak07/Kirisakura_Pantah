@@ -295,7 +295,6 @@ struct gpu_dvfs_metrics_uid_stats;
  * @dvfs.qos.bts.scenario:  The index of the BTS scenario to be used. Set via DT.
  *
  * @slc.lock:           Synchronize updates to the SLC partition accounting variables.
- * @slc.partition_size: The size of the GPU's SLC partition.
  * @slc.demand:         The total demand for SLC space, an aggregation of each kctx's demand.
  * @slc.usage:          The total amount of SLC space used, an aggregation of each kctx's usage.
  */
@@ -410,7 +409,6 @@ struct pixel_context {
 
 	struct {
 		struct mutex lock;
-		u64 partition_size;
 		u64 demand;
 		u64 usage;
 	} slc;
