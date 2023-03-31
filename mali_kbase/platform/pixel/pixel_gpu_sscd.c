@@ -12,6 +12,7 @@
 
 /* Pixel integration includes */
 #include "mali_kbase_config_platform.h"
+#include <mali_kbase_reset_gpu.h>
 #include "pixel_gpu_sscd.h"
 #include "pixel_gpu_debug.h"
 #include "pixel_gpu_control.h"
@@ -473,6 +474,8 @@ static void segments_term(struct kbase_device *kbdev, struct sscd_segment* segme
 	memset(segments, 0, sizeof(struct sscd_segment) * NUM_SEGMENTS);
 }
 
+#define GPU_HANG_SSCD_TIMEOUT_MS (300000) /* 300s */
+
 /**
  * gpu_sscd_dump() - Initiates and reports a subsystem core-dump of the GPU.
  *
@@ -487,8 +490,23 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 	struct sscd_platform_data *pdata = dev_get_platdata(&sscd_dev.dev);
 	struct pixel_context *pc = kbdev->platform_context;
 	int ec = 0;
-	unsigned long flags;
+	unsigned long flags, current_ts = jiffies;
 	struct pixel_gpu_pdc_status pdc_status;
+	static unsigned long last_hang_sscd_ts;
+
+	if (!strcmp(reason, "GPU hang")) {
+		/* GPU hang - avoid multiple coredumps for the same hang until
+		 * GPU_HANG_SSCD_TIMEOUT_MS passes and GPU reset shows no failure.
+		 */
+		if (!last_hang_sscd_ts || (time_after(current_ts,
+				last_hang_sscd_ts + msecs_to_jiffies(GPU_HANG_SSCD_TIMEOUT_MS)) &&
+				!kbase_reset_gpu_failed(kbdev))) {
+			last_hang_sscd_ts = current_ts;
+		} else {
+			dev_info(kbdev->dev, "pixel: skipping mali subsystem core dump");
+			return;
+		}
+	}
 
 	dev_info(kbdev->dev, "pixel: mali subsystem core dump in progress");
 	/* No point in proceeding if we can't report the dumped data */
