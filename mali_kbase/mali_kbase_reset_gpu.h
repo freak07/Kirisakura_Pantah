@@ -144,6 +144,14 @@ void kbase_reset_gpu_assert_prevented(struct kbase_device *kbdev);
 void kbase_reset_gpu_assert_failed_or_prevented(struct kbase_device *kbdev);
 
 /**
+ * kbase_reset_gpu_failed - Return whether a previous GPU reset failed.
+ *
+ * @kbdev: Device pointer
+ *
+ */
+bool kbase_reset_gpu_failed(struct kbase_device *kbdev);
+
+/**
  * RESET_FLAGS_NONE - Flags for kbase_prepare_to_reset_gpu
  */
 #define RESET_FLAGS_NONE (0U)

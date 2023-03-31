@@ -163,6 +163,11 @@ void kbase_reset_gpu_assert_failed_or_prevented(struct kbase_device *kbdev)
 	WARN_ON(kbase_reset_gpu_is_active(kbdev));
 }
 
+bool kbase_reset_gpu_failed(struct kbase_device *kbdev)
+{
+	return (atomic_read(&kbdev->csf.reset.state) == KBASE_CSF_RESET_GPU_FAILED);
+}
+
 /* Mark the reset as now happening, and synchronize with other threads that
  * might be trying to access the GPU
  */
