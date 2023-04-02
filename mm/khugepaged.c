@@ -464,9 +464,6 @@ bool hugepage_vma_check(struct vm_area_struct *vma,
 	if (file_thp_enabled(vma))
 		return true;
 
-		return S_ISREG(inode->i_mode);
-	}
-
 	if (!vma->anon_vma || vma->vm_ops)
 		return false;
 	if (vma_is_temporary_stack(vma))
