@@ -30,6 +30,7 @@
 #include <csf/ipa_control/mali_kbase_csf_ipa_control.h>
 #include <mali_kbase_reset_gpu.h>
 #include <csf/mali_kbase_csf_firmware_log.h>
+#include "mali_kbase_config_platform.h"
 
 enum kbasep_soft_reset_status {
 	RESET_SUCCESS = 0,
@@ -467,6 +468,7 @@ static void kbase_csf_reset_gpu_worker(struct work_struct *data)
 		atomic_read(&kbdev->csf.reset.state);
 	const bool silent =
 		kbase_csf_reset_state_is_silent(initial_reset_state);
+	struct gpu_uevent evt;
 
 	/* Ensure any threads (e.g. executing the CSF scheduler) have finished
 	 * using the HW
@@ -503,6 +505,16 @@ static void kbase_csf_reset_gpu_worker(struct work_struct *data)
 	}
 
 	kbase_disjoint_state_down(kbdev);
+
+	if (err) {
+		evt.type = GPU_UEVENT_TYPE_GPU_RESET;
+		evt.info = GPU_UEVENT_INFO_CSF_RESET_FAILED;
+	} else {
+		evt.type = GPU_UEVENT_TYPE_GPU_RESET;
+		evt.info = GPU_UEVENT_INFO_CSF_RESET_OK;
+	}
+	if (!silent)
+		pixel_gpu_uevent_send(kbdev, &evt);
 
 	/* Allow other threads to once again use the GPU */
 	kbase_csf_reset_end_hw_access(kbdev, err, firmware_inited);

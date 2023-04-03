@@ -1281,6 +1281,11 @@ static int halt_stream_sync(struct kbase_queue *queue)
 			 == CS_ACK_STATE_START), remaining);
 
 		if (!remaining) {
+			const struct gpu_uevent evt = {
+				.type = GPU_UEVENT_TYPE_KMD_ERROR,
+				.info = GPU_UEVENT_INFO_QUEUE_START
+			};
+			pixel_gpu_uevent_send(kbdev, &evt);
 			dev_warn(kbdev->dev, "[%llu] Timeout (%d ms) waiting for queue to start on csi %d bound to group %d on slot %d",
 				 kbase_backend_get_cycle_cnt(kbdev), kbdev->csf.fw_timeout_ms,
 				 csi_index, group->handle, group->csg_nr);
@@ -1310,6 +1315,11 @@ static int halt_stream_sync(struct kbase_queue *queue)
 		 == CS_ACK_STATE_STOP), remaining);
 
 	if (!remaining) {
+		const struct gpu_uevent evt = {
+			.type = GPU_UEVENT_TYPE_KMD_ERROR,
+			.info = GPU_UEVENT_INFO_QUEUE_STOP
+		};
+		pixel_gpu_uevent_send(kbdev, &evt);
 		dev_warn(kbdev->dev, "[%llu] Timeout (%d ms) waiting for queue to stop on csi %d bound to group %d on slot %d",
 			 kbase_backend_get_cycle_cnt(kbdev), kbdev->csf.fw_timeout_ms,
 			 queue->csi_index, group->handle, group->csg_nr);
@@ -1483,6 +1493,11 @@ retry:
 					kbase_csf_timeout_in_jiffies(kbdev->csf.fw_timeout_ms));
 
 				if (!remaining) {
+					const struct gpu_uevent evt = {
+						.type = GPU_UEVENT_TYPE_KMD_ERROR,
+						.info = GPU_UEVENT_INFO_QUEUE_STOP_ACK
+					};
+					pixel_gpu_uevent_send(kbdev, &evt);
 					dev_warn(kbdev->dev,
 						 "[%llu] Timeout (%d ms) waiting for queue stop ack on csi %d bound to group %d on slot %d",
 						 kbase_backend_get_cycle_cnt(kbdev), kbdev->csf.fw_timeout_ms,
@@ -1757,6 +1772,11 @@ static void start_stream_sync(struct kbase_queue *queue)
 		 == CS_ACK_STATE_START), remaining);
 
 	if (!remaining) {
+		const struct gpu_uevent evt = {
+				.type = GPU_UEVENT_TYPE_KMD_ERROR,
+				.info = GPU_UEVENT_INFO_QUEUE_START
+		};
+		pixel_gpu_uevent_send(kbdev, &evt);
 		dev_warn(kbdev->dev, "[%llu] Timeout (%d ms) waiting for queue to start on csi %d bound to group %d on slot %d",
 			 kbase_backend_get_cycle_cnt(kbdev), kbdev->csf.fw_timeout_ms,
 			 csi_index, group->handle, group->csg_nr);
@@ -1969,11 +1989,17 @@ static void halt_csg_slot(struct kbase_queue_group *group, bool suspend)
 		dev_dbg(kbdev->dev, "slot %d wait for up-running\n", slot);
 		remaining = wait_event_timeout(kbdev->csf.event_wait,
 				csg_slot_running(kbdev, slot), remaining);
-		if (!remaining)
+		if (!remaining) {
+			const struct gpu_uevent evt = {
+				.type = GPU_UEVENT_TYPE_KMD_ERROR,
+				.info = GPU_UEVENT_INFO_CSG_SLOT_READY
+			};
+			pixel_gpu_uevent_send(kbdev, &evt);
 			dev_warn(kbdev->dev,
 				 "[%llu] slot %d timeout (%d ms) on up-running\n",
 				 kbase_backend_get_cycle_cnt(kbdev),
 				 slot, kbdev->csf.fw_timeout_ms);
+		}
 	}
 
 	if (csg_slot_running(kbdev, slot)) {
@@ -3083,6 +3109,11 @@ static int term_group_sync(struct kbase_queue_group *group)
 		remaining);
 
 	if (!remaining) {
+		const struct gpu_uevent evt = {
+			.type = GPU_UEVENT_TYPE_KMD_ERROR,
+			.info = GPU_UEVENT_INFO_GROUP_TERM
+		};
+		pixel_gpu_uevent_send(kbdev, &evt);
 		dev_warn(kbdev->dev, "[%llu] term request timeout (%d ms) for group %d of context %d_%d on slot %d",
 			 kbase_backend_get_cycle_cnt(kbdev), kbdev->csf.fw_timeout_ms,
 			 group->handle, group->kctx->tgid,
@@ -3583,6 +3614,7 @@ static void program_suspending_csg_slots(struct kbase_device *kbdev)
 				program_vacant_csg_slot(kbdev, (s8)i);
 			}
 		} else {
+			struct gpu_uevent evt;
 			u32 i;
 
 			/* Groups that have failed to suspend in time shall
@@ -3613,6 +3645,9 @@ static void program_suspending_csg_slots(struct kbase_device *kbdev)
 				 * terminated, the GPU will be reset as a
 				 * work-around.
 				 */
+				evt.type = GPU_UEVENT_TYPE_KMD_ERROR;
+				evt.info = GPU_UEVENT_INFO_CSG_GROUP_SUSPEND;
+				pixel_gpu_uevent_send(kbdev, &evt);
 				dev_warn(
 					kbdev->dev,
 					"[%llu] Group %d of context %d_%d on slot %u failed to suspend (timeout %d ms)",
@@ -3717,6 +3752,11 @@ static void wait_csg_slots_start(struct kbase_device *kbdev)
 				group->run_state = KBASE_CSF_GROUP_RUNNABLE;
 			}
 		} else {
+			const struct gpu_uevent evt = {
+				.type = GPU_UEVENT_TYPE_KMD_ERROR,
+				.info = GPU_UEVENT_INFO_CSG_SLOTS_START
+			};
+			pixel_gpu_uevent_send(kbdev, &evt);
 			dev_warn(kbdev->dev, "[%llu] Timeout (%d ms) waiting for CSG slots to start, slots: 0x%*pb\n",
 				 kbase_backend_get_cycle_cnt(kbdev),
 				 kbdev->csf.fw_timeout_ms,
@@ -3865,6 +3905,11 @@ static void wait_csg_slots_finish_prio_update(struct kbase_device *kbdev)
 		 * issue, no major consequences are expected as a
 		 * result, so just warn the case.
 		 */
+		const struct gpu_uevent evt = {
+				.type = GPU_UEVENT_TYPE_KMD_ERROR,
+				.info = GPU_UEVENT_INFO_CSG_EP_CFG
+		};
+		pixel_gpu_uevent_send(kbdev, &evt);
 		dev_warn(
 			kbdev->dev,
 			"[%llu] Timeout (%d ms) on CSG_REQ:EP_CFG, skipping the update wait: slot mask=0x%lx",
@@ -4532,6 +4577,12 @@ static void scheduler_update_idle_slots_status(struct kbase_device *kbdev,
 
 		if (wait_csg_slots_handshake_ack(kbdev,
 				CSG_REQ_STATUS_UPDATE_MASK, csg_bitmap, wt)) {
+			const struct gpu_uevent evt = {
+				.type = GPU_UEVENT_TYPE_KMD_ERROR,
+				.info = GPU_UEVENT_INFO_CSG_REQ_STATUS_UPDATE
+			};
+			pixel_gpu_uevent_send(kbdev, &evt);
+
 			dev_warn(
 				kbdev->dev,
 				"[%llu] Timeout (%d ms) on CSG_REQ:STATUS_UPDATE, treat groups as not idle: slot mask=0x%lx",
@@ -4713,6 +4764,11 @@ static int suspend_active_groups_on_powerdown(struct kbase_device *kbdev,
 		/* The suspend of CSGs failed,
 		 * trigger the GPU reset to be in a deterministic state.
 		 */
+		const struct gpu_uevent evt = {
+			.type = GPU_UEVENT_TYPE_KMD_ERROR,
+			.info = GPU_UEVENT_INFO_CSG_SLOTS_SUSPEND
+		};
+		pixel_gpu_uevent_send(kbdev, &evt);
 		dev_warn(kbdev->dev, "[%llu] Timeout (%d ms) waiting for CSG slots to suspend on power down, slot_mask: 0x%*pb\n",
 			 kbase_backend_get_cycle_cnt(kbdev),
 			 kbdev->csf.fw_timeout_ms,
@@ -5714,6 +5770,11 @@ static int wait_csg_slots_suspend(struct kbase_device *kbdev,
 				}
 			}
 		} else {
+			const struct gpu_uevent evt = {
+				.type = GPU_UEVENT_TYPE_KMD_ERROR,
+				.info = GPU_UEVENT_INFO_CSG_SLOTS_SUSPEND
+			};
+			pixel_gpu_uevent_send(kbdev, &evt);
 			dev_warn(kbdev->dev, "[%llu] Timeout waiting for CSG slots to suspend, slot_mask: 0x%*pb\n",
 				 kbase_backend_get_cycle_cnt(kbdev),
 				 num_groups, slot_mask_local);
@@ -6134,6 +6195,11 @@ int kbase_csf_scheduler_group_copy_suspend_buf(struct kbase_queue_group *group,
 		err = wait_csg_slots_suspend(kbdev, slot_mask,
 					     kbdev->csf.fw_timeout_ms);
 		if (err) {
+			const struct gpu_uevent evt = {
+				.type = GPU_UEVENT_TYPE_KMD_ERROR,
+				.info = GPU_UEVENT_INFO_CSG_GROUP_SUSPEND
+			};
+			pixel_gpu_uevent_send(kbdev, &evt);
 			dev_warn(kbdev->dev, "[%llu] Timeout waiting for the group %d to suspend on slot %d",
 				 kbase_backend_get_cycle_cnt(kbdev),
 				 group->handle, group->csg_nr);

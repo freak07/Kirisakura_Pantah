@@ -2469,6 +2469,11 @@ int kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev)
 #endif
 
 	if (!remaining) {
+		const struct gpu_uevent evt = {
+			.type = GPU_UEVENT_TYPE_KMD_ERROR,
+			.info = GPU_UEVENT_INFO_L2_PM_TIMEOUT
+		};
+		pixel_gpu_uevent_send(kbdev, &evt);
 		kbase_pm_timed_out(kbdev);
 		err = -ETIMEDOUT;
 	} else if (remaining < 0) {
@@ -2509,6 +2514,11 @@ int kbase_pm_wait_for_desired_state(struct kbase_device *kbdev)
 #endif
 
 	if (!remaining) {
+		const struct gpu_uevent evt = {
+			.type = GPU_UEVENT_TYPE_KMD_ERROR,
+			.info = GPU_UEVENT_INFO_PM_TIMEOUT
+		};
+		pixel_gpu_uevent_send(kbdev, &evt);
 		kbase_pm_timed_out(kbdev);
 		err = -ETIMEDOUT;
 	} else if (remaining < 0) {

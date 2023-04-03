@@ -20,6 +20,38 @@ static struct gpu_uevent_ctx {
 
 static bool gpu_uevent_check_valid(const struct gpu_uevent *evt)
 {
+    switch (evt->type) {
+    case GPU_UEVENT_TYPE_KMD_ERROR:
+        switch (evt->info) {
+        case GPU_UEVENT_INFO_CSG_REQ_STATUS_UPDATE:
+        case GPU_UEVENT_INFO_CSG_SUSPEND:
+        case GPU_UEVENT_INFO_CSG_SLOTS_SUSPEND:
+        case GPU_UEVENT_INFO_CSG_GROUP_SUSPEND:
+        case GPU_UEVENT_INFO_CSG_EP_CFG:
+        case GPU_UEVENT_INFO_CSG_SLOTS_START:
+        case GPU_UEVENT_INFO_GROUP_TERM:
+        case GPU_UEVENT_INFO_QUEUE_START:
+        case GPU_UEVENT_INFO_QUEUE_STOP:
+        case GPU_UEVENT_INFO_QUEUE_STOP_ACK:
+        case GPU_UEVENT_INFO_CSG_SLOT_READY:
+        case GPU_UEVENT_INFO_L2_PM_TIMEOUT:
+        case GPU_UEVENT_INFO_PM_TIMEOUT:
+            return true;
+        default:
+            break;
+        }
+    case GPU_UEVENT_TYPE_GPU_RESET:
+        switch (evt->info) {
+        case GPU_UEVENT_INFO_CSF_RESET_OK:
+        case GPU_UEVENT_INFO_CSF_RESET_FAILED:
+            return true;
+        default:
+            break;
+        }
+    default:
+        break;
+    }
+
     return false;
 }
 
