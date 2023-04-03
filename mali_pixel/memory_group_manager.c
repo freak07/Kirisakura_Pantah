@@ -448,28 +448,37 @@ static void update_size(struct memory_group_manager_device *mgm_dev, int
 		pr_warn("total_gpu_pages %lld\n", atomic64_read(&total_gpu_pages));
 }
 
-static void enable_partition(struct mgm_groups* data, enum pixel_mgm_group_id group_id)
+static void pt_size_invalidate(struct mgm_groups* data, int pt_idx)
 {
-	int ptid, pbha;
-	size_t size = 0;
-	int const active_idx = group_active_pt_id(data, group_id);
-
 	/* Set the size to a known sentinel value so that we can later detect an update */
-	atomic64_set(&data->pt_stats[active_idx].size, MGM_SENTINEL_PT_SIZE);
+	atomic64_set(&data->pt_stats[pt_idx].size, MGM_SENTINEL_PT_SIZE);
+}
 
-	ptid = pt_client_enable_size(data->pt_handle, active_idx, &size);
+static void pt_size_init(struct mgm_groups* data, int pt_idx, size_t size)
+{
+	/* The resize callback may have already been executed, which would have set
+	 * the correct size. Only update the size if this has not happened.
+	 * We can tell that no resize took place if the size is still a sentinel.
+	 */
+	atomic64_cmpxchg(&data->pt_stats[pt_idx].size, MGM_SENTINEL_PT_SIZE, size);
+}
+
+static void validate_ptid(struct mgm_groups* data, enum pixel_mgm_group_id group_id, int ptid)
+{
 	if (ptid == -EINVAL)
 		dev_err(data->dev, "Failed to get partition for group: %d\n", group_id);
 	else
-		dev_info(data->dev, "pt_client_enable returned ptid=%d with size=%zu, for group=%d", ptid, size, group_id);
+		dev_info(data->dev, "pt_client_mutate returned ptid=%d for group=%d", ptid, group_id);
+}
 
-	/* The resize callback may have already been executed, which would have set
-	 * the correct size. Only update the size if this has not happened.
-	 * We can tell that no resize took place if the size is still sentinel.
-	 */
-	atomic64_cmpxchg(&data->pt_stats[active_idx].size, MGM_SENTINEL_PT_SIZE, size);
+static void update_group(struct mgm_groups* data,
+                         enum pixel_mgm_group_id group_id,
+                         int ptid,
+                         int relative_pt_idx)
+{
+	int const abs_pt_idx = group_pt_id(data, group_id, relative_pt_idx);
+	int const pbha = pt_pbha(data->dev->of_node, abs_pt_idx);
 
-	pbha = pt_pbha(data->dev->of_node, active_idx);
 	if (pbha == PT_PBHA_INVALID)
 		dev_err(data->dev, "Failed to get PBHA for group: %d\n", group_id);
 	else
@@ -478,13 +487,31 @@ static void enable_partition(struct mgm_groups* data, enum pixel_mgm_group_id gr
 	data->groups[group_id].ptid = ptid;
 	data->groups[group_id].pbha = pbha;
 	data->groups[group_id].state = MGM_GROUP_STATE_ENABLED;
+	data->groups[group_id].active_pt_idx = relative_pt_idx;
+}
+
+static void enable_partition(struct mgm_groups* data, enum pixel_mgm_group_id group_id)
+{
+	int ptid;
+	size_t size = 0;
+	int const active_idx = group_active_pt_id(data, group_id);
+
+	pt_size_invalidate(data, active_idx);
+
+	ptid = pt_client_enable_size(data->pt_handle, active_idx, &size);
+
+	validate_ptid(data, group_id, ptid);
+
+	update_group(data, group_id, ptid, data->groups[group_id].active_pt_idx);
+
+	pt_size_init(data, active_idx, size);
 }
 
 static void set_group_partition(struct mgm_groups* data,
                                 enum pixel_mgm_group_id group_id,
                                 int new_pt_index)
 {
-	int ptid, pbha;
+	int ptid;
 	size_t size = 0;
 	int const active_idx = group_active_pt_id(data, group_id);
 	int const new_idx = group_pt_id(data, group_id, new_pt_index);
@@ -493,31 +520,15 @@ static void set_group_partition(struct mgm_groups* data,
 	if (new_idx == active_idx)
 		return;
 
-	/* Set the size to a known sentinel value so that we can later detect an update */
-	atomic64_set(&data->pt_stats[new_idx].size, MGM_SENTINEL_PT_SIZE);
+	pt_size_invalidate(data, new_idx);
 
 	ptid = pt_client_mutate_size(data->pt_handle, active_idx, new_idx, &size);
-	if (ptid == -EINVAL)
-		dev_err(data->dev, "Failed to get partition for group: %d\n", group_id);
-	else
-		dev_info(data->dev, "pt_client_mutate returned ptid=%d for group=%d", ptid, group_id);
 
-	/* The resize callback may have already been executed, which would have set
-	 * the correct size. Only update the size if this has not happened.
-	 * We can tell that no resize took place if the size is still sentinel.
-	 */
-	atomic64_cmpxchg(&data->pt_stats[new_idx].size, MGM_SENTINEL_PT_SIZE, size);
+	validate_ptid(data, group_id, ptid);
 
-	pbha = pt_pbha(data->dev->of_node, new_idx);
-	if (pbha == PT_PBHA_INVALID)
-		dev_err(data->dev, "Failed to get PBHA for group: %d\n", group_id);
-	else
-		dev_info(data->dev, "pt_pbha returned PBHA=%d for group=%d", pbha, group_id);
+	update_group(data, group_id, ptid, new_pt_index);
 
-	data->groups[group_id].ptid = ptid;
-	data->groups[group_id].pbha = pbha;
-	data->groups[group_id].active_pt_idx = new_pt_index;
-
+	pt_size_init(data, new_idx, size);
 	/* Reset old partition size */
 	atomic64_set(&data->pt_stats[active_idx].size, data->pt_stats[active_idx].capacity);
 }
