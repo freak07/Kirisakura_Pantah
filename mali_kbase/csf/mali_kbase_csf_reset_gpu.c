@@ -178,6 +178,9 @@ static void kbase_csf_reset_begin_hw_access_sync(
 	unsigned long hwaccess_lock_flags;
 	unsigned long scheduler_spin_lock_flags;
 
+	/* Flush any pending coredumps */
+	flush_work(&kbdev->csf.coredump_work);
+
 	/* Note this is a WARN/atomic_set because it is a software issue for a
 	 * race to be occurring here
 	 */
