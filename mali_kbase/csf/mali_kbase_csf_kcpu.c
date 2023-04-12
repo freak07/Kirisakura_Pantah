@@ -2002,7 +2002,7 @@ static void kcpu_queue_process(struct kbase_kcpu_command_queue *queue,
 
 			break;
 		}
-		case BASE_KCPU_COMMAND_TYPE_JIT_FREE:
+		case BASE_KCPU_COMMAND_TYPE_JIT_FREE: {
 			KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_FREE_START(kbdev, queue);
 
 			status = kbase_kcpu_jit_free_process(queue, cmd);
@@ -2012,6 +2012,7 @@ static void kcpu_queue_process(struct kbase_kcpu_command_queue *queue,
 			KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_JIT_FREE_END(
 				kbdev, queue);
 			break;
+		}
 		case BASE_KCPU_COMMAND_TYPE_GROUP_SUSPEND: {
 			struct kbase_suspend_copy_buffer *sus_buf =
 					cmd->info.suspend_buf_copy.sus_buf;
@@ -2028,18 +2029,18 @@ static void kcpu_queue_process(struct kbase_kcpu_command_queue *queue,
 
 				KBASE_TLSTREAM_TL_KBASE_KCPUQUEUE_EXECUTE_GROUP_SUSPEND_END(
 					kbdev, queue, status);
+			}
 
-				if (!sus_buf->cpu_alloc) {
-					int i;
+			if (!sus_buf->cpu_alloc) {
+				int i;
 
-					for (i = 0; i < sus_buf->nr_pages; i++)
-						put_page(sus_buf->pages[i]);
-				} else {
-					kbase_mem_phy_alloc_kernel_unmapped(
-						sus_buf->cpu_alloc);
-					kbase_mem_phy_alloc_put(
-						sus_buf->cpu_alloc);
-				}
+				for (i = 0; i < sus_buf->nr_pages; i++)
+					put_page(sus_buf->pages[i]);
+			} else {
+				kbase_mem_phy_alloc_kernel_unmapped(
+					sus_buf->cpu_alloc);
+				kbase_mem_phy_alloc_put(
+					sus_buf->cpu_alloc);
 			}
 
 			kfree(sus_buf->pages);
