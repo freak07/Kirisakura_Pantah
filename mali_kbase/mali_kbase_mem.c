@@ -2471,11 +2471,8 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc,
 	if (nr_left >= (SZ_2M / SZ_4K)) {
 		int nr_lp = nr_left / (SZ_2M / SZ_4K);
 
-		res = kbase_mem_pool_alloc_pages(
-			&kctx->mem_pools.large[alloc->group_id],
-			 nr_lp * (SZ_2M / SZ_4K),
-			 tp,
-			 true);
+		res = kbase_mem_pool_alloc_pages(&kctx->mem_pools.large[alloc->group_id],
+						 nr_lp * (SZ_2M / SZ_4K), tp, true, kctx->task);
 
 		if (res > 0) {
 			nr_left -= res;
@@ -2527,9 +2524,8 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc,
 				if (np)
 					break;
 
-				err = kbase_mem_pool_grow(
-					&kctx->mem_pools.large[alloc->group_id],
-					1);
+				err = kbase_mem_pool_grow(&kctx->mem_pools.large[alloc->group_id],
+							  1, kctx->task);
 				if (err)
 					break;
 			} while (1);
@@ -2574,9 +2570,8 @@ no_new_partial:
 #endif
 
 	if (nr_left) {
-		res = kbase_mem_pool_alloc_pages(
-			&kctx->mem_pools.small[alloc->group_id],
-			nr_left, tp, false);
+		res = kbase_mem_pool_alloc_pages(&kctx->mem_pools.small[alloc->group_id], nr_left,
+						 tp, false, kctx->task);
 		if (res <= 0)
 			goto alloc_failed;
 	}
@@ -4074,7 +4069,7 @@ static int kbase_jit_grow(struct kbase_context *kctx,
 		spin_unlock(&kctx->mem_partials_lock);
 
 		kbase_gpu_vm_unlock(kctx);
-		ret = kbase_mem_pool_grow(pool, pool_delta);
+		ret = kbase_mem_pool_grow(pool, pool_delta, kctx->task);
 		kbase_gpu_vm_lock(kctx);
 
 		if (ret)
