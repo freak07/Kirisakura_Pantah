@@ -384,7 +384,6 @@ static void start_tick_timer(struct kbase_device *kbdev)
 	lockdep_assert_held(&scheduler->lock);
 
 	spin_lock_irqsave(&scheduler->interrupt_lock, flags);
-	WARN_ON(scheduler->tick_timer_active);
 	if (likely(!scheduler->tick_timer_active)) {
 		scheduler->tick_timer_active = true;
 
@@ -5682,7 +5681,6 @@ static void schedule_on_tick(struct kthread_work *work)
 
 	mutex_lock(&scheduler->lock);
 
-	WARN_ON(scheduler->tick_timer_active);
 	if (can_skip_scheduling(kbdev))
 		goto exit_no_schedule_unlock;
 
