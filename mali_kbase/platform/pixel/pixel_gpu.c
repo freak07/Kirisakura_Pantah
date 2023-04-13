@@ -229,6 +229,7 @@ static const struct kbase_device_init dev_init[] = {
 #endif
 	{ gpu_sysfs_init, gpu_sysfs_term, "sysfs init failed" },
 	{ gpu_sscd_init, gpu_sscd_term, "SSCD init failed" },
+	{ gpu_slc_init, gpu_slc_term, "SLC init failed" },
 };
 
 static void gpu_pixel_term_partial(struct kbase_device *kbdev,
