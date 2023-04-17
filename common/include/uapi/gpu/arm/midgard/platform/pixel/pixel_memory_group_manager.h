@@ -20,6 +20,9 @@ enum pixel_mgm_group_id
 	/* Group for memory that should be cached in the system level cache. */
 	MGM_SLC_GROUP_ID = 1,
 
+	/* Group for memory explicitly allocated in SLC. */
+	MGM_SLC_EXPLICIT_GROUP_ID = 2,
+
 	/* Imported memory is handled by the allocator of the memory, and the Mali
 	 * DDK will request a group_id for such memory via mgm_get_import_memory_id().
 	 * We specify which group we want to use for this here.
