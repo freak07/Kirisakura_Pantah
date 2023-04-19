@@ -32,6 +32,8 @@
 #include <csf/mali_kbase_csf_firmware_log.h>
 #include "mali_kbase_config_platform.h"
 
+#include <soc/google/debug-snapshot.h>
+
 enum kbasep_soft_reset_status {
 	RESET_SUCCESS = 0,
 	SOFT_RESET_FAILED,
@@ -224,6 +226,9 @@ static void kbase_csf_reset_end_hw_access(struct kbase_device *kbdev,
 	} else {
 		dev_err(kbdev->dev, "Reset failed to complete");
 		atomic_set(&kbdev->csf.reset.state, KBASE_CSF_RESET_GPU_FAILED);
+
+		/* pixel: This is unrecoverable, collect a ramdump and reboot. */
+		dbg_snapshot_emergency_reboot("mali: reset failed - unrecoverable GPU");
 	}
 
 	kbase_csf_scheduler_spin_unlock(kbdev, scheduler_spin_lock_flags);
