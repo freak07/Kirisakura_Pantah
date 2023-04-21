@@ -490,11 +490,30 @@ static void update_group(struct mgm_groups* data,
 	data->groups[group_id].active_pt_idx = relative_pt_idx;
 }
 
+static void disable_partition(struct mgm_groups* data, enum pixel_mgm_group_id group_id)
+{
+	int const active_idx = group_active_pt_id(data, group_id);
+
+	/* Skip if not already enabled */
+	if (data->groups[group_id].state != MGM_GROUP_STATE_ENABLED)
+		return;
+
+	pt_client_disable_no_free(data->pt_handle, active_idx);
+
+	data->groups[group_id].state = MGM_GROUP_STATE_DISABLED_NOT_FREED;
+
+	pt_size_init(data, active_idx, 0);
+}
+
 static void enable_partition(struct mgm_groups* data, enum pixel_mgm_group_id group_id)
 {
 	int ptid;
 	size_t size = 0;
 	int const active_idx = group_active_pt_id(data, group_id);
+
+	/* Skip if already enabled */
+	if (data->groups[group_id].state == MGM_GROUP_STATE_ENABLED)
+		return;
 
 	pt_size_invalidate(data, active_idx);
 
@@ -578,6 +597,13 @@ void pixel_mgm_resize_group_to_fit(struct memory_group_manager_device* mgm_dev,
 	if (group->pt_num == 0)
 		goto done;
 
+	/* We can disable the partition if there's no demand */
+	if (demand == 0)
+	{
+		disable_partition(data, group_id);
+		goto done;
+	}
+
 	/* Calculate best partition to use, by finding the nearest capacity */
 	for (pt_idx = 0; pt_idx < group->pt_num; ++pt_idx)
 	{
@@ -590,11 +616,13 @@ void pixel_mgm_resize_group_to_fit(struct memory_group_manager_device* mgm_dev,
 		min_diff = diff;
 	}
 
+	/* Ensure the partition is enabled before trying to mutate it */
+	enable_partition(data, group_id);
 	set_group_partition(data, group_id, pt_idx - 1);
 
+done:
 	dev_dbg(data->dev, "%s: resized memory_group_%d for demand: %lldB", __func__, group_id, demand);
 
-done:
 	return;
 }
 EXPORT_SYMBOL(pixel_mgm_resize_group_to_fit);
@@ -902,8 +930,13 @@ static int mgm_initialize_data(struct mgm_groups *mgm_data)
 		goto out_err;
 
 #ifdef CONFIG_MALI_PIXEL_GPU_SLC
-	/* We enable the SLC partition by default to support dynamic SLC caching */
+	/* We enable the SLC partition by default to support dynamic SLC caching.
+	 * Enabling will initialize the partition, by querying the pbha and assigning a ptid.
+	 * We then immediately disable the partition, effectively resizing the group to zero,
+	 * whilst still retaining other properties such as pbha.
+	 */
 	enable_partition(mgm_data, MGM_SLC_GROUP_ID);
+	disable_partition(mgm_data, MGM_SLC_GROUP_ID);
 #endif
 
 	return ret;
