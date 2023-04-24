@@ -973,8 +973,10 @@ static void mgm_term_data(struct mgm_groups *data)
 			break;
 
 		case MGM_GROUP_STATE_ENABLED:
+			pt_client_disable(data->pt_handle, group_active_pt_id(data, i));
+			break;
 		case MGM_GROUP_STATE_DISABLED_NOT_FREED:
-			pt_client_free(data->pt_handle, group->ptid);
+			pt_client_free(data->pt_handle, group_active_pt_id(data, i));
 			break;
 
 		default:
