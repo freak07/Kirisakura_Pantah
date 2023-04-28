@@ -2395,9 +2395,6 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 		      (MT_FLAGS_LOCK_MASK | MT_FLAGS_USE_RCU));
 	mt_set_external_lock(&mt_detach, &mm->mmap_lock);
 
-	if (mas_preallocate(mas, GFP_KERNEL))
-		return -ENOMEM;
-
 	mas->last = end - 1;
 	/*
 	 * If we need to split any vma, do it now to save pain later.
@@ -2509,7 +2506,7 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 		mas_set_range(mas, start, end - 1);
 	}
 #endif
-	mas_store_prealloc(mas, NULL);
+	mas_store_gfp(mas, NULL, GFP_KERNEL);
 	mm->map_count -= count;
 	/*
 	 * Do not downgrade mmap_lock if we are next to VM_GROWSDOWN or
