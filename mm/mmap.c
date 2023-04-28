@@ -79,7 +79,8 @@ core_param(ignore_rlimit_data, ignore_rlimit_data, bool, 0644);
 static void unmap_region(struct mm_struct *mm, struct maple_tree *mt,
 		struct vm_area_struct *vma, struct vm_area_struct *prev,
 		struct vm_area_struct *next, unsigned long start,
-		unsigned long end, bool mm_wr_locked);
+		unsigned long end, bool mm_wr_locked, unsigned long start_t,
+		unsigned long end_t);
 
 /* description of effects of mapping type and prot in current implementation.
  * this is due to the limited x86 page protection hardware.  The expected
@@ -2257,17 +2258,18 @@ static inline void remove_mt(struct mm_struct *mm, struct ma_state *mas)
 static void unmap_region(struct mm_struct *mm, struct maple_tree *mt,
 		struct vm_area_struct *vma, struct vm_area_struct *prev,
 		struct vm_area_struct *next,
-		unsigned long start, unsigned long end, bool mm_wr_locked)
+		unsigned long start, unsigned long end, bool mm_wr_locked,
+		unsigned long start_t, unsigned long end_t)
 {
 	struct mmu_gather tlb;
 
 	lru_add_drain();
 	tlb_gather_mmu(&tlb, mm, start, end);
 	update_hiwater_rss(mm);
-	unmap_vmas(&tlb, mt, vma, start, end, mm_wr_locked);
+	unmap_vmas(&tlb, mt, vma, start, end, mm_wr_locked, start_t, end_t);
 	free_pgtables(&tlb, mt, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
 				 next ? next->vm_start : USER_PGTABLES_CEILING,
-				 mm_wr_locked);
+				 mm_wr_locked, start_t);
 	tlb_finish_mmu(&tlb, start, end);
 }
 
@@ -2354,11 +2356,11 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	return __split_vma(mm, vma, addr, new_below);
 }
 
-static inline int munmap_sidetree(struct vm_area_struct *vma,
+static inline int munmap_sidetree(struct vm_area_struct *vma, int count,
 				   struct ma_state *mas_detach)
 {
 	vma_start_write(vma);
-	mas_set_range(mas_detach, vma->vm_start, vma->vm_end - 1);
+	mas_set(mas_detach, count);
 	if (mas_store_gfp(mas_detach, vma, GFP_KERNEL))
 		return -ENOMEM;
 
@@ -2446,7 +2448,7 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 
 			mas_set(mas, end);
 			split = mas_prev(mas, 0);
-			error = munmap_sidetree(split, &mas_detach);
+			error = munmap_sidetree(split, count, &mas_detach);
 			if (error)
 				goto munmap_sidetree_failed;
 
@@ -2455,7 +2457,7 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 				vma = split;
 			break;
 		}
-		error = munmap_sidetree(next, &mas_detach);
+		error = munmap_sidetree(next, count, &mas_detach);
 		if (error)
 			goto munmap_sidetree_failed;
 
@@ -2490,16 +2492,21 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 #if defined(CONFIG_DEBUG_VM_MAPLE_TREE)
 	/* Make sure no VMAs are about to be lost. */
 	{
-		MA_STATE(test, &mt_detach, start, end - 1);
+		MA_STATE(test, &mt_detach, 0, 0);
 		struct vm_area_struct *vma_mas, *vma_test;
 		int test_count = 0;
+		unsigned long s, e;
 
 		rcu_read_lock();
-		vma_test = mas_find(&test, end - 1);
+		vma_test = mas_find(&test, count);
 		mas_for_each(mas, vma_mas, end - 1) {
+			if (!test_count)
+				s = vma_mas->vm_start;
 			BUG_ON(vma_mas != vma_test);
 			test_count++;
-			vma_test = mas_next(&test, end - 1);
+			if (test_count == count)
+				e = vma_mas->vm_end;
+			vma_test = mas_next(&test, count);
 		}
 		rcu_read_unlock();
 		BUG_ON(count != test_count);
@@ -2528,9 +2535,9 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	 * We can free page tables without write-locking mmap_lock because VMAs
 	 * were isolated before we downgraded mmap_lock.
 	 */
-	unmap_region(mm, &mt_detach, vma, prev, next, start, end, !downgrade);
+	unmap_region(mm, &mt_detach, vma, prev, next, start, end, !downgrade, 1, count);
 	/* Statistics and freeing VMAs */
-	mas_set(&mas_detach, start);
+	mas_set(&mas_detach, 0);
 	remove_mt(mm, &mas_detach);
 	__mt_destroy(&mt_detach);
 
@@ -2842,7 +2849,8 @@ unmap_and_free_vma:
 	fput(file);
 
 	/* Undo any partial mapping done by a device driver. */
-	unmap_region(mm, mas.tree, vma, prev, next, vma->vm_start, vma->vm_end, true);
+	unmap_region(mm, mas.tree, vma, prev, next, vma->vm_start, vma->vm_end, true,
+		     vma->vm_end, vma->vm_end);
 	if (vm_flags & VM_SHARED)
 		mapping_unmap_writable(file->f_mapping);
 allow_write_and_free_vma:
@@ -3179,7 +3187,7 @@ void exit_mmap(struct mm_struct *mm)
 	tlb_gather_mmu(&tlb, mm, 0, -1);
 	/* update_hiwater_rss(mm) here? but nobody should be looking */
 	/* Use ULONG_MAX here to ensure all VMAs in the mm are unmapped */
-	unmap_vmas(&tlb, &mm->mm_mt, vma, 0, ULONG_MAX, false);
+	unmap_vmas(&tlb, &mm->mm_mt, vma, 0, ULONG_MAX, false, vma->vm_end, ULONG_MAX);
 	mmap_read_unlock(mm);
 
 	/*
@@ -3190,7 +3198,7 @@ void exit_mmap(struct mm_struct *mm)
 	mmap_write_lock(mm);
 	mt_clear_in_rcu(&mm->mm_mt);
 	free_pgtables(&tlb, &mm->mm_mt, vma, FIRST_USER_ADDRESS,
-		      USER_PGTABLES_CEILING, true);
+		      USER_PGTABLES_CEILING, true, vma->vm_end);
 	tlb_finish_mmu(&tlb, 0, -1);
 
 	/*

@@ -391,9 +391,10 @@ void free_pgd_range(struct mmu_gather *tlb,
 
 void free_pgtables(struct mmu_gather *tlb, struct maple_tree *mt,
 		   struct vm_area_struct *vma, unsigned long floor,
-		   unsigned long ceiling, bool mm_wr_locked)
+		   unsigned long ceiling, bool mm_wr_locked,
+		   unsigned long start_t)
 {
-	MA_STATE(mas, mt, vma->vm_end, vma->vm_end);
+	MA_STATE(mas, mt, start_t, start_t);
 
 	do {
 		unsigned long addr = vma->vm_start;
@@ -1563,10 +1564,11 @@ static void unmap_single_vma(struct mmu_gather *tlb,
  */
 void unmap_vmas(struct mmu_gather *tlb, struct maple_tree *mt,
 		struct vm_area_struct *vma, unsigned long start_addr,
-		unsigned long end_addr, bool mm_wr_locked)
+		unsigned long end_addr, bool mm_wr_locked, unsigned long start_t,
+		unsigned long end_t)
 {
 	struct mmu_notifier_range range;
-	MA_STATE(mas, mt, vma->vm_end, vma->vm_end);
+	MA_STATE(mas, mt, start_t, start_t);
 
 	mmu_notifier_range_init(&range, MMU_NOTIFY_UNMAP, 0, vma, vma->vm_mm,
 				start_addr, end_addr);
@@ -1574,7 +1576,7 @@ void unmap_vmas(struct mmu_gather *tlb, struct maple_tree *mt,
 	do {
 		unmap_single_vma(tlb, vma, start_addr, end_addr, NULL,
 				 mm_wr_locked);
-	} while ((vma = mas_find(&mas, end_addr - 1)) != NULL);
+	} while ((vma = mas_find(&mas, end_t - 1)) != NULL);
 	mmu_notifier_invalidate_range_end(&range);
 }
 
