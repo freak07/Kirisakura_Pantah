@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 #
-# (C) COPYRIGHT 2012-2022 ARM Limited. All rights reserved.
+# (C) COPYRIGHT 2012-2023 ARM Limited. All rights reserved.
 #
 # This program is free software and is provided to you under the terms of the
 # GNU General Public License version 2 as published by the Free Software
@@ -116,21 +116,6 @@ config MALI_MIDGARD_ENABLE_TRACE
 	help
 	  Enables tracing in kbase. Trace log available through
 	  the "mali_trace" debugfs file, when the CONFIG_DEBUG_FS is enabled
-
-config MALI_FW_CORE_DUMP
-	bool "Enable support for FW core dump"
-	depends on MALI_MIDGARD && MALI_CSF_SUPPORT
-	default y
-	help
-	  Adds ability to request firmware core dump through the "fw_core_dump"
-	  debugfs file
-
-	  Example:
-	  * To explicitly request core dump:
-	      echo 1 > /sys/kernel/debug/mali0/fw_core_dump
-	  * To output current core dump (after explicitly requesting a core dump,
-	    or kernel driver reported an internal firmware error):
-	      cat /sys/kernel/debug/mali0/fw_core_dump
 
 config MALI_ARBITER_SUPPORT
 	bool "Enable arbiter support for Mali"
@@ -250,14 +235,6 @@ config MALI_ERROR_INJECT
 	depends on MALI_MIDGARD && MALI_EXPERT
 	default y if !MALI_ERROR_INJECT_NONE
 
-config MALI_GEM5_BUILD
-	bool "Enable build of Mali kernel driver for GEM5"
-	depends on MALI_MIDGARD && MALI_EXPERT
-	default n
-	help
-	  This option is to do a Mali GEM5 build.
-	  If unsure, say N.
-
 config MALI_DEBUG
 	bool "Enable debug build"
 	depends on MALI_MIDGARD && MALI_EXPERT
@@ -274,6 +251,14 @@ config MALI_GCOV_KERNEL
 	  Choose this option to enable building kbase with branch
 	  coverage information. When built against a supporting kernel,
 	  the coverage information will be available via debugfs.
+
+config MALI_KCOV
+	bool "Enable kcov coverage to support fuzzers"
+	depends on MALI_MIDGARD && MALI_DEBUG
+	default n
+	help
+	  Choose this option to enable building with fuzzing-oriented
+	  coverage, to improve the random test cases that are generated.
 
 config MALI_FENCE_DEBUG
 	bool "Enable debug sync fence usage"
