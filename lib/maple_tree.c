@@ -4295,6 +4295,8 @@ done:
 
 static inline void mas_wr_end_piv(struct ma_wr_state *wr_mas)
 {
+	wr_mas->end_piv = wr_mas->r_max;
+
 	while ((wr_mas->mas->last > wr_mas->end_piv) &&
 	       (wr_mas->offset_end < wr_mas->node_end))
 		wr_mas->end_piv = wr_mas->pivots[++wr_mas->offset_end];
@@ -4456,7 +4458,6 @@ static inline void *mas_wr_store_entry(struct ma_wr_state *wr_mas)
 	}
 
 	/* At this point, we are at the leaf node that needs to be altered. */
-	wr_mas->end_piv = wr_mas->r_max;
 	mas_wr_end_piv(wr_mas);
 
 	if (!wr_mas->entry)
