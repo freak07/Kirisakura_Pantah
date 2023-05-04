@@ -519,7 +519,7 @@ static int vma_link(struct mm_struct *mm, struct vm_area_struct *vma)
 	MA_STATE(mas, &mm->mm_mt, vma->vm_start, vma->vm_end - 1);
 	struct address_space *mapping = NULL;
 
-	if (mas_preallocate(&mas, GFP_KERNEL))
+	if (mas_preallocate(&mas, vma, GFP_KERNEL))
 		return -ENOMEM;
 
 	if (vma->vm_file) {
@@ -586,7 +586,7 @@ inline int vma_expand(struct ma_state *mas, struct vm_area_struct *vma,
 	VM_BUG_ON(vma->vm_start < start || vma->vm_end > end);
 
 	mas_set_range(mas, start, end - 1);
-	if (mas_preallocate(mas, GFP_KERNEL))
+	if (mas_preallocate(mas, vma, GFP_KERNEL))
 		goto nomem;
 
 	vma_start_write(vma);
@@ -782,7 +782,7 @@ int __vma_adjust(struct vm_area_struct *vma, unsigned long start,
 		mas_set_range(&mas, insert->vm_start, insert->vm_end - 1);
 
 
-	if (mas_preallocate(&mas, GFP_KERNEL))
+	if (mas_preallocate(&mas, vma, GFP_KERNEL))
 		return -ENOMEM;
 
 	vma_adjust_trans_huge(orig_vma, start, end, adjust_next);
@@ -2025,7 +2025,7 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 	}
 
 	mas->last = address - 1;
-	if (mas_preallocate(&mas, GFP_KERNEL))
+	if (mas_preallocate(&mas, vma, GFP_KERNEL))
 		return -ENOMEM;
 
 	/* We must make sure the anon_vma is allocated. */
@@ -2107,7 +2107,7 @@ int expand_downwards(struct vm_area_struct *vma, unsigned long address)
 	}
 
 	mas_set_range(&mas, address, vma->vm_end - 1);
-	if (mas_preallocate(&mas, GFP_KERNEL))
+	if (mas_preallocate(&mas, vma, GFP_KERNEL))
 		return -ENOMEM;
 
 	/* We must make sure the anon_vma is allocated. */
@@ -2796,7 +2796,7 @@ cannot_expand:
 			goto free_vma;
 	}
 
-	if (mas_preallocate(&mas, GFP_KERNEL)) {
+	if (mas_preallocate(&mas, vma, GFP_KERNEL)) {
 		error = -ENOMEM;
 		if (file)
 			goto unmap_and_free_vma;
@@ -3068,7 +3068,7 @@ static int do_brk_flags(struct ma_state *mas, struct vm_area_struct *vma,
 	    can_vma_merge_after(vma, flags, NULL, NULL,
 				addr >> PAGE_SHIFT, NULL_VM_UFFD_CTX, NULL)) {
 		mas_set_range(mas, vma->vm_start, addr + len - 1);
-		if (mas_preallocate(mas, GFP_KERNEL))
+		if (mas_preallocate(mas, vma, GFP_KERNEL))
 			goto unacct_fail;
 
 		/* Set flags first to implicitly lock the VMA before updates */
