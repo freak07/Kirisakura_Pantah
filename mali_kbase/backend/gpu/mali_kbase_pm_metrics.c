@@ -199,7 +199,7 @@ KBASE_EXPORT_TEST_API(kbasep_pm_metrics_term);
  */
 #if MALI_USE_CSF
 #if defined(CONFIG_MALI_DEVFREQ) || defined(CONFIG_MALI_MIDGARD_DVFS)
-static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev)
+static bool kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev)
 {
 	int err;
 	u64 gpu_active_counter;
@@ -237,7 +237,20 @@ static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev)
 		diff_ns_signed = ktime_to_ns(diff);
 
 		if (diff_ns_signed < 0)
-			return;
+			return false;
+
+		/*
+		 * The GPU internal counter is updated every IPA_CONTROL_TIMER_DEFAULT_VALUE_MS
+		 * milliseconds. If an update occurs prematurely and the counter has not been
+		 * updated, the same counter value will be obtained, resulting in a difference
+		 * of zero. To handle this scenario, we will skip the update if the difference
+		 * is zero and the update occurred less than 1.5 times the internal update period
+		 * (IPA_CONTROL_TIMER_DEFAULT_VALUE_MS). Ideally, we should check the counter
+		 * update timestamp in the GPU internal register to ensure accurate updates.
+		 */
+		if (gpu_active_counter == 0 &&
+			diff_ns_signed < IPA_CONTROL_TIMER_DEFAULT_VALUE_MS * NSEC_PER_MSEC * 3 / 2)
+			return false;
 
 		diff_ns = (u64)diff_ns_signed;
 
@@ -306,10 +319,11 @@ static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev)
 	}
 
 	kbdev->pm.backend.metrics.time_period_start = now;
+	return true;
 }
 #endif /* defined(CONFIG_MALI_DEVFREQ) || defined(CONFIG_MALI_MIDGARD_DVFS) */
 #else
-static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev,
+static bool kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev,
 					       ktime_t now)
 {
 	ktime_t diff;
@@ -318,7 +332,7 @@ static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev,
 
 	diff = ktime_sub(now, kbdev->pm.backend.metrics.time_period_start);
 	if (ktime_to_ns(diff) < 0)
-		return;
+		return false;
 
 	if (kbdev->pm.backend.metrics.gpu_active) {
 		u32 ns_time = (u32) (ktime_to_ns(diff) >> KBASE_PM_TIME_SHIFT);
@@ -340,6 +354,7 @@ static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev,
 	}
 
 	kbdev->pm.backend.metrics.time_period_start = now;
+	return true;
 }
 #endif  /* MALI_USE_CSF */
 
@@ -353,10 +368,13 @@ void kbase_pm_get_dvfs_metrics(struct kbase_device *kbdev,
 
 	spin_lock_irqsave(&kbdev->pm.backend.metrics.lock, flags);
 #if MALI_USE_CSF
-	kbase_pm_get_dvfs_utilisation_calc(kbdev);
+	if (!kbase_pm_get_dvfs_utilisation_calc(kbdev)) {
 #else
-	kbase_pm_get_dvfs_utilisation_calc(kbdev, ktime_get_raw());
+	if (!kbase_pm_get_dvfs_utilisation_calc(kbdev, ktime_get_raw())) {
 #endif
+		spin_unlock_irqrestore(&kbdev->pm.backend.metrics.lock, flags);
+		return;
+	}
 
 	memset(diff, 0, sizeof(*diff));
 	diff->time_busy = cur->time_busy - last->time_busy;
