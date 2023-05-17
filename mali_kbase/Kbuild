@@ -150,7 +150,8 @@ ccflags-y += \
     -I$(src) \
     -I$(src)/platform/$(MALI_PLATFORM_DIR) \
     -I$(src)/../../../base \
-    -I$(src)/../../../../include
+    -I$(src)/../../../../include \
+    -I$(src)/tests/include
 
 # Add include path for related GPU modules
 ccflags-y += -I$(src)/../common/include
