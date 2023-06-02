@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2020-2022 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2020-2023 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -64,10 +64,28 @@
  * - Added ioctl to query a register of USER page.
  * 1.14:
  * - Added support for passing down the buffer descriptor VA in tiler heap init
+ * 1.15:
+ * - Enable new sync_wait GE condition
+ * 1.16:
+ * - Remove legacy definitions:
+ *   - base_jit_alloc_info_10_2
+ *   - base_jit_alloc_info_11_5
+ *   - kbase_ioctl_mem_jit_init_10_2
+ *   - kbase_ioctl_mem_jit_init_11_5
+ * 1.17:
+ * - Fix kinstr_prfcnt issues:
+ *   - Missing implicit sample for CMD_STOP when HWCNT buffer is full.
+ *   - Race condition when stopping periodic sampling.
+ *   - prfcnt_block_metadata::block_idx gaps.
+ *   - PRFCNT_CONTROL_CMD_SAMPLE_ASYNC is removed.
+ * 1.18:
+ * - Relax the requirement to create a mapping with BASE_MEM_MAP_TRACKING_HANDLE
+ *   before allocating GPU memory for the context.
+ * - CPU mappings of USER_BUFFER imported memory handles must be cached.
  */
 
 #define BASE_UK_VERSION_MAJOR 1
-#define BASE_UK_VERSION_MINOR 14
+#define BASE_UK_VERSION_MINOR 18
 
 /**
  * struct kbase_ioctl_version_check - Check version compatibility between
@@ -275,9 +293,9 @@ union kbase_ioctl_cs_queue_group_create {
 		__u8 csi_handlers;
 		__u8 padding[2];
 		/**
-		 * @in.reserved: Reserved
+		 * @in.dvs_buf: buffer for deferred vertex shader
 		 */
-		__u64 reserved;
+		__u64 dvs_buf;
 	} in;
 	struct {
 		__u8 group_handle;

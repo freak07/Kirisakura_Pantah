@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2019-2022 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2023 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -88,12 +88,11 @@ static void submit_work_pagefault(struct kbase_device *kbdev, u32 as_nr,
 		 * context's address space, when the page fault occurs for
 		 * MCU's address space.
 		 */
-		if (!queue_work(as->pf_wq, &as->work_pagefault))
-			kbase_ctx_sched_release_ctx(kctx);
-		else {
+		if (!queue_work(as->pf_wq, &as->work_pagefault)) {
 			dev_dbg(kbdev->dev,
-				"Page fault is already pending for as %u\n",
-				as_nr);
+				"Page fault is already pending for as %u", as_nr);
+			kbase_ctx_sched_release_ctx(kctx);
+		} else {
 			atomic_inc(&kbdev->faults_pending);
 		}
 	}
@@ -121,6 +120,8 @@ void kbase_mmu_report_mcu_as_fault_and_reset(struct kbase_device *kbdev,
 		exception_type, kbase_gpu_exception_name(exception_type),
 		access_type, kbase_gpu_access_type_name(fault->status),
 		source_id);
+
+	kbase_debug_csf_fault_notify(kbdev, NULL, DF_GPU_PAGE_FAULT);
 
 	/* Report MMU fault for all address spaces (except MCU_AS_NR) */
 	for (as_no = 1; as_no < kbdev->nr_hw_address_spaces; as_no++)
@@ -189,6 +190,7 @@ void kbase_gpu_report_bus_fault_and_kill(struct kbase_context *kctx,
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND),
 			GPU_COMMAND_CLEAR_FAULT);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
 }
 
 /*
@@ -250,6 +252,7 @@ void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 	mutex_unlock(&kbdev->mmu_hw_mutex);
 	/* AS transaction end */
 
+	kbase_debug_csf_fault_notify(kbdev, kctx, DF_GPU_PAGE_FAULT);
 	/* Switching to UNMAPPED mode above would have enabled the firmware to
 	 * recover from the fault (if the memory access was made by firmware)
 	 * and it can then respond to CSG termination requests to be sent now.
@@ -263,6 +266,7 @@ void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 			KBASE_MMU_FAULT_TYPE_PAGE_UNEXPECTED);
 	kbase_mmu_hw_enable_fault(kbdev, as,
 			KBASE_MMU_FAULT_TYPE_PAGE_UNEXPECTED);
+
 }
 
 /**
@@ -548,14 +552,15 @@ void kbase_mmu_gpu_fault_interrupt(struct kbase_device *kbdev, u32 status,
 }
 KBASE_EXPORT_TEST_API(kbase_mmu_gpu_fault_interrupt);
 
-int kbase_mmu_as_init(struct kbase_device *kbdev, int i)
+int kbase_mmu_as_init(struct kbase_device *kbdev, unsigned int i)
 {
 	kbdev->as[i].number = i;
 	kbdev->as[i].bf_data.addr = 0ULL;
 	kbdev->as[i].pf_data.addr = 0ULL;
 	kbdev->as[i].gf_data.addr = 0ULL;
+	kbdev->as[i].is_unresponsive = false;
 
-	kbdev->as[i].pf_wq = alloc_workqueue("mali_mmu%d", 0, 1, i);
+	kbdev->as[i].pf_wq = alloc_workqueue("mali_mmu%d", WQ_UNBOUND, 1, i);
 	if (!kbdev->as[i].pf_wq)
 		return -ENOMEM;
 

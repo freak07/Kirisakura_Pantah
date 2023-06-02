@@ -36,7 +36,7 @@
 #include <linux/pm_runtime.h>
 #include <mali_kbase_reset_gpu.h>
 #endif /* !MALI_USE_CSF */
-#include <mali_kbase_hwcnt_context.h>
+#include <hwcnt/mali_kbase_hwcnt_context.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <backend/gpu/mali_kbase_devfreq.h>
 #include <mali_kbase_dummy_job_wa.h>
@@ -712,7 +712,7 @@ void kbase_pm_wait_for_poweroff_work_complete(struct kbase_device *kbdev)
 			//callchains go through this function though holding that lock
 			//so just print without locking.
 			dev_err(kbdev->dev, "scheduler.state %d", kbdev->csf.scheduler.state);
-			dev_err(kbdev->dev, "Firmware ping %d", kbase_csf_firmware_ping_wait(kbdev));
+			dev_err(kbdev->dev, "Firmware ping %d", kbase_csf_firmware_ping_wait(kbdev, 0));
 #endif
 			//Attempt another state machine transition prompt.
 			dev_err(kbdev->dev, "Attempt to prompt state machine");
@@ -1030,7 +1030,7 @@ void kbase_pm_handle_gpu_lost(struct kbase_device *kbdev)
 	if (!kbdev->arb.arb_if)
 		return;
 
-	mutex_lock(&kbdev->pm.lock);
+	rt_mutex_lock(&kbdev->pm.lock);
 	mutex_lock(&arb_vm_state->vm_state_lock);
 	if (kbdev->pm.backend.gpu_powered &&
 			!kbase_pm_is_gpu_lost(kbdev)) {
@@ -1070,7 +1070,7 @@ void kbase_pm_handle_gpu_lost(struct kbase_device *kbdev)
 		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 	}
 	mutex_unlock(&arb_vm_state->vm_state_lock);
-	mutex_unlock(&kbdev->pm.lock);
+	rt_mutex_unlock(&kbdev->pm.lock);
 }
 
 #endif /* CONFIG_MALI_ARBITER_SUPPORT */
@@ -1284,52 +1284,5 @@ out:
 	}
 
 	return ret;
-}
-#endif
-
-#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-void kbase_pm_turn_on_sc_power_rails_locked(struct kbase_device *kbdev)
-{
-	unsigned long flags;
-
-	lockdep_assert_held(&kbdev->pm.lock);
-	WARN_ON(!kbdev->pm.backend.gpu_powered);
-	if (kbdev->pm.backend.sc_power_rails_off) {
-		if (kbdev->pm.backend.callback_power_on_sc_rails) {
-			kbdev->pm.backend.callback_power_on_sc_rails(kbdev);
-			KBASE_KTRACE_ADD(kbdev, PM_RAIL_ON, NULL, 0);
-		}
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		kbdev->pm.backend.sc_power_rails_off = false;
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-	}
-}
-
-void kbase_pm_turn_on_sc_power_rails(struct kbase_device *kbdev)
-{
-	kbase_pm_lock(kbdev);
-	kbase_pm_turn_on_sc_power_rails_locked(kbdev);
-	kbase_pm_unlock(kbdev);
-}
-
-void kbase_pm_turn_off_sc_power_rails(struct kbase_device *kbdev)
-{
-	unsigned long flags;
-
-	kbase_pm_lock(kbdev);
-	WARN_ON(!kbdev->pm.backend.gpu_powered);
-	if (!kbdev->pm.backend.sc_power_rails_off) {
-		bool abort;
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		kbdev->pm.backend.sc_power_rails_off = true;
-		/* Work around for b/234962632 */
-		abort = WARN_ON(!kbdev->pm.backend.sc_pwroff_safe);
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		if (kbdev->pm.backend.callback_power_off_sc_rails && !abort) {
-			kbdev->pm.backend.callback_power_off_sc_rails(kbdev);
-			KBASE_KTRACE_ADD(kbdev, PM_RAIL_OFF, NULL, 0);
-		}
-	}
-	kbase_pm_unlock(kbdev);
 }
 #endif

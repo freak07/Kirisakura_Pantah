@@ -20,12 +20,21 @@
  */
 
 #include <mali_kbase.h>
-#include "mali_kbase_csf_firmware_cfg.h"
 #include <mali_kbase_reset_gpu.h>
 #include <linux/version.h>
 
+#include "mali_kbase_csf_firmware_cfg.h"
+#include "mali_kbase_csf_firmware_log.h"
+
 #if CONFIG_SYSFS
 #define CSF_FIRMWARE_CFG_SYSFS_DIR_NAME "firmware_config"
+
+#define CSF_FIRMWARE_CFG_LOG_VERBOSITY_ENTRY_NAME "Log verbosity"
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+#define HOST_CONTROLS_SC_RAILS_CFG_ENTRY_NAME "Host controls SC rails"
+#endif
+
 
 /**
  * struct firmware_config - Configuration item within the MCU firmware
@@ -125,7 +134,7 @@ static ssize_t store_fw_cfg(struct kobject *kobj,
 
 	if (attr == &fw_cfg_attr_cur) {
 		unsigned long flags;
-		u32 val;
+		u32 val, cur_val;
 		int ret = kstrtouint(buf, 0, &val);
 
 		if (ret) {
@@ -136,11 +145,19 @@ static ssize_t store_fw_cfg(struct kobject *kobj,
 			return -EINVAL;
 		}
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+		if (!strcmp(config->name,
+			    HOST_CONTROLS_SC_RAILS_CFG_ENTRY_NAME))
+			return -EPERM;
+#endif
+
 		if ((val < config->min) || (val > config->max))
 			return -EINVAL;
 
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		if (config->cur_val == val) {
+
+		cur_val = config->cur_val;
+		if (cur_val == val) {
 			spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 			return count;
 		}
@@ -176,6 +193,20 @@ static ssize_t store_fw_cfg(struct kobject *kobj,
 		config->cur_val = val;
 
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+		/* Enable FW logging only if Log verbosity is non-zero */
+		if (!strcmp(config->name, CSF_FIRMWARE_CFG_LOG_VERBOSITY_ENTRY_NAME) &&
+		    (!cur_val || !val)) {
+			ret = kbase_csf_firmware_log_toggle_logging_calls(kbdev, val);
+			if (ret) {
+				/* Undo FW configuration changes */
+				spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+				config->cur_val = cur_val;
+				kbase_csf_update_firmware_memory(kbdev, config->address, cur_val);
+				spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+				return ret;
+			}
+		}
 
 		/* If we can update the config without firmware reset then
 		 * we need to just trigger FIRMWARE_CONFIG_UPDATE.
@@ -330,6 +361,24 @@ int kbase_csf_firmware_cfg_find_config_address(struct kbase_device *kbdev, const
 	return -ENOENT;
 }
 
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+int kbase_csf_firmware_cfg_enable_host_ctrl_sc_rails(struct kbase_device *kbdev)
+{
+	struct firmware_config *config;
+
+	list_for_each_entry(config, &kbdev->csf.firmware_config, node) {
+		if (strcmp(config->name,
+			   HOST_CONTROLS_SC_RAILS_CFG_ENTRY_NAME))
+			continue;
+
+		kbase_csf_update_firmware_memory(kbdev, config->address, 1);
+		return 0;
+	}
+
+	return -ENOENT;
+}
+#endif
+
 
 #else
 int kbase_csf_firmware_cfg_init(struct kbase_device *kbdev)
@@ -348,4 +397,11 @@ int kbase_csf_firmware_cfg_option_entry_parse(struct kbase_device *kbdev,
 {
 	return 0;
 }
+
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+int kbase_csf_firmware_cfg_enable_host_ctrl_sc_rails(struct kbase_device *kbdev)
+{
+	return 0;
+}
+#endif
 #endif /* CONFIG_SYSFS */

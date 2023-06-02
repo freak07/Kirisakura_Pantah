@@ -75,7 +75,9 @@
 #include "mali_kbase_jd_debugfs.h"
 #include "mali_kbase_jm.h"
 #include "mali_kbase_js.h"
-#endif /* !MALI_USE_CSF */
+#else /* !MALI_USE_CSF */
+#include "csf/mali_kbase_debug_csf_fault.h"
+#endif /* MALI_USE_CSF */
 
 #include "ipa/mali_kbase_ipa.h"
 
@@ -338,21 +340,8 @@ int kbase_job_slot_softstop_start_rp(struct kbase_context *kctx,
 void kbase_job_slot_softstop(struct kbase_device *kbdev, int js,
 		struct kbase_jd_atom *target_katom);
 
-void kbase_job_slot_softstop_swflags(struct kbase_device *kbdev, int js,
-		struct kbase_jd_atom *target_katom, u32 sw_flags);
-
-/**
- * kbase_job_slot_hardstop - Hard-stop the specified job slot
- * @kctx:         The kbase context that contains the job(s) that should
- *                be hard-stopped
- * @js:           The job slot to hard-stop
- * @target_katom: The job that should be hard-stopped (or NULL for all
- *                jobs from the context)
- * Context:
- *   The job slot lock must be held when calling this function.
- */
-void kbase_job_slot_hardstop(struct kbase_context *kctx, int js,
-		struct kbase_jd_atom *target_katom);
+void kbase_job_slot_softstop_swflags(struct kbase_device *kbdev, unsigned int js,
+				     struct kbase_jd_atom *target_katom, u32 sw_flags);
 
 /**
  * kbase_job_check_enter_disjoint - potentiall enter disjoint mode
@@ -454,7 +443,7 @@ void kbase_finish_soft_job(struct kbase_jd_atom *katom);
 void kbase_cancel_soft_job(struct kbase_jd_atom *katom);
 void kbase_resume_suspended_soft_jobs(struct kbase_device *kbdev);
 void kbasep_remove_waiting_soft_job(struct kbase_jd_atom *katom);
-#if defined(CONFIG_SYNC) || defined(CONFIG_SYNC_FILE)
+#if IS_ENABLED(CONFIG_SYNC_FILE)
 void kbase_soft_event_wait_callback(struct kbase_jd_atom *katom);
 #endif
 int kbase_soft_event_update(struct kbase_context *kctx,
@@ -644,11 +633,6 @@ int kbase_pm_handle_runtime_suspend(struct kbase_device *kbdev);
  */
 int kbase_pm_force_mcu_wakeup_after_sleep(struct kbase_device *kbdev);
 
-#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-void kbase_pm_turn_on_sc_power_rails_locked(struct kbase_device *kbdev);
-void kbase_pm_turn_on_sc_power_rails(struct kbase_device *kbdev);
-void kbase_pm_turn_off_sc_power_rails(struct kbase_device *kbdev);
-#endif
 #endif
 
 #if !MALI_USE_CSF

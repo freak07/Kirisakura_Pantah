@@ -21,7 +21,7 @@
 
 #include <mali_kbase.h>
 #include <mali_kbase_ctx_sched.h>
-#include <mali_kbase_hwcnt_context.h>
+#include <hwcnt/mali_kbase_hwcnt_context.h>
 #include <device/mali_kbase_device.h>
 #include <backend/gpu/mali_kbase_irq_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
@@ -339,7 +339,6 @@ static enum kbasep_soft_reset_status kbase_csf_reset_gpu_once(struct kbase_devic
 		"The flush has completed so reset the active indicator\n");
 	kbdev->irq_reset_flush = false;
 
-	rt_mutex_lock(&kbdev->pm.lock);
 	if (!silent)
 		dev_err(kbdev->dev, "Resetting GPU (allowing up to %d ms)",
 								RESET_TIMEOUT);
@@ -364,6 +363,7 @@ static enum kbasep_soft_reset_status kbase_csf_reset_gpu_once(struct kbase_devic
 	 */
 	kbase_hwcnt_backend_csf_on_before_reset(&kbdev->hwcnt_gpu_iface);
 
+	rt_mutex_lock(&kbdev->pm.lock);
 	/* Reset the GPU */
 	err = kbase_pm_init_hw(kbdev, 0);
 
@@ -606,6 +606,11 @@ bool kbase_reset_gpu_is_active(struct kbase_device *kbdev)
 	 * complete
 	 */
 	return kbase_csf_reset_state_is_active(reset_state);
+}
+
+bool kbase_reset_gpu_is_not_pending(struct kbase_device *kbdev)
+{
+	return atomic_read(&kbdev->csf.reset.state) == KBASE_CSF_RESET_GPU_NOT_PENDING;
 }
 
 int kbase_reset_gpu_wait(struct kbase_device *kbdev)

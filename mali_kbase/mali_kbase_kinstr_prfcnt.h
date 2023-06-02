@@ -26,7 +26,7 @@
 #ifndef _KBASE_KINSTR_PRFCNT_H_
 #define _KBASE_KINSTR_PRFCNT_H_
 
-#include "mali_kbase_hwcnt_types.h"
+#include "hwcnt/mali_kbase_hwcnt_types.h"
 #include <uapi/gpu/arm/midgard/mali_kbase_hwcnt_reader.h>
 
 struct kbase_kinstr_prfcnt_context;
@@ -81,6 +81,7 @@ void kbase_kinstr_prfcnt_suspend(struct kbase_kinstr_prfcnt_context *kinstr_ctx)
 void kbase_kinstr_prfcnt_resume(struct kbase_kinstr_prfcnt_context *kinstr_ctx);
 
 #if MALI_KERNEL_TEST_API
+
 /**
  * kbasep_kinstr_prfcnt_get_block_info_list() - Get list of all block types
  *                                              with their information.
