@@ -30,7 +30,7 @@
 typedef int vm_fault_t;
 #endif
 
-#define MEMORY_GROUP_MANAGER_NR_GROUPS (16)
+#define MEMORY_GROUP_MANAGER_NR_GROUPS (4)
 
 struct memory_group_manager_device;
 struct memory_group_manager_import_data;

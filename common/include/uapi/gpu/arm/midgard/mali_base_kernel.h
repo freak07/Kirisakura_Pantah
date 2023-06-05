@@ -59,7 +59,7 @@
 
 /* Number of physical memory groups.
  */
-#define BASE_MEM_GROUP_COUNT (16)
+#define BASE_MEM_GROUP_COUNT (4)
 
 /**
  * typedef base_mem_alloc_flags - Memory allocation, access/hint flags.
