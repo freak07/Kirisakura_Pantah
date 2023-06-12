@@ -499,9 +499,9 @@ static void disable_partition(struct mgm_groups* data, enum pixel_mgm_group_id g
 		return;
 
 	pt_client_disable_no_free(data->pt_handle, active_idx);
-
 	data->groups[group_id].state = MGM_GROUP_STATE_DISABLED_NOT_FREED;
 
+	pt_size_invalidate(data, active_idx);
 	pt_size_init(data, active_idx, 0);
 }
 
