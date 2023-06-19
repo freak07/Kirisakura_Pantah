@@ -852,6 +852,15 @@ void kbase_csf_ring_csg_slots_doorbell(struct kbase_device *kbdev,
 	if (WARN_ON(slot_bitmap > allowed_bitmap))
 		return;
 
+	/* The access to GLB_DB_REQ/ACK needs to be ordered with respect to CSG_REQ/ACK and
+	 * CSG_DB_REQ/ACK to avoid a scenario where a CSI request overlaps with a CSG request
+	 * or 2 CSI requests overlap and FW ends up missing the 2nd request.
+	 * Memory barrier is required, both on Host and FW side, to guarantee the ordering.
+	 *
+	 * 'osh' is used as CPU and GPU would be in the same Outer shareable domain.
+	 */
+	dmb(osh);
+
 	value = kbase_csf_firmware_global_output(global_iface, GLB_DB_ACK);
 	value ^= slot_bitmap;
 	kbase_csf_firmware_global_input_mask(global_iface, GLB_DB_REQ, value,
@@ -889,6 +898,14 @@ void kbase_csf_ring_cs_kernel_doorbell(struct kbase_device *kbdev,
 	if (WARN_ON(csi_index < 0) ||
 	    WARN_ON(csi_index >= ginfo->stream_num))
 		return;
+
+	/* The access to CSG_DB_REQ/ACK needs to be ordered with respect to
+	 * CS_REQ/ACK to avoid a scenario where CSG_DB_REQ/ACK becomes visible to
+	 * FW before CS_REQ/ACK is set.
+	 *
+	 * 'osh' is used as CPU and GPU would be in the same outer shareable domain.
+	 */
+	dmb(osh);
 
 	value = kbase_csf_firmware_csg_output(ginfo, CSG_DB_ACK);
 	value ^= (1 << csi_index);

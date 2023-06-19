@@ -762,10 +762,13 @@ static void jd_mark_simple_gfx_frame_atoms(struct kbase_jd_atom *katom)
 	}
 
 	if (dep_fence && dep_vtx) {
+		unsigned long flags;
 		dev_dbg(kbdev->dev, "Simple gfx frame: {vtx=%pK, wait=%pK}->frag=%pK\n",
 			dep_vtx, dep_fence, katom);
+		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 		katom->atom_flags |= KBASE_KATOM_FLAG_SIMPLE_FRAME_FRAGMENT;
 		dep_vtx->atom_flags |= KBASE_KATOM_FLAG_DEFER_WHILE_POWEROFF;
+		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 	}
 }
 
@@ -839,14 +842,15 @@ bool kbase_jd_done_nolock(struct kbase_jd_atom *katom, bool post_immediately)
 				dev_dbg(kctx->kbdev->dev,
 					"Simple-frame fragment atom %pK unblocked\n",
 					node);
-				node->atom_flags &=
-					~KBASE_KATOM_FLAG_SIMPLE_FRAME_FRAGMENT;
 				for (i = 0; i < 2; i++) {
 					if (node->dep[i].atom &&
 					    node->dep[i].atom->atom_flags &
 						    KBASE_KATOM_FLAG_DEFER_WHILE_POWEROFF) {
+						unsigned long flags;
+						spin_lock_irqsave(&kctx->kbdev->hwaccess_lock, flags);
 						node->dep[i].atom->atom_flags &=
 							~KBASE_KATOM_FLAG_DEFER_WHILE_POWEROFF;
+						spin_unlock_irqrestore(&kctx->kbdev->hwaccess_lock, flags);
 						dev_dbg(kctx->kbdev->dev,
 							"  Undeferred atom %pK\n",
 							node->dep[i].atom);
