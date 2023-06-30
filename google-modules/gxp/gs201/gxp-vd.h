@@ -265,6 +265,12 @@ void gxp_vd_mapping_remove(struct gxp_virtual_device *vd,
 			   struct gxp_mapping *map);
 
 /**
+ * gxp_vd_mapping_remove_locked() - The same as `gxp_vd_mapping_remove` but the caller holds
+ *                                  @vd->mappings_semaphore as write.
+ */
+void gxp_vd_mapping_remove_locked(struct gxp_virtual_device *vd, struct gxp_mapping *map);
+
+/**
  * gxp_vd_mapping_search() - Obtain a reference to the mapping starting at the
  *                           specified device address
  * @vd: The virtual device to search for the mapping
@@ -276,6 +282,13 @@ void gxp_vd_mapping_remove(struct gxp_virtual_device *vd,
  */
 struct gxp_mapping *gxp_vd_mapping_search(struct gxp_virtual_device *vd,
 					  dma_addr_t device_address);
+
+/**
+ * gxp_vd_mapping_search_locked() - The same as `gxp_vd_mapping_search` but the caller holds
+ *                                  @vd->mappings_semaphore.
+ */
+struct gxp_mapping *gxp_vd_mapping_search_locked(struct gxp_virtual_device *vd,
+						 dma_addr_t device_address);
 
 /**
  * gxp_vd_mapping_search_in_range() - Obtain a reference to the mapping which

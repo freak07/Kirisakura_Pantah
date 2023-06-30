@@ -1315,14 +1315,19 @@ void gxp_vd_mapping_remove(struct gxp_virtual_device *vd,
 			   struct gxp_mapping *map)
 {
 	down_write(&vd->mappings_semaphore);
+	gxp_vd_mapping_remove_locked(vd, map);
+	up_write(&vd->mappings_semaphore);
+}
+
+void gxp_vd_mapping_remove_locked(struct gxp_virtual_device *vd, struct gxp_mapping *map)
+{
+	lockdep_assert_held_write(&vd->mappings_semaphore);
 
 	/* Drop the mapping from this virtual device's records */
 	rb_erase(&map->node, &vd->mappings_root);
 
 	/* Release the reference obtained in gxp_vd_mapping_store() */
 	gxp_mapping_put(map);
-
-	up_write(&vd->mappings_semaphore);
 }
 
 static bool is_device_address_in_mapping(struct gxp_mapping *mapping,
@@ -1339,7 +1344,7 @@ gxp_vd_mapping_internal_search(struct gxp_virtual_device *vd,
 	struct rb_node *node;
 	struct gxp_mapping *mapping;
 
-	down_read(&vd->mappings_semaphore);
+	lockdep_assert_held(&vd->mappings_semaphore);
 
 	node = vd->mappings_root.rb_node;
 
@@ -1349,7 +1354,6 @@ gxp_vd_mapping_internal_search(struct gxp_virtual_device *vd,
 		    (check_range &&
 		     is_device_address_in_mapping(mapping, device_address))) {
 			gxp_mapping_get(mapping);
-			up_read(&vd->mappings_semaphore);
 			return mapping; /* Found it */
 		} else if (mapping->device_address > device_address) {
 			node = node->rb_left;
@@ -1358,13 +1362,23 @@ gxp_vd_mapping_internal_search(struct gxp_virtual_device *vd,
 		}
 	}
 
-	up_read(&vd->mappings_semaphore);
-
 	return NULL;
 }
 
 struct gxp_mapping *gxp_vd_mapping_search(struct gxp_virtual_device *vd,
 					  dma_addr_t device_address)
+{
+	struct gxp_mapping *mapping;
+
+	down_read(&vd->mappings_semaphore);
+	mapping = gxp_vd_mapping_search_locked(vd, device_address);
+	up_read(&vd->mappings_semaphore);
+
+	return mapping;
+}
+
+struct gxp_mapping *gxp_vd_mapping_search_locked(struct gxp_virtual_device *vd,
+						 dma_addr_t device_address)
 {
 	return gxp_vd_mapping_internal_search(vd, device_address, false);
 }
@@ -1373,7 +1387,13 @@ struct gxp_mapping *
 gxp_vd_mapping_search_in_range(struct gxp_virtual_device *vd,
 			       dma_addr_t device_address)
 {
-	return gxp_vd_mapping_internal_search(vd, device_address, true);
+	struct gxp_mapping *mapping;
+
+	down_read(&vd->mappings_semaphore);
+	mapping = gxp_vd_mapping_internal_search(vd, device_address, true);
+	up_read(&vd->mappings_semaphore);
+
+	return mapping;
 }
 
 struct gxp_mapping *gxp_vd_mapping_search_host(struct gxp_virtual_device *vd,

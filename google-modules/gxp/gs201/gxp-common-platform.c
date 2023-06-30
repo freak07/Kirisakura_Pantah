@@ -280,8 +280,7 @@ error_destroy:
 	return ret;
 }
 
-static int gxp_unmap_buffer(struct gxp_client *client,
-			    struct gxp_map_ioctl __user *argp)
+static int gxp_unmap_buffer(struct gxp_client *client, struct gxp_map_ioctl __user *argp)
 {
 	struct gxp_dev *gxp = client->gxp;
 	struct gxp_map_ioctl ibuf;
@@ -300,29 +299,32 @@ static int gxp_unmap_buffer(struct gxp_client *client,
 		goto out;
 	}
 
-	map = gxp_vd_mapping_search(client->vd,
-				    (dma_addr_t)ibuf.device_address);
+	down_write(&client->vd->mappings_semaphore);
+
+	map = gxp_vd_mapping_search_locked(client->vd, (dma_addr_t)ibuf.device_address);
 	if (!map) {
-		dev_err(gxp->dev,
-			"Mapping not found for provided device address %#llX\n",
+		dev_err(gxp->dev, "Mapping not found for provided device address %#llX\n",
 			ibuf.device_address);
 		ret = -EINVAL;
-		goto out;
 	} else if (!map->host_address) {
 		dev_err(gxp->dev, "dma-bufs must be unmapped via GXP_UNMAP_DMABUF\n");
 		ret = -EINVAL;
-		goto out;
 	}
 
-	WARN_ON(map->host_address != ibuf.host_address);
+	if (ret) {
+		up_write(&client->vd->mappings_semaphore);
+		goto out_put;
+	}
 
-	gxp_vd_mapping_remove(client->vd, map);
-	gxp_mapping_iova_log(client, map,
-			     GXP_IOVA_LOG_UNMAP | GXP_IOVA_LOG_BUFFER);
+	gxp_vd_mapping_remove_locked(client->vd, map);
+	up_write(&client->vd->mappings_semaphore);
 
+	gxp_mapping_iova_log(client, map, GXP_IOVA_LOG_UNMAP | GXP_IOVA_LOG_BUFFER);
+
+out_put:
 	/* Release the reference from gxp_vd_mapping_search() */
-	gxp_mapping_put(map);
-
+	if (map)
+		gxp_mapping_put(map);
 out:
 	up_read(&client->semaphore);
 
@@ -1335,8 +1337,7 @@ out_unlock:
 	return ret;
 }
 
-static int gxp_unmap_dmabuf(struct gxp_client *client,
-			    struct gxp_map_dmabuf_ioctl __user *argp)
+static int gxp_unmap_dmabuf(struct gxp_client *client, struct gxp_map_dmabuf_ioctl __user *argp)
 {
 	struct gxp_dev *gxp = client->gxp;
 	struct gxp_map_dmabuf_ioctl ibuf;
@@ -1355,14 +1356,17 @@ static int gxp_unmap_dmabuf(struct gxp_client *client,
 		goto out;
 	}
 
+	down_write(&client->vd->mappings_semaphore);
+
 	/*
 	 * Fetch and remove the internal mapping records.
 	 * If host_address is not 0, the provided device_address belongs to a
 	 * non-dma-buf mapping.
 	 */
-	mapping = gxp_vd_mapping_search(client->vd, ibuf.device_address);
+	mapping = gxp_vd_mapping_search_locked(client->vd, ibuf.device_address);
 	if (IS_ERR_OR_NULL(mapping) || mapping->host_address) {
 		dev_warn(gxp->dev, "No dma-buf mapped for given IOVA\n");
+		up_write(&client->vd->mappings_semaphore);
 		/*
 		 * If the device address belongs to a non-dma-buf mapping,
 		 * release the reference to it obtained via the search.
@@ -1374,10 +1378,10 @@ static int gxp_unmap_dmabuf(struct gxp_client *client,
 	}
 
 	/* Remove the mapping from its VD, releasing the VD's reference */
-	gxp_vd_mapping_remove(client->vd, mapping);
+	gxp_vd_mapping_remove_locked(client->vd, mapping);
+	up_write(&client->vd->mappings_semaphore);
 
-	gxp_mapping_iova_log(client, mapping,
-			     GXP_IOVA_LOG_UNMAP | GXP_IOVA_LOG_DMABUF);
+	gxp_mapping_iova_log(client, mapping, GXP_IOVA_LOG_UNMAP | GXP_IOVA_LOG_DMABUF);
 
 	/* Release the reference from gxp_vd_mapping_search() */
 	gxp_mapping_put(mapping);
