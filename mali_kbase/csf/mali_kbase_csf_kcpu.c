@@ -2532,7 +2532,7 @@ int kbase_csf_kcpu_queue_new(struct kbase_context *kctx,
 	}
 
 	ret = kbase_create_realtime_thread(
-	    kctx->kbdev, kthread_worker_fn, &queue->csf_kcpu_worker, "mali_kbase_csf_kcpu_%i", idx);
+	    kctx->kbdev, kthread_worker_fn, &queue->csf_kcpu_worker, "csf_kcpu_%i", idx);
 
 	if (ret) {
 		kfree(queue);

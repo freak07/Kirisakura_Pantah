@@ -7099,7 +7099,7 @@ int kbase_csf_scheduler_context_init(struct kbase_context *kctx)
 
 	err = kbase_create_realtime_thread(kctx->kbdev, kthread_worker_fn,
 					   &kctx->csf.sched.sync_update_worker,
-					   "mali_kbase_csf_sync_update");
+					   "csf_sync_update");
 	if (err) {
 		dev_err(kctx->kbdev->dev,
 			"Failed to initialize scheduler context workqueue");
