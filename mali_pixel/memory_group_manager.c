@@ -408,39 +408,35 @@ static int group_active_pt_id(struct mgm_groups *data, enum pixel_mgm_group_id g
 
 static atomic64_t total_gpu_pages = ATOMIC64_INIT(0);
 
-static void update_size(struct memory_group_manager_device *mgm_dev, int
-		group_id, int order, bool alloc)
+static atomic_t* get_size_counter(struct memory_group_manager_device* mgm_dev, int group_id, int order)
 {
-	static DEFINE_RATELIMIT_STATE(gpu_alloc_rs, 10*HZ, 1);
+	static atomic_t err_atomic;
 	struct mgm_groups *data = mgm_dev->data;
 
 	switch (order) {
 	case ORDER_SMALL_PAGE:
-		if (alloc) {
-			atomic_inc(&data->groups[group_id].size);
-			atomic64_inc(&total_gpu_pages);
-		} else {
-			WARN_ON(atomic_read(&data->groups[group_id].size) == 0);
-			atomic_dec(&data->groups[group_id].size);
-			atomic64_dec(&total_gpu_pages);
-		}
-	break;
-
+		return &data->groups[group_id].size;
 	case ORDER_LARGE_PAGE:
-		if (alloc) {
-			atomic_inc(&data->groups[group_id].lp_size);
-			atomic64_add(1 << ORDER_LARGE_PAGE, &total_gpu_pages);
-		} else {
-			WARN_ON(atomic_read(
-				&data->groups[group_id].lp_size) == 0);
-			atomic_dec(&data->groups[group_id].lp_size);
-			atomic64_sub(1 << ORDER_LARGE_PAGE, &total_gpu_pages);
-		}
-	break;
-
+		return &data->groups[group_id].lp_size;
 	default:
 		dev_err(data->dev, "Unknown order(%d)\n", order);
-	break;
+		return &err_atomic;
+	}
+}
+
+static void update_size(struct memory_group_manager_device *mgm_dev, int
+		group_id, int order, bool alloc)
+{
+	static DEFINE_RATELIMIT_STATE(gpu_alloc_rs, 10*HZ, 1);
+	atomic_t* size = get_size_counter(mgm_dev, group_id, order);
+
+	if (alloc) {
+		atomic_inc(size);
+		atomic64_add(1 << order, &total_gpu_pages);
+	} else {
+		WARN_ON(atomic_read(size) == 0);
+		atomic_dec(size);
+		atomic64_sub(1 << order, &total_gpu_pages);
 	}
 
 	if (atomic64_read(&total_gpu_pages) >= (4 << (30 - PAGE_SHIFT)) &&
