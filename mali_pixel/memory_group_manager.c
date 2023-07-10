@@ -434,7 +434,26 @@ static void update_size(struct memory_group_manager_device *mgm_dev, int
 		atomic_inc(size);
 		atomic64_add(1 << order, &total_gpu_pages);
 	} else {
-		WARN_ON(atomic_dec_return(size) < 0);
+		if (atomic_dec_return(size) < 0) {
+			/* b/289501175
+			 * Pages are often 'migrated' to the SLC group, which needs special
+			 * accounting.
+			 *
+			 * TODO: Remove after SLC MGM decoupling b/290354607
+			 */
+			if (!WARN_ON(group_id != MGM_SLC_GROUP_ID)) {
+				/* Undo the dec, and instead decrement the reserved group counter.
+				 * This is still making the assumption that the migration came from
+				 * the reserved group. Currently this is always true, however it
+				 * might not be in future. It would be invasive and costly to track
+				 * where every page came from, so instead this will be fixed as part
+				 * of the b/290354607 effort.
+				 */
+				atomic_inc(size);
+				update_size(mgm_dev, MGM_RESERVED_GROUP_ID, order, alloc);
+				return;
+			}
+		}
 		atomic64_sub(1 << order, &total_gpu_pages);
 	}
 
