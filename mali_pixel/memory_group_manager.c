@@ -434,8 +434,7 @@ static void update_size(struct memory_group_manager_device *mgm_dev, int
 		atomic_inc(size);
 		atomic64_add(1 << order, &total_gpu_pages);
 	} else {
-		WARN_ON(atomic_read(size) == 0);
-		atomic_dec(size);
+		WARN_ON(atomic_dec_return(size) < 0);
 		atomic64_sub(1 << order, &total_gpu_pages);
 	}
 
