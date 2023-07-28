@@ -186,8 +186,8 @@ static int mali_oom_notifier_handler(struct notifier_block *nb,
 	kbdev_alloc_total =
 		KBASE_PAGES_TO_KIB(atomic_read(&(kbdev->memdev.used_pages)));
 
-	dev_err(kbdev->dev, "OOM notifier: dev %s  %lu kB\n", kbdev->devname,
-		kbdev_alloc_total);
+	dev_info(kbdev->dev,
+		"System reports low memory, GPU memory usage summary:\n");
 
 	mutex_lock(&kbdev->kctx_list_lock);
 
@@ -201,14 +201,17 @@ static int mali_oom_notifier_handler(struct notifier_block *nb,
 		pid_struct = find_get_pid(kctx->pid);
 		task = pid_task(pid_struct, PIDTYPE_PID);
 
-		dev_err(kbdev->dev,
-			"OOM notifier: tsk %s  tgid (%u)  pid (%u) %lu kB\n",
-			task ? task->comm : "[null task]", kctx->tgid,
-			kctx->pid, task_alloc_total);
+		dev_info(kbdev->dev,
+			" tsk %s tgid %u pid %u has allocated %lu kB GPU memory\n",
+			task ? task->comm : "[null task]", kctx->tgid, kctx->pid,
+			task_alloc_total);
 
 		put_pid(pid_struct);
 		rcu_read_unlock();
 	}
+
+	dev_info(kbdev->dev, "End of summary, device usage is %lu kB\n",
+		kbdev_alloc_total);
 
 	mutex_unlock(&kbdev->kctx_list_lock);
 	return NOTIFY_OK;
