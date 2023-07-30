@@ -260,6 +260,7 @@ endif
 # KBUILD_EXTRA_SYMBOLS to prevent warnings about unknown functions
 #
 EXTRA_SYMBOLS += $(OUT_DIR)/../google-modules/gpu/mali_pixel/Module.symvers
+ifdef MALI_ENABLE_EXTRAWARN
 
 CFLAGS_MODULE += -Wall -Werror
 
@@ -282,8 +283,10 @@ CFLAGS_MODULE += -Wno-sign-compare
 CFLAGS_MODULE += -Wno-shift-negative-value
 # This flag is needed to avoid build errors on older kernels
 CFLAGS_MODULE += $(call cc-option, -Wno-cast-function-type)
+endif
 
 KBUILD_CPPFLAGS += -DKBUILD_EXTRA_WARN1
+KBUILD_OPTIONS += $(MAKE_ARGS)
 
 # The following were added to align with W=2 in scripts/Makefile.extrawarn
 # from the Linux source tree (v5.18.14)

@@ -221,6 +221,7 @@ static inline void dma_fence_set_error_helper(
 #endif
 }
 
+#if 0
 #include <linux/mm.h>
 #if !((KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE) || \
       ((KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE) && defined(__ANDROID_COMMON_KERNEL__)))
@@ -232,6 +233,7 @@ static inline void vm_flags_clear(struct vm_area_struct *vma, vm_flags_t flags)
 {
 	vma->vm_flags &= ~flags;
 }
+#endif
 #endif
 
 #if (KERNEL_VERSION(6, 4, 0) <= LINUX_VERSION_CODE)
