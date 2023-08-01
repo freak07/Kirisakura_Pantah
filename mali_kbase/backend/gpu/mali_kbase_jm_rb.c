@@ -32,6 +32,9 @@
 #include <hwcnt/mali_kbase_hwcnt_context.h>
 #include <mali_kbase_reset_gpu.h>
 #include <mali_kbase_kinstr_jm.h>
+#if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
+#include <mali_kbase_gpu_metrics.h>
+#endif
 #include <backend/gpu/mali_kbase_cache_policy_backend.h>
 #include <device/mali_kbase_device.h>
 #include <backend/gpu/mali_kbase_jm_internal.h>
@@ -274,6 +277,59 @@ int kbase_backend_slot_free(struct kbase_device *kbdev, unsigned int js)
 	return SLOT_RB_SIZE - kbase_backend_nr_atoms_on_slot(kbdev, js);
 }
 
+/**
+ * trace_atom_completion_for_gpu_metrics - Report the completion of atom for the
+ *                                         purpose of emitting power/gpu_work_period
+ *                                         tracepoint.
+ *
+ * @katom:         Pointer to the atom that completed execution on GPU.
+ * @end_timestamp: Pointer to the timestamp of atom completion. May be NULL, in
+ *                 which case current time will be used.
+ *
+ * The function would also report the start for an atom that was in the HEAD_NEXT
+ * register.
+ *
+ * Note: Caller must hold the HW access lock.
+ */
+static inline void trace_atom_completion_for_gpu_metrics(
+			struct kbase_jd_atom *const katom,
+			ktime_t *end_timestamp)
+{
+#if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
+	u64 complete_ns;
+	struct kbase_context *kctx = katom->kctx;
+	struct kbase_jd_atom *queued =
+		kbase_gpu_inspect(kctx->kbdev, katom->slot_nr, 1);
+
+#ifdef CONFIG_MALI_DEBUG
+	WARN_ON(!kbase_gpu_inspect(kctx->kbdev, katom->slot_nr, 0));
+#endif
+
+	lockdep_assert_held(&kctx->kbdev->hwaccess_lock);
+
+	if (unlikely(queued == katom))
+		return;
+
+	/* A protected atom and a non-protected atom cannot be in the RB_SUBMITTED
+	 * state at the same time in the job slot ringbuffer. Atom submission state
+	 * machine prevents the submission of a non-protected atom until all
+	 * protected atoms have completed and GPU has exited the protected mode.
+	 * This implies that if the queued atom is in RB_SUBMITTED state, it shall
+	 * be a protected atom and so we can return early.
+	 */
+	if (unlikely(kbase_jd_katom_is_protected(katom)))
+		return;
+
+	if (likely(end_timestamp))
+		complete_ns = ktime_to_ns(*end_timestamp);
+	else
+		complete_ns = ktime_get_raw_ns();
+
+	kbase_gpu_metrics_ctx_end_activity(kctx, complete_ns);
+	if (queued && queued->gpu_rb_state == KBASE_ATOM_GPU_RB_SUBMITTED)
+		kbase_gpu_metrics_ctx_start_activity(queued->kctx, complete_ns);
+#endif
+}
 
 static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 					struct kbase_jd_atom *katom,
@@ -290,6 +346,7 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 		break;
 
 	case KBASE_ATOM_GPU_RB_SUBMITTED:
+		trace_atom_completion_for_gpu_metrics(katom, end_timestamp);
 		kbase_kinstr_jm_atom_hw_release(katom);
 		/* Inform power management at start/finish of atom so it can
 		 * update its GPU utilisation metrics. Mark atom as not
@@ -866,6 +923,9 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 
 		for (idx = 0; idx < SLOT_RB_SIZE; idx++) {
 			bool cores_ready;
+#if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
+			bool trace_atom_submit_for_gpu_metrics = true;
+#endif
 			int ret;
 
 			if (!katom[idx])
@@ -976,12 +1036,21 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 			case KBASE_ATOM_GPU_RB_READY:
 
 				if (idx == 1) {
+					enum kbase_atom_gpu_rb_state atom_0_gpu_rb_state =
+						katom[0]->gpu_rb_state;
+
+#if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
+					trace_atom_submit_for_gpu_metrics =
+						(atom_0_gpu_rb_state ==
+						 KBASE_ATOM_GPU_RB_NOT_IN_SLOT_RB);
+#endif
+
 					/* Only submit if head atom or previous
 					 * atom already submitted
 					 */
-					if ((katom[0]->gpu_rb_state !=
+					if ((atom_0_gpu_rb_state !=
 						KBASE_ATOM_GPU_RB_SUBMITTED &&
-						katom[0]->gpu_rb_state !=
+						atom_0_gpu_rb_state !=
 					KBASE_ATOM_GPU_RB_NOT_IN_SLOT_RB))
 						break;
 
@@ -1019,6 +1088,13 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 
 					/* Inform platform at start/finish of atom */
 					kbasep_platform_event_atom_submit(katom[idx]);
+#if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
+					if (likely(trace_atom_submit_for_gpu_metrics &&
+						   !kbase_jd_katom_is_protected(katom[idx])))
+						kbase_gpu_metrics_ctx_start_activity(
+							katom[idx]->kctx,
+							ktime_to_ns(katom[idx]->start_timestamp));
+#endif
 				} else {
 					if (katom[idx]->core_req & BASE_JD_REQ_PERMON)
 						kbase_pm_release_gpu_cycle_counter_nolock(kbdev);

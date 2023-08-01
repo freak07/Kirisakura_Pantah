@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2018-2022 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2018-2023 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -56,7 +56,7 @@
 #define CSF_NUM_DOORBELL ((u8)24)
 
 /* Offset to the first HW doorbell page */
-#define CSF_HW_DOORBELL_PAGE_OFFSET ((u32)0x80000)
+#define CSF_HW_DOORBELL_PAGE_OFFSET ((u32)DOORBELLS_BASE)
 
 /* Size of HW Doorbell page, used to calculate the offset to subsequent pages */
 #define CSF_HW_DOORBELL_PAGE_SIZE ((u32)0x10000)
@@ -868,6 +868,22 @@ u32 kbase_csf_firmware_get_mcu_core_pwroff_time(struct kbase_device *kbdev);
  *         format.
  */
 u32 kbase_csf_firmware_set_mcu_core_pwroff_time(struct kbase_device *kbdev, u32 dur);
+
+/**
+ * kbase_csf_firmware_reset_mcu_core_pwroff_time - Reset the MCU shader Core power-off
+ *                                               time value
+ *
+ * @kbdev:   Instance of a GPU platform device that implements a CSF interface.
+ *
+ * Sets the MCU Shader Core power-off time value to the default.
+ *
+ * The configured MCU shader Core power-off timer will only have effect when the host
+ * driver has delegated the shader cores' power management to MCU.
+ *
+ * Return: the actual internal core power-off timer value in register defined
+ *         format.
+ */
+u32 kbase_csf_firmware_reset_mcu_core_pwroff_time(struct kbase_device *kbdev);
 
 /**
  * kbase_csf_interface_version - Helper function to build the full firmware
