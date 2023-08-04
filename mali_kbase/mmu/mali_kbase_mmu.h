@@ -289,6 +289,11 @@ int kbase_mmu_migrate_page(struct tagged_addr old_phys, struct tagged_addr new_p
 void kbase_mmu_flush_pa_range(struct kbase_device *kbdev, struct kbase_context *kctx,
 			      phys_addr_t phys, size_t size,
 			      enum kbase_mmu_op_type flush_op);
+void kbase_mmu_flush_invalidate_update_pages(struct kbase_device *kbdev, struct kbase_context *kctx, u64 vpfn,
+					size_t nr, u64 dirty_pgds);
+int kbase_mmu_update_pages_no_flush(struct kbase_device *kbdev, struct kbase_mmu_table *mmut,
+					   u64 vpfn, struct tagged_addr *phys, size_t nr,
+					   unsigned long flags, int group_id, u64 *dirty_pgds);
 
 /**
  * kbase_mmu_bus_fault_interrupt - Process a bus fault interrupt.

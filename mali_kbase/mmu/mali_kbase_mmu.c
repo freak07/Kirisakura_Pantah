@@ -348,10 +348,6 @@ static void kbase_mmu_sync_pgd(struct kbase_device *kbdev, struct kbase_context 
  *        a 4kB physical page.
  */
 
-static int kbase_mmu_update_pages_no_flush(struct kbase_device *kbdev, struct kbase_mmu_table *mmut,
-					   u64 vpfn, struct tagged_addr *phys, size_t nr,
-					   unsigned long flags, int group_id, u64 *dirty_pgds);
-
 /**
  * kbase_mmu_update_and_free_parent_pgds() - Update number of valid entries and
  *                                           free memory of the page directories
@@ -3131,7 +3127,7 @@ KBASE_EXPORT_TEST_API(kbase_mmu_teardown_pages);
  * Return: 0 if the attributes data in page table entries were updated
  *         successfully, otherwise an error code.
  */
-static int kbase_mmu_update_pages_no_flush(struct kbase_device *kbdev, struct kbase_mmu_table *mmut,
+int kbase_mmu_update_pages_no_flush(struct kbase_device *kbdev, struct kbase_mmu_table *mmut,
 					   u64 vpfn, struct tagged_addr *phys, size_t nr,
 					   unsigned long flags, int const group_id, u64 *dirty_pgds)
 {
@@ -3237,9 +3233,30 @@ static int kbase_mmu_update_pages_common(struct kbase_device *kbdev, struct kbas
 					 unsigned long flags, int const group_id)
 {
 	int err;
-	struct kbase_mmu_hw_op_param op_param;
 	u64 dirty_pgds = 0;
 	struct kbase_mmu_table *mmut;
+
+#if !MALI_USE_CSF
+	if (unlikely(kctx == NULL))
+		return -EINVAL;
+
+	mmut = &kctx->mmu;
+#else
+	mmut = kctx ? &kctx->mmu : &kbdev->csf.mcu_mmu;
+#endif
+
+	err = kbase_mmu_update_pages_no_flush(kbdev, mmut, vpfn, phys, nr, flags, group_id,
+					      &dirty_pgds);
+
+	kbase_mmu_flush_invalidate_update_pages(kbdev, kctx, vpfn, nr, dirty_pgds);
+
+	return err;
+}
+
+void kbase_mmu_flush_invalidate_update_pages(struct kbase_device *kbdev, struct kbase_context *kctx, u64 vpfn,
+					size_t nr, u64 dirty_pgds)
+{
+	struct kbase_mmu_hw_op_param op_param;
 	/* Calls to this function are inherently asynchronous, with respect to
 	 * MMU operations.
 	 */
@@ -3248,22 +3265,12 @@ static int kbase_mmu_update_pages_common(struct kbase_device *kbdev, struct kbas
 
 #if !MALI_USE_CSF
 	if (unlikely(kctx == NULL))
-		return -EINVAL;
+		return;
 
 	as_nr = kctx->as_nr;
-	mmut = &kctx->mmu;
 #else
-	if (kctx) {
-		mmut = &kctx->mmu;
-		as_nr = kctx->as_nr;
-	} else {
-		mmut = &kbdev->csf.mcu_mmu;
-		as_nr = MCU_AS_NR;
-	}
+	as_nr = kctx ? kctx->as_nr : MCU_AS_NR;
 #endif
-
-	err = kbase_mmu_update_pages_no_flush(kbdev, mmut, vpfn, phys, nr, flags, group_id,
-					      &dirty_pgds);
 
 	op_param = (const struct kbase_mmu_hw_op_param){
 		.vpfn = vpfn,
@@ -3278,8 +3285,6 @@ static int kbase_mmu_update_pages_common(struct kbase_device *kbdev, struct kbas
 		mmu_flush_invalidate_on_gpu_ctrl(kbdev, kctx, as_nr, &op_param);
 	else
 		mmu_flush_invalidate(kbdev, kctx, as_nr, &op_param);
-
-	return err;
 }
 
 int kbase_mmu_update_pages(struct kbase_context *kctx, u64 vpfn, struct tagged_addr *phys,
