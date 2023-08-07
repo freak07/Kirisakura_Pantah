@@ -3160,8 +3160,6 @@ void kbase_csf_interrupt(struct kbase_device *kbdev, u32 val)
 					kbase_csf_firmware_global_input_mask(
 							global_iface, GLB_REQ, glb_ack,
 							GLB_REQ_IDLE_EVENT_MASK);
-
-					kbase_csf_scheduler_process_gpu_idle_event(kbdev);
 #endif
 
 					glb_idle_irq_received = true;

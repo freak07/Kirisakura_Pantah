@@ -50,7 +50,7 @@
 
 /* 60ms optimizes power while minimizing latency impact for UI test cases. */
 #define MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_US (600)
-#define FIRMWARE_IDLE_HYSTERESIS_TIME_USEC (10000) /* Default 10 milliseconds */
+#define FIRMWARE_IDLE_HYSTERESIS_TIME_USEC (60000) /* Default 60 milliseconds */
 
 /* Idle hysteresis time can be scaled down when GPU sleep feature is used */
 #define FIRMWARE_IDLE_HYSTERESIS_GPU_SLEEP_SCALER (5)

@@ -2097,22 +2097,13 @@ u32 kbase_csf_firmware_get_gpu_idle_hysteresis_time(struct kbase_device *kbdev)
 	return dur;
 }
 
-#ifndef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-static inline u32 msec_to_usec_saturate(u32 ms) {
-#define MILLISECONDS_PER_SECOND 1000
-	if (ms > U32_MAX / MILLISECONDS_PER_SECOND)
-		return U32_MAX;
-	return ms * MILLISECONDS_PER_SECOND;
-}
-#endif
-
 u32 kbase_csf_firmware_set_gpu_idle_hysteresis_time(struct kbase_device *kbdev, u32 dur)
 {
 	unsigned long flags;
 #ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
 	const u32 hysteresis_val = convert_dur_to_idle_count(kbdev, MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_US);
 #else
-	const u32 hysteresis_val = convert_dur_to_idle_count(kbdev, msec_to_usec_saturate(dur));
+	const u32 hysteresis_val = convert_dur_to_idle_count(kbdev, dur);
 #endif
 
 	/* The 'fw_load_lock' is taken to synchronize against the deferred
@@ -2182,7 +2173,7 @@ u32 kbase_csf_firmware_set_gpu_idle_hysteresis_time(struct kbase_device *kbdev, 
 	mutex_unlock(&kbdev->csf.reg_lock);
 #endif
 
-	dev_dbg(kbdev->dev, "GPU suspend timeout updated: %i ms (0x%.8x)",
+	dev_dbg(kbdev->dev, "GPU suspend timeout updated: %i us (0x%.8x)",
 		kbdev->csf.gpu_idle_hysteresis_us,
 		kbdev->csf.gpu_idle_dur_count);
 	kbase_csf_scheduler_pm_idle(kbdev);
