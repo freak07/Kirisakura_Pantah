@@ -1709,10 +1709,12 @@ int kbase_csf_ctx_init(struct kbase_context *kctx)
 
 	err = kbasep_ctx_user_reg_page_mapping_init(kctx);
 	if (unlikely(err))
-		goto out_err_tiler_heap_context;
+		goto out_err_user_reg_page_mapping_init;
 
 	return err;
 
+out_err_user_reg_page_mapping_init:
+	kbase_csf_tiler_heap_context_term(kctx);
 out_err_tiler_heap_context:
 	kbase_csf_kcpu_queue_context_term(kctx);
 out_err_kcpu_queue_context:
