@@ -8,7 +8,7 @@
  */
 
 #include <linux/atomic.h>
-#ifdef CONFIG_DEBUG_FS
+#ifdef CONFIG_MALI_MEMORY_GROUP_MANAGER_DEBUG_FS
 #include <linux/debugfs.h>
 #endif
 #include <linux/fs.h>
@@ -96,8 +96,10 @@ static inline vm_fault_t vmf_insert_pfn_prot(struct vm_area_struct *vma,
 struct mgm_group {
 	atomic_t size;
 	atomic_t lp_size;
+#ifdef CONFIG_MALI_MEMORY_GROUP_MANAGER_DEBUG_FS
 	atomic_t insert_pfn;
 	atomic_t update_gpu_pte;
+#endif
 
 	ptid_t ptid;
 	ptpbha_t pbha;
@@ -147,7 +149,7 @@ struct mgm_groups {
 	struct device *dev;
 	struct pt_handle *pt_handle;
 	struct kobject kobj;
-#ifdef CONFIG_DEBUG_FS
+#ifdef CONFIG_MALI_MEMORY_GROUP_MANAGER_DEBUG_FS
 	struct dentry *mgm_debugfs_root;
 #endif
 };
@@ -156,7 +158,7 @@ struct mgm_groups {
  * DebugFS
  */
 
-#ifdef CONFIG_DEBUG_FS
+#ifdef CONFIG_MALI_MEMORY_GROUP_MANAGER_DEBUG_FS
 
 static int mgm_debugfs_state_get(void *data, u64 *val)
 {
@@ -287,7 +289,7 @@ static int mgm_debugfs_init(struct mgm_groups *mgm_data)
 	return 0;
 }
 
-#endif /* CONFIG_DEBUG_FS */
+#endif /* CONFIG_MALI_MEMORY_GROUP_MANAGER_DEBUG_FS */
 
 /*
  * Pixel Stats sysfs
@@ -785,7 +787,9 @@ static u64 mgm_update_gpu_pte(
 		}
 	}
 
+#ifdef CONFIG_MALI_MEMORY_GROUP_MANAGER_DEBUG_FS
 	atomic_inc(&data->groups[group_id].update_gpu_pte);
+#endif
 
 	return pte;
 }
@@ -835,10 +839,12 @@ static vm_fault_t mgm_vmf_insert_pfn_prot(
 
 	fault = vmf_insert_pfn_prot(vma, addr, pfn, prot);
 
-	if (fault == VM_FAULT_NOPAGE)
-		atomic_inc(&data->groups[group_id].insert_pfn);
-	else
+	if (fault != VM_FAULT_NOPAGE)
 		dev_err(data->dev, "vmf_insert_pfn_prot failed\n");
+#ifdef CONFIG_MALI_MEMORY_GROUP_MANAGER_DEBUG_FS
+	else
+		atomic_inc(&data->groups[group_id].insert_pfn);
+#endif
 
 	return fault;
 }
@@ -890,8 +896,10 @@ static int mgm_initialize_data(struct mgm_groups *mgm_data)
 	for (i = 0; i < MEMORY_GROUP_MANAGER_NR_GROUPS; i++) {
 		atomic_set(&mgm_data->groups[i].size, 0);
 		atomic_set(&mgm_data->groups[i].lp_size, 0);
+#ifdef CONFIG_MALI_MEMORY_GROUP_MANAGER_DEBUG_FS
 		atomic_set(&mgm_data->groups[i].insert_pfn, 0);
 		atomic_set(&mgm_data->groups[i].update_gpu_pte, 0);
+#endif
 
 		mgm_data->groups[i].pbha = MGM_PBHA_DEFAULT;
 		mgm_data->groups[i].base_pt = 0;
