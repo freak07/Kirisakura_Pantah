@@ -1066,9 +1066,6 @@ kbasep_kinstr_prfcnt_client_destroy_partial(struct kbase_kinstr_prfcnt_client *c
 	kfree(cli);
 }
 
-#if !MALI_KERNEL_TEST_API
-static
-#endif
 void kbasep_kinstr_prfcnt_client_destroy(struct kbase_kinstr_prfcnt_client *cli)
 {
 	kbasep_kinstr_prfcnt_client_destroy_partial(cli, KINSTR_PRFCNT_INITIALISED);

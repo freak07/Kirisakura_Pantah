@@ -910,6 +910,7 @@ int kbase_csf_trigger_firmware_config_update(struct kbase_device *kbdev);
  * GPU must be powered during this call.
  */
 void kbase_csf_debug_dump_registers(struct kbase_device *kbdev);
+
 /**
  * kbase_csf_firmware_req_core_dump - Request a firmware core dump
  *
