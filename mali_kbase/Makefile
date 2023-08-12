@@ -33,6 +33,9 @@ endif
 # Pixel integration configuration values
 #
 
+# Debug Ftrace configuration options
+CONFIG_MALI_SYSTEM_TRACE=y
+
 # Core kbase configuration options
 CONFIG_MALI_EXPERT=y
 CONFIG_MALI_MIDGARD_DVFS=y
@@ -43,6 +46,7 @@ CONFIG_MALI_PIXEL_GPU_QOS ?= y
 CONFIG_MALI_PIXEL_GPU_BTS ?= y
 CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING ?= y
 CONFIG_MALI_PIXEL_GPU_THERMAL ?= y
+CONFIG_MALI_PIXEL_GPU_SLC ?= y
 
 #
 # Default configuration values
@@ -122,7 +126,6 @@ ifeq ($(CONFIG_MALI_MIDGARD),m)
         else
             # Prevent misuse when CONFIG_MALI_DEBUG=n
             CONFIG_MALI_MIDGARD_ENABLE_TRACE = n
-            CONFIG_MALI_SYSTEM_TRACE = n
             CONFIG_MALI_FENCE_DEBUG = n
         endif
     else
@@ -140,7 +143,6 @@ ifeq ($(CONFIG_MALI_MIDGARD),m)
         CONFIG_MALI_PRFCNT_SET_SELECT_VIA_DEBUG_FS = n
         CONFIG_MALI_DEBUG = n
         CONFIG_MALI_MIDGARD_ENABLE_TRACE = n
-        CONFIG_MALI_SYSTEM_TRACE = n
         CONFIG_MALI_FENCE_DEBUG = n
     endif
 
@@ -219,8 +221,9 @@ CONFIGS += \
     CONFIG_MALI_PIXEL_GPU_QOS \
     CONFIG_MALI_PIXEL_GPU_BTS \
     CONFIG_MALI_PIXEL_GPU_THERMAL \
-    CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING
-
+    CONFIG_MALI_PIXEL_GPU_SECURE_RENDERING \
+    CONFIG_MALI_HOST_CONTROLS_SC_RAILS \
+    CONFIG_MALI_PIXEL_GPU_SLC
 
 #
 # MAKE_ARGS to pass the custom CONFIGs on out-of-tree build
@@ -251,6 +254,7 @@ EXTRA_CFLAGS += -DCONFIG_MALI_PLATFORM_NAME=$(CONFIG_MALI_PLATFORM_NAME)
 #
 # KBUILD_EXTRA_SYMBOLS to prevent warnings about unknown functions
 #
+EXTRA_SYMBOLS += $(OUT_DIR)/../google-modules/gpu/mali_pixel/Module.symvers
 
 # The following were added to align with W=1 in scripts/Makefile.extrawarn
 # from the Linux source tree

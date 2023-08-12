@@ -209,7 +209,8 @@ void gpu_dvfs_metrics_work_begin(void* param)
 	struct kbase_context* kctx = unit->kctx;
 	struct kbase_device* kbdev = kctx->kbdev;
 	struct pixel_context* pc = kbdev->platform_context;
-	struct gpu_dvfs_metrics_uid_stats* uid_stats = kctx->platform_data;
+	struct pixel_platform_data *pd = kctx->platform_data;
+	struct gpu_dvfs_metrics_uid_stats* uid_stats = pd->stats;
 	struct gpu_dvfs_metrics_uid_stats** work_stats = &pc->dvfs.metrics.work_uid_stats[slot];
 	const u64 curr = ktime_get_ns();
 	unsigned long flags;
@@ -264,7 +265,8 @@ void gpu_dvfs_metrics_work_end(void *param)
 	struct kbase_context* kctx = unit->kctx;
 	struct kbase_device* kbdev = kctx->kbdev;
 	struct pixel_context* pc = kbdev->platform_context;
-	struct gpu_dvfs_metrics_uid_stats* uid_stats = kctx->platform_data;
+	struct pixel_platform_data *pd = kctx->platform_data;
+	struct gpu_dvfs_metrics_uid_stats* uid_stats = pd->stats;
 	struct gpu_dvfs_metrics_uid_stats** work_stats = &pc->dvfs.metrics.work_uid_stats[slot];
 	const u64 curr = ktime_get_ns();
 	unsigned long flags;
@@ -376,6 +378,7 @@ int gpu_dvfs_kctx_init(struct kbase_context *kctx)
 {
 	struct kbase_device *kbdev = kctx->kbdev;
 	struct pixel_context *pc = kbdev->platform_context;
+	struct pixel_platform_data *pd = kctx->platform_data;
 
 	struct task_struct *task;
 	kuid_t uid;
@@ -428,7 +431,7 @@ int gpu_dvfs_kctx_init(struct kbase_context *kctx)
 	stats->active_kctx_count++;
 
 	/* Store a direct link in the kctx */
-	kctx->platform_data = stats;
+	pd->stats = stats;
 
 done:
 	mutex_unlock(&kbdev->kctx_list_lock);
@@ -446,7 +449,8 @@ done:
 void gpu_dvfs_kctx_term(struct kbase_context *kctx)
 {
 	struct kbase_device *kbdev = kctx->kbdev;
-	struct gpu_dvfs_metrics_uid_stats *stats = kctx->platform_data;
+	struct pixel_platform_data *pd = kctx->platform_data;
+	struct gpu_dvfs_metrics_uid_stats *stats = pd->stats;
 	unsigned long flags;
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);

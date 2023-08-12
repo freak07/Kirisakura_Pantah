@@ -2407,34 +2407,6 @@ static void kbase_cpu_vm_close(struct vm_area_struct *vma)
 	kfree(map);
 }
 
-static int kbase_cpu_vm_split(struct vm_area_struct *vma, unsigned long addr)
-{
-	struct kbase_cpu_mapping *map = vma->vm_private_data;
-
-	KBASE_DEBUG_ASSERT(map->kctx);
-	KBASE_DEBUG_ASSERT(map->count > 0);
-
-	/*
-	 * We should never have a map/munmap pairing on a kbase_context managed
-	 * vma such that the munmap only unmaps a portion of the vma range.
-	 * Should this arise, the kernel attempts to split the vma range to
-	 * ensure that it only unmaps the requested region. To achieve this it
-	 * attempts to split the containing vma split occurs, and this callback
-	 * is reached. By returning -EINVAL here we inform the kernel that such
-	 * splits are not supported so that it instead unmaps the entire region.
-	 * Since this is indicative of a bug in the map/munmap code in the
-	 * driver, we raise a WARN here to indicate that this invalid
-	 * state has been reached.
-	 */
-	dev_warn(map->kctx->kbdev->dev,
-		"%s: vma region split requested: addr=%lx map->count=%d reg=%p reg->start_pfn=%llx reg->nr_pages=%zu",
-		__func__, addr, map->count, map->region, map->region->start_pfn,
-		map->region->nr_pages);
-	WARN_ON_ONCE(1);
-
-	return -EINVAL;
-}
-
 static struct kbase_aliased *get_aliased_alloc(struct vm_area_struct *vma,
 					struct kbase_va_region *reg,
 					pgoff_t *start_off,
@@ -2543,7 +2515,6 @@ exit:
 const struct vm_operations_struct kbase_vm_ops = {
 	.open  = kbase_cpu_vm_open,
 	.close = kbase_cpu_vm_close,
-	.may_split = kbase_cpu_vm_split,
 	.fault = kbase_cpu_vm_fault
 };
 

@@ -146,7 +146,7 @@ static void mmu_invalidate(struct kbase_device *kbdev, struct kbase_context *kct
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
-	if (kbdev->pm.backend.gpu_powered && (!kctx || kctx->as_nr >= 0)) {
+	if (kbdev->pm.backend.gpu_ready && (!kctx || kctx->as_nr >= 0)) {
 		as_nr = kctx ? kctx->as_nr : as_nr;
 		err = kbase_mmu_hw_do_unlock(kbdev, &kbdev->as[as_nr], op_param);
 	}
@@ -173,7 +173,7 @@ static void mmu_flush_invalidate_as(struct kbase_device *kbdev, struct kbase_as 
 	mutex_lock(&kbdev->mmu_hw_mutex);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
-	if (kbdev->pm.backend.gpu_powered)
+	if (kbdev->pm.backend.gpu_ready)
 		err = kbase_mmu_hw_do_flush_locked(kbdev, as, op_param);
 
 	if (err) {
@@ -270,7 +270,7 @@ static void mmu_flush_invalidate_on_gpu_ctrl(struct kbase_device *kbdev, struct 
 	mutex_lock(&kbdev->mmu_hw_mutex);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
-	if (kbdev->pm.backend.gpu_powered && (!kctx || kctx->as_nr >= 0)) {
+	if (kbdev->pm.backend.gpu_ready && (!kctx || kctx->as_nr >= 0)) {
 		as_nr = kctx ? kctx->as_nr : as_nr;
 		err = kbase_mmu_hw_do_flush_on_gpu_ctrl(kbdev, &kbdev->as[as_nr],
 							op_param);
@@ -299,12 +299,13 @@ static void kbase_mmu_sync_pgd_gpu(struct kbase_device *kbdev, struct kbase_cont
 
 static void kbase_mmu_sync_pgd_cpu(struct kbase_device *kbdev, dma_addr_t handle, size_t size)
 {
-	/* In non-coherent system, ensure the GPU can read
-	 * the pages from memory
+	/* Ensure that the GPU can read the pages from memory.
+	 *
+	 * pixel: b/200555454 requires this sync to happen even if the system
+	 * is coherent.
 	 */
-	if (kbdev->system_coherency == COHERENCY_NONE)
-		dma_sync_single_for_device(kbdev->dev, handle, size,
-				DMA_TO_DEVICE);
+	dma_sync_single_for_device(kbdev->dev, handle, size,
+			DMA_TO_DEVICE);
 }
 
 /**
@@ -1330,6 +1331,7 @@ page_fault_retry:
 		kbase_gpu_vm_unlock(kctx);
 	} else {
 		int ret = -ENOMEM;
+		const u8 group_id = region->gpu_alloc->group_id;
 
 		kbase_gpu_vm_unlock(kctx);
 
@@ -1341,23 +1343,19 @@ page_fault_retry:
 			if (grow_2mb_pool) {
 				/* Round page requirement up to nearest 2 MB */
 				struct kbase_mem_pool *const lp_mem_pool =
-					&kctx->mem_pools.large[
-					region->gpu_alloc->group_id];
+					&kctx->mem_pools.large[group_id];
 
 				pages_to_grow = (pages_to_grow +
 					((1 << lp_mem_pool->order) - 1))
 						>> lp_mem_pool->order;
 
-				ret = kbase_mem_pool_grow(lp_mem_pool,
-					pages_to_grow);
+				ret = kbase_mem_pool_grow(lp_mem_pool, pages_to_grow, kctx->task);
 			} else {
 #endif
 				struct kbase_mem_pool *const mem_pool =
-					&kctx->mem_pools.small[
-					region->gpu_alloc->group_id];
+					&kctx->mem_pools.small[group_id];
 
-				ret = kbase_mem_pool_grow(mem_pool,
-					pages_to_grow);
+				ret = kbase_mem_pool_grow(mem_pool, pages_to_grow, kctx->task);
 #ifdef CONFIG_MALI_2MB_ALLOC
 			}
 #endif
@@ -1765,10 +1763,8 @@ int kbase_mmu_insert_single_page(struct kbase_context *kctx, u64 vpfn,
 			 * the page walk to succeed
 			 */
 			rt_mutex_unlock(&kctx->mmu.mmu_lock);
-			err = kbase_mem_pool_grow(
-				&kbdev->mem_pools.small[
-					kctx->mmu.group_id],
-				MIDGARD_MMU_BOTTOMLEVEL);
+			err = kbase_mem_pool_grow(&kbdev->mem_pools.small[kctx->mmu.group_id],
+						  MIDGARD_MMU_BOTTOMLEVEL, kctx->task);
 			rt_mutex_lock(&kctx->mmu.mmu_lock);
 		} while (!err);
 		if (err) {
@@ -1929,9 +1925,8 @@ int kbase_mmu_insert_pages_no_flush(struct kbase_device *kbdev, struct kbase_mmu
 			 * the page walk to succeed
 			 */
 			rt_mutex_unlock(&mmut->mmu_lock);
-			err = kbase_mem_pool_grow(
-				&kbdev->mem_pools.small[mmut->group_id],
-				cur_level);
+			err = kbase_mem_pool_grow(&kbdev->mem_pools.small[mmut->group_id],
+						  cur_level, mmut->kctx ? mmut->kctx->task : NULL);
 			rt_mutex_lock(&mmut->mmu_lock);
 		} while (!err);
 
@@ -2752,7 +2747,7 @@ static void mmu_teardown_level(struct kbase_device *kbdev,
 
 	pgd_page = kmap_atomic(pfn_to_page(PFN_DOWN(pgd)));
 	/* kmap_atomic should NEVER fail. */
-	if (WARN_ON(pgd_page == NULL))
+	if (WARN_ON_ONCE(pgd_page == NULL))
 		return;
 	if (level != MIDGARD_MMU_BOTTOMLEVEL) {
 		/* Copy the page to our preallocated buffer so that we can minimize
@@ -2817,9 +2812,8 @@ int kbase_mmu_init(struct kbase_device *const kbdev,
 	while (mmut->pgd == KBASE_MMU_INVALID_PGD_ADDRESS) {
 		int err;
 
-		err = kbase_mem_pool_grow(
-			&kbdev->mem_pools.small[mmut->group_id],
-			MIDGARD_MMU_BOTTOMLEVEL);
+		err = kbase_mem_pool_grow(&kbdev->mem_pools.small[mmut->group_id],
+					  MIDGARD_MMU_BOTTOMLEVEL, kctx ? kctx->task : NULL);
 		if (err) {
 			kbase_mmu_term(kbdev, mmut);
 			return -ENOMEM;

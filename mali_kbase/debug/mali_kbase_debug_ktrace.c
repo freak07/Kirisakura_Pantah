@@ -132,7 +132,7 @@ static void kbasep_ktrace_dump_msg(struct kbase_device *kbdev,
 	lockdep_assert_held(&kbdev->ktrace.lock);
 
 	kbasep_ktrace_format_msg(trace_msg, buffer, sizeof(buffer));
-	dev_dbg(kbdev->dev, "%s", buffer);
+	dev_err(kbdev->dev, "%s", buffer);
 }
 
 struct kbase_ktrace_msg *kbasep_ktrace_reserve(struct kbase_ktrace *ktrace)
@@ -216,32 +216,59 @@ void kbasep_ktrace_clear(struct kbase_device *kbdev)
 	spin_unlock_irqrestore(&kbdev->ktrace.lock, flags);
 }
 
+static inline u32 ktrace_buffer_distance(u32 start, u32 end) {
+	if (end == start)
+		return 0;
+	if (end > start)
+		return end - start;
+	return KBASE_KTRACE_SIZE;
+}
+
 void kbasep_ktrace_dump(struct kbase_device *kbdev)
 {
 	unsigned long flags;
 	u32 start;
 	u32 end;
+	u32 i = 0;
+	u32 distance = 0;
 	char buffer[KTRACE_DUMP_MESSAGE_SIZE] = "Dumping trace:\n";
 
 	kbasep_ktrace_format_header(buffer, sizeof(buffer), strlen(buffer));
-	dev_dbg(kbdev->dev, "%s", buffer);
+	dev_err(kbdev->dev, "%s", buffer);
 
 	spin_lock_irqsave(&kbdev->ktrace.lock, flags);
 	start = kbdev->ktrace.first_out;
 	end = kbdev->ktrace.next_in;
-
-	while (start != end) {
-		struct kbase_ktrace_msg *trace_msg = &kbdev->ktrace.rbuf[start];
-
+	distance = ktrace_buffer_distance(start, end);
+	for (i = 0; i < distance; ++i) {
+		struct kbase_ktrace_msg *trace_msg = &kbdev->ktrace.rbuf[end];
 		kbasep_ktrace_dump_msg(kbdev, trace_msg);
 
-		start = (start + 1) & KBASE_KTRACE_MASK;
+		end = (end + 1) & KBASE_KTRACE_MASK;
 	}
-	dev_dbg(kbdev->dev, "TRACE_END");
+	dev_err(kbdev->dev, "TRACE_END: (%i entries)", i);
 
 	kbasep_ktrace_clear_locked(kbdev);
 
 	spin_unlock_irqrestore(&kbdev->ktrace.lock, flags);
+}
+
+u32 kbasep_ktrace_copy(struct kbase_device* kbdev, struct kbase_ktrace_msg* msgs, u32 num_msgs)
+{
+	u32 start = kbdev->ktrace.first_out;
+	u32 end = kbdev->ktrace.next_in;
+	u32 i = 0;
+	u32 distance = min(ktrace_buffer_distance(start, end), num_msgs);
+
+	lockdep_assert_held(&kbdev->ktrace.lock);
+
+	for (i = 0; i < distance; ++i) {
+		struct kbase_ktrace_msg *trace_msg = &kbdev->ktrace.rbuf[end];
+		memcpy(&msgs[i], trace_msg, sizeof(struct kbase_ktrace_msg));
+		end = (end + 1) & KBASE_KTRACE_MASK;
+	}
+
+	return i;
 }
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)

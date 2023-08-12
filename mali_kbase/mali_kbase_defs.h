@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2011-2022 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2023 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -431,7 +431,7 @@ struct kbase_clk_rate_trace_manager {
  * @clk_rtm: The state of the GPU clock rate trace manager
  */
 struct kbase_pm_device_data {
-	struct mutex lock;
+	struct rt_mutex lock;
 	int active_count;
 	bool suspending;
 #if MALI_USE_CSF
@@ -1776,6 +1776,10 @@ struct kbase_sub_alloc {
  * @limited_core_mask:    The mask that is applied to the affinity in case of atoms
  *                        marked with BASE_JD_REQ_LIMITED_CORE_MASK.
  * @platform_data:        Pointer to platform specific per-context data.
+ * @task:                 Pointer to the task structure of the main thread of the process
+ *                        that created the Kbase context. It would be set only for the
+ *                        contexts created by the Userspace and not for the contexts
+ *                        created internally by the Kbase.
  *
  * A kernel base context is an entity among which the GPU is scheduled.
  * Each context has its own GPU address space.
@@ -1932,6 +1936,8 @@ struct kbase_context {
 	u64 limited_core_mask;
 
 	void *platform_data;
+
+	struct task_struct *task;
 };
 
 #ifdef CONFIG_MALI_CINSTR_GWT

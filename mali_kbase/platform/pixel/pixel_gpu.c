@@ -29,6 +29,7 @@
 #include "mali_kbase_config_platform.h"
 #include "pixel_gpu_control.h"
 #include "pixel_gpu_sscd.h"
+#include "pixel_gpu_slc.h"
 
 #define CREATE_TRACE_POINTS
 #include "pixel_gpu_trace.h"
@@ -171,6 +172,76 @@ static int gpu_fw_cfg_init(struct kbase_device *kbdev) {
 }
 
 /**
+ * gpu_pixel_kctx_init() - Called when a kernel context is created
+ *
+ * @kctx: The &struct kbase_context that is being initialized
+ *
+ * This function is called when the GPU driver is initializing a new kernel context.
+ *
+ * Return: Returns 0 on success, or an error code on failure.
+ */
+static int gpu_pixel_kctx_init(struct kbase_context *kctx)
+{
+	struct kbase_device* kbdev = kctx->kbdev;
+	int err;
+
+	kctx->platform_data = kzalloc(sizeof(struct pixel_platform_data), GFP_KERNEL);
+	if (kctx->platform_data == NULL) {
+		dev_err(kbdev->dev, "pixel: failed to alloc platform_data for kctx");
+		err = -ENOMEM;
+		goto done;
+	}
+
+	err = gpu_dvfs_kctx_init(kctx);
+	if (err) {
+		dev_err(kbdev->dev, "pixel: DVFS kctx init failed\n");
+		goto done;
+	}
+
+	err = gpu_slc_kctx_init(kctx);
+	if (err) {
+		dev_err(kbdev->dev, "pixel: SLC kctx init failed\n");
+		goto done;
+	}
+
+done:
+	return err;
+}
+
+/**
+ * gpu_pixel_kctx_term() - Called when a kernel context is terminated
+ *
+ * @kctx: The &struct kbase_context that is being terminated
+ */
+static void gpu_pixel_kctx_term(struct kbase_context *kctx)
+{
+	gpu_slc_kctx_term(kctx);
+	gpu_dvfs_kctx_term(kctx);
+
+	kfree(kctx->platform_data);
+	kctx->platform_data = NULL;
+}
+
+static const struct kbase_device_init dev_init[] = {
+	{ gpu_pm_init, gpu_pm_term, "PM init failed" },
+#ifdef CONFIG_MALI_MIDGARD_DVFS
+	{ gpu_dvfs_init, gpu_dvfs_term, "DVFS init failed" },
+#endif
+	{ gpu_sysfs_init, gpu_sysfs_term, "sysfs init failed" },
+	{ gpu_sscd_init, gpu_sscd_term, "SSCD init failed" },
+	{ gpu_slc_init, gpu_slc_term, "SLC init failed" },
+};
+
+static void gpu_pixel_term_partial(struct kbase_device *kbdev,
+		unsigned int i)
+{
+	while (i-- > 0) {
+		if (dev_init[i].term)
+			dev_init[i].term(kbdev);
+	}
+}
+
+/**
  * gpu_pixel_init() - Initializes the Pixel integration for the Mali GPU.
  *
  * @kbdev: The &struct kbase_device for the GPU.
@@ -179,8 +250,8 @@ static int gpu_fw_cfg_init(struct kbase_device *kbdev) {
  */
 static int gpu_pixel_init(struct kbase_device *kbdev)
 {
-	int ret;
-
+	int ret = 0;
+	unsigned int i;
 	struct pixel_context *pc;
 
 	pc = kzalloc(sizeof(struct pixel_context), GFP_KERNEL);
@@ -193,30 +264,22 @@ static int gpu_pixel_init(struct kbase_device *kbdev)
 	kbdev->platform_context = pc;
 	pc->kbdev = kbdev;
 
-	ret = gpu_pm_init(kbdev);
-	if (ret)
-		goto done;
-
-#ifdef CONFIG_MALI_MIDGARD_DVFS
-	ret = gpu_dvfs_init(kbdev);
-	if (ret) {
-		dev_err(kbdev->dev, "DVFS init failed\n");
-		goto done;
-	}
-#endif /* CONFIG_MALI_MIDGARD_DVFS */
-
-	ret = gpu_sysfs_init(kbdev);
-	if (ret) {
-		dev_err(kbdev->dev, "sysfs init failed\n");
-		goto done;
+	for (i = 0; i < ARRAY_SIZE(dev_init); i++) {
+		if (dev_init[i].init) {
+			ret = dev_init[i].init(kbdev);
+			if (ret) {
+				dev_err(kbdev->dev, "%s error = %d\n",
+					dev_init[i].err_mes, ret);
+				break;
+			}
+		}
 	}
 
-	ret = gpu_sscd_init(kbdev);
 	if (ret) {
-		dev_err(kbdev->dev, "SSCD init failed\n");
-		goto done;
+		gpu_pixel_term_partial(kbdev, i);
+		kbdev->platform_context = NULL;
+		kfree(pc);
 	}
-	ret = 0;
 
 done:
 	return ret;
@@ -231,11 +294,7 @@ static void gpu_pixel_term(struct kbase_device *kbdev)
 {
 	struct pixel_context *pc = kbdev->platform_context;
 
-	gpu_sscd_term(kbdev);
-	gpu_sysfs_term(kbdev);
-	gpu_dvfs_term(kbdev);
-	gpu_pm_term(kbdev);
-
+	gpu_pixel_term_partial(kbdev, ARRAY_SIZE(dev_init));
 	kbdev->platform_context = NULL;
 	kfree(pc);
 }
@@ -243,8 +302,8 @@ static void gpu_pixel_term(struct kbase_device *kbdev)
 struct kbase_platform_funcs_conf platform_funcs = {
 	.platform_init_func = &gpu_pixel_init,
 	.platform_term_func = &gpu_pixel_term,
-	.platform_handler_context_init_func = &gpu_dvfs_kctx_init,
-	.platform_handler_context_term_func = &gpu_dvfs_kctx_term,
+	.platform_handler_context_init_func = &gpu_pixel_kctx_init,
+	.platform_handler_context_term_func = &gpu_pixel_kctx_term,
 	.platform_handler_work_begin_func = &gpu_dvfs_metrics_work_begin,
 	.platform_handler_work_end_func = &gpu_dvfs_metrics_work_end,
 	.platform_fw_cfg_init_func = &gpu_fw_cfg_init,
