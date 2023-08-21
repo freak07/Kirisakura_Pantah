@@ -313,7 +313,7 @@ static int get_and_init_contexts(struct kbase_device *kbdev,
 	size_t entry_idx;
 	int rc;
 
-	if (!mutex_trylock(&kbdev->csf.scheduler.lock)) {
+	if (!rt_mutex_trylock(&kbdev->csf.scheduler.lock)) {
 		dev_warn(kbdev->dev, "could not lock scheduler during dump.");
 		return -EBUSY;
 	}
@@ -321,7 +321,7 @@ static int get_and_init_contexts(struct kbase_device *kbdev,
 	num_entries = bitmap_weight(scheduler->csg_inuse_bitmap, num_csg);
 	rc = pixel_context_snapshot_init(kbdev, segment, num_entries);
 	if (rc) {
-		mutex_unlock(&kbdev->csf.scheduler.lock);
+		rt_mutex_unlock(&kbdev->csf.scheduler.lock);
 		return rc;
 	}
 	context_snapshot = segment->addr;
@@ -351,7 +351,7 @@ static int get_and_init_contexts(struct kbase_device *kbdev,
 		}
 	}
 
-	mutex_unlock(&kbdev->csf.scheduler.lock);
+	rt_mutex_unlock(&kbdev->csf.scheduler.lock);
 	return 0;
 }
 #endif

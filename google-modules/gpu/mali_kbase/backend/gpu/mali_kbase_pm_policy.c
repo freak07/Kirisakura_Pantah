@@ -322,7 +322,7 @@ void kbase_pm_set_policy(struct kbase_device *kbdev,
 	 * check it here. So we hold the scheduler lock to avoid other operations
 	 * interfering with the policy change and vice versa.
 	 */
-	mutex_lock(&scheduler->lock);
+	rt_mutex_lock(&scheduler->lock);
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	/* policy_change_clamp_state_to_off, when needed, is set/cleared in
 	 * this function, a very limited temporal scope for covering the
@@ -412,7 +412,7 @@ void kbase_pm_set_policy(struct kbase_device *kbdev,
 	/* Reverse the suspension done */
 	if (sched_suspend)
 		kbase_csf_scheduler_pm_resume_no_lock(kbdev);
-	mutex_unlock(&scheduler->lock);
+	rt_mutex_unlock(&scheduler->lock);
 
 	if (reset_op_prevented)
 		kbase_reset_gpu_allow(kbdev);

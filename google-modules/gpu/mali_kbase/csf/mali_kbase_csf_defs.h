@@ -1017,7 +1017,7 @@ struct kbase_csf_sched_heap_reclaim_mgr {
  * @reclaim_mgr:            CSGs tiler heap manager object.
  */
 struct kbase_csf_scheduler {
-	struct mutex lock;
+	struct rt_mutex lock;
 	spinlock_t interrupt_lock;
 	enum kbase_csf_scheduler_state state;
 	DECLARE_BITMAP(doorbell_inuse_bitmap, CSF_NUM_DOORBELL);
