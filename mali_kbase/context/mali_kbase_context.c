@@ -260,7 +260,7 @@ int kbase_context_common_init(struct kbase_context *kctx)
 
 	mutex_lock(&kctx->kbdev->kctx_list_lock);
 	err = kbase_insert_kctx_to_process(kctx);
-
+	mutex_unlock(&kctx->kbdev->kctx_list_lock);
 	if (err) {
 		dev_err(kctx->kbdev->dev,
 			"(err:%d) failed to insert kctx to kbase_process", err);
@@ -269,8 +269,6 @@ int kbase_context_common_init(struct kbase_context *kctx)
 			put_task_struct(kctx->task);
 		}
 	}
-
-	mutex_unlock(&kctx->kbdev->kctx_list_lock);
 
 	return err;
 }
