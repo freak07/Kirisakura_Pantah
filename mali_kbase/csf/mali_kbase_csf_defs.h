@@ -1097,7 +1097,7 @@ struct kbase_csf_mcu_shared_regions {
  *                          CSG suspend buffers.
  */
 struct kbase_csf_scheduler {
-	struct mutex lock;
+	struct rt_mutex lock;
 	spinlock_t interrupt_lock;
 	enum kbase_csf_scheduler_state state;
 	DECLARE_BITMAP(doorbell_inuse_bitmap, CSF_NUM_DOORBELL);

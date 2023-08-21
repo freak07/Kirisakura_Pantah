@@ -276,7 +276,7 @@ int kbase_csf_scheduler_group_copy_suspend_buf(struct kbase_queue_group *group,
  */
 static inline void kbase_csf_scheduler_lock(struct kbase_device *kbdev)
 {
-	mutex_lock(&kbdev->csf.scheduler.lock);
+	rt_mutex_lock(&kbdev->csf.scheduler.lock);
 }
 
 /**
@@ -286,7 +286,7 @@ static inline void kbase_csf_scheduler_lock(struct kbase_device *kbdev)
  */
 static inline void kbase_csf_scheduler_unlock(struct kbase_device *kbdev)
 {
-	mutex_unlock(&kbdev->csf.scheduler.lock);
+	rt_mutex_unlock(&kbdev->csf.scheduler.lock);
 }
 
 /**
