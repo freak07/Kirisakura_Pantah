@@ -562,7 +562,7 @@ struct kbase_queue_group {
 	struct kbase_queue *bound_queues[MAX_SUPPORTED_STREAMS_PER_GROUP];
 
 	int doorbell_nr;
-	struct work_struct protm_event_work;
+	struct kthread_work protm_event_work;
 	DECLARE_BITMAP(protm_pending_bitmap, MAX_SUPPORTED_STREAMS_PER_GROUP);
 
 	struct kbase_csf_notification error_fatal;
@@ -836,6 +836,7 @@ struct kbase_csf_user_reg_context {
  * @sched:            Object representing the scheduler's context
  * @pending_submission_worker: Worker for the pending submission work item
  * @pending_submission_work: Work item to process pending kicked GPU command queues.
+ * @protm_event_worker: Worker to process requests to enter protected mode.
  * @cpu_queue:        CPU queue information. Only be available when DEBUG_FS
  *                    is enabled.
  * @user_reg:         Collective information to support mapping to USER Register page.
@@ -856,6 +857,7 @@ struct kbase_csf_context {
 	struct kbase_csf_scheduler_context sched;
 	struct kthread_worker pending_submission_worker;
 	struct kthread_work pending_submission_work;
+	struct kthread_worker protm_event_worker;
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	struct kbase_csf_cpu_queue_context cpu_queue;
 #endif

@@ -1148,7 +1148,7 @@ static int create_normal_suspend_buffer(struct kbase_context *const kctx,
 }
 
 static void timer_event_worker(struct work_struct *data);
-static void protm_event_worker(struct work_struct *data);
+static void protm_event_worker(struct kthread_work *work);
 static void term_normal_suspend_buffer(struct kbase_context *const kctx,
 		struct kbase_normal_suspend_buffer *s_buf);
 
@@ -1259,7 +1259,7 @@ static int create_queue_group(struct kbase_context *const kctx,
 			INIT_LIST_HEAD(&group->error_timeout.link);
 			INIT_LIST_HEAD(&group->error_tiler_oom.link);
 			INIT_WORK(&group->timer_event_work, timer_event_worker);
-			INIT_WORK(&group->protm_event_work, protm_event_worker);
+			kthread_init_work(&group->protm_event_work, protm_event_worker);
 			bitmap_zero(group->protm_pending_bitmap,
 					MAX_SUPPORTED_STREAMS_PER_GROUP);
 
@@ -1501,7 +1501,7 @@ static void wait_group_deferred_deschedule_completion(struct kbase_queue_group *
 static void cancel_queue_group_events(struct kbase_queue_group *group)
 {
 	cancel_work_sync(&group->timer_event_work);
-	cancel_work_sync(&group->protm_event_work);
+	kthread_cancel_work_sync(&group->protm_event_work);
 }
 
 static void remove_pending_group_fatal_error(struct kbase_queue_group *group)
@@ -1688,7 +1688,14 @@ int kbase_csf_ctx_init(struct kbase_context *kctx)
 					   &kctx->csf.pending_submission_worker, "mali_submit");
 	if (err) {
 		dev_err(kctx->kbdev->dev, "error initializing pending submission worker thread");
-		goto out_err_kthread;
+		goto out_err_submission_kthread;
+	}
+
+	err = kbase_create_realtime_thread(kctx->kbdev, kthread_worker_fn,
+					   &kctx->csf.protm_event_worker, "mali_protm_event");
+	if (err) {
+		dev_err(kctx->kbdev->dev, "error initializing protm event worker thread");
+		goto out_err_protm_kthread;
 	}
 
 	err = kbase_csf_scheduler_context_init(kctx);
@@ -1720,8 +1727,10 @@ out_err_tiler_heap_context:
 out_err_kcpu_queue_context:
 	kbase_csf_scheduler_context_term(kctx);
 out_err_scheduler_context:
+	kbase_destroy_kworker_stack(&kctx->csf.protm_event_worker);
+out_err_protm_kthread:
 	kbase_destroy_kworker_stack(&kctx->csf.pending_submission_worker);
-out_err_kthread:
+out_err_submission_kthread:
 	destroy_workqueue(kctx->csf.wq);
 out:
 	return err;
@@ -1878,6 +1887,7 @@ void kbase_csf_ctx_term(struct kbase_context *kctx)
 	rt_mutex_unlock(&kctx->csf.lock);
 
 	kbase_destroy_kworker_stack(&kctx->csf.pending_submission_worker);
+	kbase_destroy_kworker_stack(&kctx->csf.protm_event_worker);
 
 	kbasep_ctx_user_reg_page_mapping_term(kctx);
 	kbase_csf_tiler_heap_context_term(kctx);
@@ -2303,16 +2313,16 @@ static void report_group_fatal_error(struct kbase_queue_group *const group)
 
 /**
  * protm_event_worker - Protected mode switch request event handler
- *			called from a workqueue.
+ *			called from a kthread.
  *
- * @data: Pointer to a work_struct embedded in GPU command queue group data.
+ * @work: Pointer to a kthread_work struct embedded in GPU command queue group data.
  *
  * Request to switch to protected mode.
  */
-static void protm_event_worker(struct work_struct *data)
+static void protm_event_worker(struct kthread_work *work)
 {
 	struct kbase_queue_group *const group =
-		container_of(data, struct kbase_queue_group, protm_event_work);
+		container_of(work, struct kbase_queue_group, protm_event_work);
 	struct kbase_protected_suspend_buffer *sbuf = &group->protected_suspend_buf;
 	int err = 0;
 
@@ -2325,7 +2335,7 @@ static void protm_event_worker(struct work_struct *data)
 	} else if (err == -ENOMEM && sbuf->alloc_retries <= PROTM_ALLOC_MAX_RETRIES) {
 		sbuf->alloc_retries++;
 		/* try again to allocate pages */
-		queue_work(group->kctx->csf.wq, &group->protm_event_work);
+		kthread_queue_work(&group->kctx->csf.protm_event_worker, &group->protm_event_work);
 	} else if (sbuf->alloc_retries >= PROTM_ALLOC_MAX_RETRIES || err != -ENOMEM) {
 		dev_err(group->kctx->kbdev->dev,
 			"Failed to allocate physical pages for Protected mode suspend buffer for the group %d of context %d_%d",
@@ -2707,7 +2717,8 @@ static void process_cs_interrupts(struct kbase_queue_group *const group,
 		}
 
 		if (!group->protected_suspend_buf.pma)
-			queue_work(group->kctx->csf.wq, &group->protm_event_work);
+			kthread_queue_work(&group->kctx->csf.protm_event_worker,
+				&group->protm_event_work);
 
 		if (test_bit(group->csg_nr, scheduler->csg_slots_idle_mask)) {
 			clear_bit(group->csg_nr,
@@ -3065,7 +3076,8 @@ static inline void process_tracked_info_for_protm(struct kbase_device *kbdev,
 		if (!tock_triggered) {
 			dev_dbg(kbdev->dev, "Group-%d on slot-%d start protm work\n",
 				group->handle, group->csg_nr);
-			queue_work(group->kctx->csf.wq, &group->protm_event_work);
+			kthread_queue_work(&group->kctx->csf.protm_event_worker,
+				&group->protm_event_work);
 		}
 	}
 }
