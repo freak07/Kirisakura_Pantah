@@ -3522,7 +3522,7 @@ static ssize_t gpuinfo_show(struct device *dev,
 			GPU_FEATURES_RAY_TRACING_GET(gpu_props->props.raw_props.gpu_features);
 		const u8 nr_cores = gpu_props->num_cores;
 
-		if ((nr_cores > 10) && rt_supported)
+		if ((nr_cores >= 10) && rt_supported)
 			product_name = "Mali-G720-Immortalis";
 		else
 			product_name = (nr_cores >= 6) ? "Mali-G720" : "Mali-G620";
@@ -5559,7 +5559,10 @@ static ssize_t idle_hysteresis_time_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	kbase_csf_firmware_set_gpu_idle_hysteresis_time(kbdev, dur);
+	/* In sysFs, The unit of the input value of idle_hysteresis_time is us.
+	 * But the unit of the input parameter of this function is ns, so multiply by 1000
+	 */
+	kbase_csf_firmware_set_gpu_idle_hysteresis_time(kbdev, dur * NSEC_PER_USEC);
 
 	return count;
 }
@@ -5586,13 +5589,82 @@ static ssize_t idle_hysteresis_time_show(struct device *dev,
 	if (!kbdev)
 		return -ENODEV;
 
-	dur = kbase_csf_firmware_get_gpu_idle_hysteresis_time(kbdev);
+	/* The unit of return value of idle_hysteresis_time_show is us, So divide by 1000.*/
+	dur = kbase_csf_firmware_get_gpu_idle_hysteresis_time(kbdev) / NSEC_PER_USEC;
 	ret = scnprintf(buf, PAGE_SIZE, "%u\n", dur);
 
 	return ret;
 }
 
 static DEVICE_ATTR_RW(idle_hysteresis_time);
+
+/**
+ * idle_hysteresis_time_ns_store - Store callback for CSF
+ *                     idle_hysteresis_time_ns sysfs file.
+ *
+ * @dev:   The device with sysfs file is for
+ * @attr:  The attributes of the sysfs file
+ * @buf:   The value written to the sysfs file
+ * @count: The number of bytes written to the sysfs file
+ *
+ * This function is called when the idle_hysteresis_time_ns sysfs
+ * file is written to.
+ *
+ * This file contains values of the idle hysteresis duration in ns.
+ *
+ * Return: @count if the function succeeded. An error code on failure.
+ */
+static ssize_t idle_hysteresis_time_ns_store(struct device *dev, struct device_attribute *attr,
+					     const char *buf, size_t count)
+{
+	struct kbase_device *kbdev;
+	u32 dur = 0;
+
+	kbdev = to_kbase_device(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	if (kstrtou32(buf, 0, &dur)) {
+		dev_err(kbdev->dev, "Couldn't process idle_hysteresis_time_ns write operation.\n"
+				    "Use format <idle_hysteresis_time_ns>\n");
+		return -EINVAL;
+	}
+
+	kbase_csf_firmware_set_gpu_idle_hysteresis_time(kbdev, dur);
+
+	return count;
+}
+
+/**
+ * idle_hysteresis_time_ns_show - Show callback for CSF
+ *                  idle_hysteresis_time_ns sysfs entry.
+ *
+ * @dev:  The device this sysfs file is for.
+ * @attr: The attributes of the sysfs file.
+ * @buf:  The output buffer to receive the GPU information.
+ *
+ * This function is called to get the current idle hysteresis duration in ns.
+ *
+ * Return: The number of bytes output to @buf.
+ */
+static ssize_t idle_hysteresis_time_ns_show(struct device *dev, struct device_attribute *attr,
+					    char *const buf)
+{
+	struct kbase_device *kbdev;
+	ssize_t ret;
+	u32 dur;
+
+	kbdev = to_kbase_device(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	dur = kbase_csf_firmware_get_gpu_idle_hysteresis_time(kbdev);
+	ret = scnprintf(buf, PAGE_SIZE, "%u\n", dur);
+
+	return ret;
+}
+
+static DEVICE_ATTR_RW(idle_hysteresis_time_ns);
 
 /**
  * mcu_shader_pwroff_timeout_show - Get the MCU shader Core power-off time value.
@@ -5616,7 +5688,8 @@ static ssize_t mcu_shader_pwroff_timeout_show(struct device *dev, struct device_
 	if (!kbdev)
 		return -ENODEV;
 
-	pwroff = kbase_csf_firmware_get_mcu_core_pwroff_time(kbdev);
+	/* The unit of return value of the function is us, So divide by 1000.*/
+	pwroff = kbase_csf_firmware_get_mcu_core_pwroff_time(kbdev) / NSEC_PER_USEC;
 	return scnprintf(buf, PAGE_SIZE, "%u\n", pwroff);
 }
 
@@ -5654,12 +5727,82 @@ static ssize_t mcu_shader_pwroff_timeout_store(struct device *dev, struct device
 	if (dur == 0 && !always_on)
 		return -EINVAL;
 
-	kbase_csf_firmware_set_mcu_core_pwroff_time(kbdev, dur);
+	/* In sysFs, The unit of the input value of mcu_shader_pwroff_timeout is us.
+	 * But the unit of the input parameter of this function is ns, so multiply by 1000
+	 */
+	kbase_csf_firmware_set_mcu_core_pwroff_time(kbdev, dur * NSEC_PER_USEC);
 
 	return count;
 }
 
 static DEVICE_ATTR_RW(mcu_shader_pwroff_timeout);
+
+/**
+ * mcu_shader_pwroff_timeout_ns_show - Get the MCU shader Core power-off time value.
+ *
+ * @dev:  The device this sysfs file is for.
+ * @attr: The attributes of the sysfs file.
+ * @buf:  The output buffer for the sysfs file contents
+ *
+ * Get the internally recorded MCU shader Core power-off (nominal) timeout value.
+ * The unit of the value is in nanoseconds.
+ *
+ * Return: The number of bytes output to @buf if the
+ *         function succeeded. A Negative value on failure.
+ */
+static ssize_t mcu_shader_pwroff_timeout_ns_show(struct device *dev, struct device_attribute *attr,
+						 char *const buf)
+{
+	struct kbase_device *kbdev = dev_get_drvdata(dev);
+	u32 pwroff;
+
+	if (!kbdev)
+		return -ENODEV;
+
+	pwroff = kbase_csf_firmware_get_mcu_core_pwroff_time(kbdev);
+	return scnprintf(buf, PAGE_SIZE, "%u\n", pwroff);
+}
+
+/**
+ * mcu_shader_pwroff_timeout_ns_store - Set the MCU shader core power-off time value.
+ *
+ * @dev:   The device with sysfs file is for
+ * @attr:  The attributes of the sysfs file
+ * @buf:   The value written to the sysfs file
+ * @count: The number of bytes to write to the sysfs file
+ *
+ * The duration value (unit: nanoseconds) for configuring MCU Shader Core
+ * timer, when the shader cores' power transitions are delegated to the
+ * MCU (normal operational mode)
+ *
+ * Return: @count if the function succeeded. An error code on failure.
+ */
+static ssize_t mcu_shader_pwroff_timeout_ns_store(struct device *dev, struct device_attribute *attr,
+						  const char *buf, size_t count)
+{
+	struct kbase_device *kbdev = dev_get_drvdata(dev);
+	u32 dur;
+
+	const struct kbase_pm_policy *current_policy;
+	bool always_on;
+
+	if (!kbdev)
+		return -ENODEV;
+
+	if (kstrtouint(buf, 0, &dur))
+		return -EINVAL;
+
+	current_policy = kbase_pm_get_policy(kbdev);
+	always_on = current_policy == &kbase_pm_always_on_policy_ops;
+	if (dur == 0 && !always_on)
+		return -EINVAL;
+
+	kbase_csf_firmware_set_mcu_core_pwroff_time(kbdev, dur);
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(mcu_shader_pwroff_timeout_ns);
 
 #endif /* MALI_USE_CSF */
 
@@ -5691,7 +5834,9 @@ static struct attribute *kbase_attrs[] = {
 	&dev_attr_csg_scheduling_period.attr,
 	&dev_attr_fw_timeout.attr,
 	&dev_attr_idle_hysteresis_time.attr,
+	&dev_attr_idle_hysteresis_time_ns.attr,
 	&dev_attr_mcu_shader_pwroff_timeout.attr,
+	&dev_attr_mcu_shader_pwroff_timeout_ns.attr,
 #endif /* !MALI_USE_CSF */
 	&dev_attr_power_policy.attr,
 	&dev_attr_core_mask.attr,

@@ -514,7 +514,7 @@ int kbase_csf_firmware_log_toggle_logging_calls(struct kbase_device *kbdev, u32 
 
 	/* Wait for the MCU to get disabled */
 	dev_info(kbdev->dev, "Wait for the MCU to get disabled");
-	ret = kbase_pm_wait_for_desired_state(kbdev);
+	ret = kbase_pm_killable_wait_for_desired_state(kbdev);
 	if (ret) {
 		dev_err(kbdev->dev,
 			"wait for PM state failed when toggling FW logging calls");

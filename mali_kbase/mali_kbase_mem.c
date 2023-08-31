@@ -916,12 +916,12 @@ static void kbase_reg_zone_exec_va_term(struct kbase_context *kctx)
 	kbase_reg_zone_term(zone);
 }
 
+#if MALI_USE_CSF
 static inline u64 kbase_get_exec_fixed_va_zone_base(struct kbase_context *kctx)
 {
 	return kbase_get_exec_va_zone_base(kctx) + KBASE_REG_ZONE_EXEC_VA_SIZE;
 }
 
-#if MALI_USE_CSF
 static int kbase_reg_zone_exec_fixed_va_init(struct kbase_context *kctx, u64 gpu_va_limit)
 {
 	struct kbase_reg_zone *zone = kbase_ctx_reg_zone_get(kctx, EXEC_FIXED_VA_ZONE);

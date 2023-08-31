@@ -66,7 +66,6 @@ enum base_hw_issue {
 	BASE_HW_ISSUE_GPU2021PRO_290,
 	BASE_HW_ISSUE_TITANHW_2710,
 	BASE_HW_ISSUE_TITANHW_2679,
-	BASE_HW_ISSUE_TITANHW_2922,
 	BASE_HW_ISSUE_GPU2022PRO_148,
 	BASE_HW_ISSUE_END
 };
@@ -728,7 +727,6 @@ __attribute__((unused)) static const enum base_hw_issue base_hw_issues_tTUx_r0p0
 	BASE_HW_ISSUE_TITANHW_2710,
 	BASE_HW_ISSUE_TITANHW_2679,
 	BASE_HW_ISSUE_GPU2022PRO_148,
-	BASE_HW_ISSUE_TITANHW_2922,
 	BASE_HW_ISSUE_END
 };
 
@@ -743,7 +741,6 @@ __attribute__((unused)) static const enum base_hw_issue base_hw_issues_tTUx_r0p1
 	BASE_HW_ISSUE_TITANHW_2710,
 	BASE_HW_ISSUE_TITANHW_2679,
 	BASE_HW_ISSUE_GPU2022PRO_148,
-	BASE_HW_ISSUE_TITANHW_2922,
 	BASE_HW_ISSUE_END
 };
 
@@ -757,7 +754,6 @@ __attribute__((unused)) static const enum base_hw_issue base_hw_issues_model_tTU
 	BASE_HW_ISSUE_TITANHW_2710,
 	BASE_HW_ISSUE_TITANHW_2679,
 	BASE_HW_ISSUE_GPU2022PRO_148,
-	BASE_HW_ISSUE_TITANHW_2922,
 	BASE_HW_ISSUE_END
 };
 
@@ -771,7 +767,6 @@ __attribute__((unused)) static const enum base_hw_issue base_hw_issues_tTUx_r1p0
 	BASE_HW_ISSUE_TITANHW_2710,
 	BASE_HW_ISSUE_TITANHW_2679,
 	BASE_HW_ISSUE_GPU2022PRO_148,
-	BASE_HW_ISSUE_TITANHW_2922,
 	BASE_HW_ISSUE_END
 };
 
@@ -785,7 +780,6 @@ __attribute__((unused)) static const enum base_hw_issue base_hw_issues_tTUx_r1p1
 	BASE_HW_ISSUE_TITANHW_2710,
 	BASE_HW_ISSUE_TITANHW_2679,
 	BASE_HW_ISSUE_GPU2022PRO_148,
-	BASE_HW_ISSUE_TITANHW_2922,
 	BASE_HW_ISSUE_END
 };
 
@@ -799,7 +793,6 @@ __attribute__((unused)) static const enum base_hw_issue base_hw_issues_tTUx_r1p2
 	BASE_HW_ISSUE_TITANHW_2710,
 	BASE_HW_ISSUE_TITANHW_2679,
 	BASE_HW_ISSUE_GPU2022PRO_148,
-	BASE_HW_ISSUE_TITANHW_2922,
 	BASE_HW_ISSUE_END
 };
 
@@ -813,7 +806,6 @@ __attribute__((unused)) static const enum base_hw_issue base_hw_issues_tTUx_r1p3
 	BASE_HW_ISSUE_TITANHW_2710,
 	BASE_HW_ISSUE_TITANHW_2679,
 	BASE_HW_ISSUE_GPU2022PRO_148,
-	BASE_HW_ISSUE_TITANHW_2922,
 	BASE_HW_ISSUE_END
 };
 
@@ -825,7 +817,6 @@ __attribute__((unused)) static const enum base_hw_issue base_hw_issues_model_tTI
 	BASE_HW_ISSUE_TITANHW_2710,
 	BASE_HW_ISSUE_TITANHW_2679,
 	BASE_HW_ISSUE_GPU2022PRO_148,
-	BASE_HW_ISSUE_TITANHW_2922,
 	BASE_HW_ISSUE_END
 };
 
@@ -837,7 +828,6 @@ __attribute__((unused)) static const enum base_hw_issue base_hw_issues_tTIx_r0p0
 	BASE_HW_ISSUE_TITANHW_2710,
 	BASE_HW_ISSUE_TITANHW_2679,
 	BASE_HW_ISSUE_GPU2022PRO_148,
-	BASE_HW_ISSUE_TITANHW_2922,
 	BASE_HW_ISSUE_END
 };
 

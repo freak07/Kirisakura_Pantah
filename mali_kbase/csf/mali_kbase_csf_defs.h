@@ -1150,9 +1150,9 @@ struct kbase_csf_scheduler {
 	GLB_PROGRESS_TIMER_TIMEOUT_SCALE)
 
 /*
- * Default GLB_PWROFF_TIMER_TIMEOUT value in unit of micro-seconds.
+ * Default GLB_PWROFF_TIMER_TIMEOUT value in unit of nanosecond.
  */
-#define DEFAULT_GLB_PWROFF_TIMEOUT_US (800)
+#define DEFAULT_GLB_PWROFF_TIMEOUT_NS (800 * 1000)
 
 /*
  * In typical operations, the management of the shader core power transitions
@@ -1574,22 +1574,28 @@ struct kbase_csf_user_reg {
  * @fw_error_work:          Work item for handling the firmware internal error
  *                          fatal event.
  * @ipa_control:            IPA Control component manager.
- * @mcu_core_pwroff_dur_us: Sysfs attribute for the glb_pwroff timeout input
- *                          in unit of micro-seconds. The firmware does not use
+ * @mcu_core_pwroff_dur_ns: Sysfs attribute for the glb_pwroff timeout input
+ *                          in unit of nanoseconds. The firmware does not use
  *                          it directly.
  * @mcu_core_pwroff_dur_count: The counterpart of the glb_pwroff timeout input
  *                             in interface required format, ready to be used
  *                             directly in the firmware.
+ * @mcu_core_pwroff_dur_count_modifier: Update csffw_glb_req_cfg_pwroff_timer
+ *                                      to make the shr(10) modifier conditional
+ *                                      on new flag in GLB_PWROFF_TIMER_CONFIG
  * @mcu_core_pwroff_reg_shadow: The actual value that has been programed into
  *                              the glb_pwoff register. This is separated from
  *                              the @p mcu_core_pwroff_dur_count as an update
  *                              to the latter is asynchronous.
- * @gpu_idle_hysteresis_us: Sysfs attribute for the idle hysteresis time
- *                          window in unit of microseconds. The firmware does not
+ * @gpu_idle_hysteresis_ns: Sysfs attribute for the idle hysteresis time
+ *                          window in unit of nanoseconds. The firmware does not
  *                          use it directly.
  * @gpu_idle_dur_count:     The counterpart of the hysteresis time window in
  *                          interface required format, ready to be used
  *                          directly in the firmware.
+ * @gpu_idle_dur_count_modifier: Update csffw_glb_req_idle_enable to make the shr(10)
+ *                               modifier conditional on the new flag
+ *                               in GLB_IDLE_TIMER_CONFIG.
  * @fw_timeout_ms:          Timeout value (in milliseconds) used when waiting
  *                          for any request sent to the firmware.
  * @hwcnt:                  Contain members required for handling the dump of
@@ -1637,11 +1643,13 @@ struct kbase_csf_device {
 	bool glb_init_request_pending;
 	struct work_struct fw_error_work;
 	struct kbase_ipa_control ipa_control;
-	u32 mcu_core_pwroff_dur_us;
+	u32 mcu_core_pwroff_dur_ns;
 	u32 mcu_core_pwroff_dur_count;
+	u32 mcu_core_pwroff_dur_count_modifier;
 	u32 mcu_core_pwroff_reg_shadow;
-	u32 gpu_idle_hysteresis_us;
+	u32 gpu_idle_hysteresis_ns;
 	u32 gpu_idle_dur_count;
+	u32 gpu_idle_dur_count_modifier;
 	unsigned int fw_timeout_ms;
 	struct kbase_csf_hwcnt hwcnt;
 	struct kbase_csf_mcu_fw fw;
@@ -1676,10 +1684,6 @@ struct kbase_csf_device {
  * @bf_data:           Data relating to Bus fault.
  * @gf_data:           Data relating to GPU fault.
  * @current_setup:     Stores the MMU configuration for this address space.
- * @is_unresponsive:   Flag to indicate MMU is not responding.
- *                     Set if a MMU command isn't completed within
- *                     &kbase_device:mmu_or_gpu_cache_op_wait_time_ms.
- *                     Clear by kbase_ctx_sched_restore_all_as() after GPU reset completes.
  */
 struct kbase_as {
 	int number;
@@ -1691,7 +1695,6 @@ struct kbase_as {
 	struct kbase_fault bf_data;
 	struct kbase_fault gf_data;
 	struct kbase_mmu_setup current_setup;
-	bool is_unresponsive;
 };
 
 #endif /* _KBASE_CSF_DEFS_H_ */

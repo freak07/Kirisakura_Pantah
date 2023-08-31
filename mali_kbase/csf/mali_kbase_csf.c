@@ -3083,13 +3083,16 @@ void kbase_csf_interrupt(struct kbase_device *kbdev, u32 val)
 	do {
 		unsigned long flags;
 		u32 csg_interrupts = val & ~JOB_IRQ_GLOBAL_IF;
-		struct irq_idle_and_protm_track track = { .protm_grp = NULL, .idle_seq = U32_MAX };
 		bool glb_idle_irq_received = false;
 
 		kbase_reg_write(kbdev, JOB_CONTROL_REG(JOB_IRQ_CLEAR), val);
 		order_job_irq_clear_with_iface_mem_read();
 
 		if (csg_interrupts != 0) {
+			struct irq_idle_and_protm_track track = { .protm_grp = NULL,
+								  .idle_seq = U32_MAX,
+								  .idle_slot = S8_MAX };
+
 			kbase_csf_scheduler_spin_lock(kbdev, &flags);
 			/* Looping through and track the highest idle and protm groups */
 			while (csg_interrupts != 0) {

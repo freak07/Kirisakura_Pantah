@@ -506,7 +506,7 @@ static int fw_core_dump_create(struct kbase_device *kbdev)
 
 	/* Ensure MCU is active before requesting the core dump. */
 	kbase_csf_scheduler_pm_active(kbdev);
-	err = kbase_csf_scheduler_wait_mcu_active(kbdev);
+	err = kbase_csf_scheduler_killable_wait_mcu_active(kbdev);
 	if (!err)
 		err = kbase_csf_firmware_req_core_dump(kbdev);
 

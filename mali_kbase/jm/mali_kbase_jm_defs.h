@@ -861,10 +861,6 @@ struct jsctx_queue {
  * @pf_data:           Data relating to Page fault.
  * @bf_data:           Data relating to Bus fault.
  * @current_setup:     Stores the MMU configuration for this address space.
- * @is_unresponsive:   Flag to indicate MMU is not responding.
- *                     Set if a MMU command isn't completed within
- *                     &kbase_device:mmu_or_gpu_cache_op_wait_time_ms.
- *                     Clear by kbase_ctx_sched_restore_all_as() after GPU reset completes.
  */
 struct kbase_as {
 	int number;
@@ -874,7 +870,6 @@ struct kbase_as {
 	struct kbase_fault pf_data;
 	struct kbase_fault bf_data;
 	struct kbase_mmu_setup current_setup;
-	bool is_unresponsive;
 };
 
 #endif /* _KBASE_JM_DEFS_H_ */

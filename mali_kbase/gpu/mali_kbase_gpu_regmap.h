@@ -63,7 +63,6 @@
 #define GPU_COMMAND             0x030   /* (WO) */
 
 #define GPU_STATUS              0x034   /* (RO) */
-#define GPU_STATUS_GPU_ACTIVE		    (1)
 #define GPU_STATUS_PRFCNT_ACTIVE            (1 << 2)    /* Set if the performance counters are active. */
 #define GPU_STATUS_CYCLE_COUNT_ACTIVE       (1 << 6)    /* Set if the cycle counter is active. */
 #define GPU_STATUS_PROTECTED_MODE_ACTIVE    (1 << 7)    /* Set if protected mode is active */

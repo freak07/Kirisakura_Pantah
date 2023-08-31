@@ -39,11 +39,8 @@
 	(((reg_val) & ~L2_CONFIG_PBHA_HWU_MASK) |                                                  \
 	 (((value) << L2_CONFIG_PBHA_HWU_SHIFT) & L2_CONFIG_PBHA_HWU_MASK))
 
-/* GPU_CONTROL_MCU registers */
-#define GPU_CONTROL_MCU_BASE	0x3000
-#define GPU_CONTROL_MCU_REG(r)	(GPU_CONTROL_MCU_BASE + (r))
-
-#define GPU_CTRL_MCU_GPU_COMMAND	0x30	/* (WO) GPU command register */
+/* GPU_CONTROL_MCU base address */
+#define GPU_CONTROL_MCU_BASE 0x3000
 
 /* MCU_SUBSYSTEM base address */
 #define MCU_SUBSYSTEM_BASE 0x20000
@@ -208,12 +205,6 @@
 /* No operation, nothing happens */
 #define GPU_COMMAND_NOP \
 	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_NOP, 0)
-
-/* This leaves the state of active jobs UNDEFINED, but leaves the external
- * bus in a defined and idle state. Power domains remain powered up.
- */
-#define GPU_COMMAND_FAST_RESET \
-	GPU_COMMAND_CODE_PAYLOAD(GPU_COMMAND_CODE_RESET, GPU_COMMAND_RESET_PAYLOAD_FAST_RESET)
 
 /* Stop all external bus interfaces, and then reset the entire GPU. */
 #define GPU_COMMAND_SOFT_RESET \

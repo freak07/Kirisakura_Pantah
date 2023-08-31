@@ -191,8 +191,7 @@ bool kbase_is_register_accessible(u32 offset)
 {
 #ifdef CONFIG_MALI_DEBUG
 	if (((offset >= MCU_SUBSYSTEM_BASE) && (offset < IPA_CONTROL_BASE)) ||
-	    ((offset >= GPU_CONTROL_MCU_BASE) && (offset < USER_BASE) &&
-	     (offset != GPU_CONTROL_MCU_REG(GPU_CTRL_MCU_GPU_COMMAND)))) {
+	    ((offset >= GPU_CONTROL_MCU_BASE) && (offset < USER_BASE))) {
 		WARN(1, "Invalid register offset 0x%x", offset);
 		return false;
 	}

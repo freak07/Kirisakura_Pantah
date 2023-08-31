@@ -185,7 +185,7 @@ static void kbase_csf_reset_begin_hw_access_sync(
 	 */
 	spin_lock_irqsave(&kbdev->hwaccess_lock, hwaccess_lock_flags);
 	kbase_csf_scheduler_spin_lock(kbdev, &scheduler_spin_lock_flags);
-	atomic_set(&kbdev->csf.reset.state, KBASE_RESET_GPU_HAPPENING);
+	atomic_set(&kbdev->csf.reset.state, KBASE_CSF_RESET_GPU_HAPPENING);
 	kbase_csf_scheduler_spin_unlock(kbdev, scheduler_spin_lock_flags);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, hwaccess_lock_flags);
 }

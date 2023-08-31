@@ -186,6 +186,8 @@ struct kbase_gpu_metrics {
  *                           inactive in the current work period.
  * @total_active:            Tracks the time for which application has been active
  *                           in the current work period.
+ * @prev_wp_active_end_time: Records the time at which the application last became
+ *                           inactive in the previous work period.
  * @aid:                     Unique identifier for an application.
  * @kctx_count:              Counter to keep a track of the number of Kbase contexts
  *                           created for an application. There may be multiple Kbase
@@ -194,8 +196,6 @@ struct kbase_gpu_metrics {
  * @active_cnt:              Counter that is updated every time the GPU activity starts
  *                           and ends in the current work period for an application.
  * @flags:                   Flags to track the state of GPU metrics context.
- * @prev_wp_active_end_time: Records the time at which the application last became
- *                           inactive in the previous work period.
  */
 struct kbase_gpu_metrics_ctx {
 	struct list_head link;
@@ -203,13 +203,11 @@ struct kbase_gpu_metrics_ctx {
 	u64 last_active_start_time;
 	u64 last_active_end_time;
 	u64 total_active;
+	u64 prev_wp_active_end_time;
 	unsigned int aid;
 	unsigned int kctx_count;
 	u8 active_cnt;
 	u8 flags;
-#ifdef CONFIG_MALI_DEBUG
-	u64 prev_wp_active_end_time;
-#endif
 };
 #endif
 
@@ -905,10 +903,14 @@ struct kbase_mem_migrate {
  *                         to the GPU device. This points to an internal memory
  *                         group manager if no platform-specific memory group
  *                         manager was retrieved through device tree.
+ * @mmu_unresponsive:      Flag to indicate MMU is not responding.
+ *                         Set if a MMU command isn't completed within
+ *                         &kbase_device:mmu_or_gpu_cache_op_wait_time_ms.
+ *                         Clear by kbase_ctx_sched_restore_all_as() after GPU reset completes.
  * @as:                    Array of objects representing address spaces of GPU.
- * @as_free:               Bitpattern of free/available GPU address spaces.
  * @as_to_kctx:            Array of pointers to struct kbase_context, having
  *                         GPU adrress spaces assigned to them.
+ * @as_free:               Bitpattern of free/available GPU address spaces.
  * @mmu_mask_change:       Lock to serialize the access to MMU interrupt mask
  *                         register used in the handling of Bus & Page faults.
  * @pagesize_2mb:          Boolean to determine whether 2MiB page sizes are
@@ -1208,9 +1210,10 @@ struct kbase_device {
 
 	struct memory_group_manager_device *mgm_dev;
 
+	bool mmu_unresponsive;
 	struct kbase_as as[BASE_MAX_NR_AS];
-	u16 as_free;
 	struct kbase_context *as_to_kctx[BASE_MAX_NR_AS];
+	u16 as_free;
 
 	spinlock_t mmu_mask_change;
 

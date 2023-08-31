@@ -78,8 +78,6 @@ static inline void validate_tracepoint_data(struct kbase_gpu_metrics_ctx *gpu_me
 	     "prev_wp_active_end_time %llu > start_time %llu for aid %u active_cnt %u",
 	     gpu_metrics_ctx->prev_wp_active_end_time, start_time,
 	     gpu_metrics_ctx->aid, gpu_metrics_ctx->active_cnt);
-
-	gpu_metrics_ctx->prev_wp_active_end_time = end_time;
 #endif
 }
 
@@ -107,6 +105,7 @@ static void emit_tracepoint_for_active_gpu_metrics_ctx(struct kbase_device *kbde
 			      start_time, end_time, total_active);
 
 	validate_tracepoint_data(gpu_metrics_ctx, start_time, end_time, total_active);
+	gpu_metrics_ctx->prev_wp_active_end_time = end_time;
 	gpu_metrics_ctx->total_active = 0;
 }
 
@@ -159,10 +158,8 @@ void kbase_gpu_metrics_ctx_init(struct kbase_device *kbdev,
 	gpu_metrics_ctx->total_active = 0;
 	gpu_metrics_ctx->kctx_count = 1;
 	gpu_metrics_ctx->active_cnt = 0;
-	gpu_metrics_ctx->flags = 0;
-#ifdef CONFIG_MALI_DEBUG
 	gpu_metrics_ctx->prev_wp_active_end_time = 0;
-#endif
+	gpu_metrics_ctx->flags = 0;
 	list_add_tail(&gpu_metrics_ctx->link, &kbdev->gpu_metrics.inactive_list);
 }
 
@@ -192,12 +189,39 @@ void kbase_gpu_metrics_ctx_end_activity(struct kbase_context *kctx, u64 timestam
 	if (WARN_ON_ONCE(!gpu_metrics_ctx->active_cnt))
 		return;
 
-	gpu_metrics_ctx->active_cnt--;
-	if (!gpu_metrics_ctx->active_cnt) {
+	if (--gpu_metrics_ctx->active_cnt)
+		return;
+
+	if (likely(timestamp_ns > gpu_metrics_ctx->last_active_start_time)) {
 		gpu_metrics_ctx->last_active_end_time = timestamp_ns;
 		gpu_metrics_ctx->total_active +=
 			timestamp_ns - gpu_metrics_ctx->last_active_start_time;
+		return;
 	}
+
+	/* Due to conversion from system timestamp to CPU timestamp (which involves rounding)
+	 * the value for start and end timestamp could come as same.
+	 */
+	if (timestamp_ns == gpu_metrics_ctx->last_active_start_time) {
+		gpu_metrics_ctx->last_active_end_time = timestamp_ns + 1;
+		gpu_metrics_ctx->total_active += 1;
+		return;
+	}
+
+	/* The following check is to detect the situation where 'ACT=0' event was not visible to
+	 * the Kbase even though the system timestamp value sampled by FW was less than the system
+	 * timestamp value sampled by Kbase just before the draining of trace buffer.
+	 */
+	if (gpu_metrics_ctx->last_active_start_time == gpu_metrics_ctx->first_active_start_time &&
+	    gpu_metrics_ctx->prev_wp_active_end_time == gpu_metrics_ctx->first_active_start_time) {
+		WARN_ON_ONCE(gpu_metrics_ctx->total_active);
+		gpu_metrics_ctx->last_active_end_time =
+			gpu_metrics_ctx->prev_wp_active_end_time + 1;
+		gpu_metrics_ctx->total_active = 1;
+		return;
+	}
+
+	WARN_ON_ONCE(1);
 }
 
 void kbase_gpu_metrics_emit_tracepoint(struct kbase_device *kbdev, u64 ts)

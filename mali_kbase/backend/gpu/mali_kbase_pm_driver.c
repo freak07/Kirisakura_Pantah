@@ -2414,7 +2414,7 @@ int kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev)
 	return err;
 }
 
-int kbase_pm_wait_for_desired_state(struct kbase_device *kbdev)
+static int pm_wait_for_desired_state(struct kbase_device *kbdev, bool killable_wait)
 {
 	unsigned long flags;
 	long remaining;
@@ -2432,25 +2432,36 @@ int kbase_pm_wait_for_desired_state(struct kbase_device *kbdev)
 
 	/* Wait for cores */
 #if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
-	remaining = wait_event_killable_timeout(
-		kbdev->pm.backend.gpu_in_desired_state_wait,
-		kbase_pm_is_in_desired_state(kbdev), timeout);
+	if (killable_wait)
+		remaining = wait_event_killable_timeout(kbdev->pm.backend.gpu_in_desired_state_wait,
+							kbase_pm_is_in_desired_state(kbdev),
+							timeout);
 #else
-	remaining = wait_event_timeout(
-		kbdev->pm.backend.gpu_in_desired_state_wait,
-		kbase_pm_is_in_desired_state(kbdev), timeout);
+	killable_wait = false;
 #endif
-
+	if (!killable_wait)
+		remaining = wait_event_timeout(kbdev->pm.backend.gpu_in_desired_state_wait,
+					       kbase_pm_is_in_desired_state(kbdev), timeout);
 	if (!remaining) {
 		kbase_pm_timed_out(kbdev, "Wait for power transition timed out");
 		err = -ETIMEDOUT;
 	} else if (remaining < 0) {
-		dev_info(kbdev->dev,
-			 "Wait for power transition got interrupted");
+		WARN_ON_ONCE(!killable_wait);
+		dev_info(kbdev->dev, "Wait for power transition got interrupted");
 		err = (int)remaining;
 	}
 
 	return err;
+}
+
+int kbase_pm_killable_wait_for_desired_state(struct kbase_device *kbdev)
+{
+	return pm_wait_for_desired_state(kbdev, true);
+}
+
+int kbase_pm_wait_for_desired_state(struct kbase_device *kbdev)
+{
+	return pm_wait_for_desired_state(kbdev, false);
 }
 KBASE_EXPORT_TEST_API(kbase_pm_wait_for_desired_state);
 
@@ -2526,7 +2537,7 @@ static bool is_poweroff_wait_in_progress(struct kbase_device *kbdev)
 	return ret;
 }
 
-int kbase_pm_wait_for_poweroff_work_complete(struct kbase_device *kbdev)
+static int pm_wait_for_poweroff_work_complete(struct kbase_device *kbdev, bool killable_wait)
 {
 	long remaining;
 #if MALI_USE_CSF
@@ -2534,23 +2545,50 @@ int kbase_pm_wait_for_poweroff_work_complete(struct kbase_device *kbdev)
 	 * and so the wait time can't only be the function of GPU frequency.
 	 */
 	const unsigned int extra_wait_time_ms = 2000;
-	const long timeout =
-		kbase_csf_timeout_in_jiffies(kbase_get_timeout_ms(kbdev, CSF_PM_TIMEOUT) +
-					extra_wait_time_ms);
+	const long timeout = kbase_csf_timeout_in_jiffies(
+		kbase_get_timeout_ms(kbdev, CSF_PM_TIMEOUT) + extra_wait_time_ms);
+#else
+#ifdef CONFIG_MALI_ARBITER_SUPPORT
+	/* Handling of timeout error isn't supported for arbiter builds */
+	const long timeout = MAX_SCHEDULE_TIMEOUT;
 #else
 	const long timeout = msecs_to_jiffies(PM_TIMEOUT_MS);
 #endif
+#endif
 	int err = 0;
 
-	remaining = wait_event_timeout(
-		kbdev->pm.backend.poweroff_wait,
-		!is_poweroff_wait_in_progress(kbdev), timeout);
+#if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
+	if (killable_wait)
+		remaining = wait_event_killable_timeout(kbdev->pm.backend.poweroff_wait,
+							!is_poweroff_wait_in_progress(kbdev),
+							timeout);
+#else
+	killable_wait = false;
+#endif
+
+	if (!killable_wait)
+		remaining = wait_event_timeout(kbdev->pm.backend.poweroff_wait,
+					       !is_poweroff_wait_in_progress(kbdev), timeout);
 	if (!remaining) {
 		kbase_pm_timed_out(kbdev, "Wait for poweroff work timed out");
 		err = -ETIMEDOUT;
+	} else if (remaining < 0) {
+		WARN_ON_ONCE(!killable_wait);
+		dev_info(kbdev->dev, "Wait for poweroff work got interrupted");
+		err = (int)remaining;
 	}
 
 	return err;
+}
+
+int kbase_pm_killable_wait_for_poweroff_work_complete(struct kbase_device *kbdev)
+{
+	return pm_wait_for_poweroff_work_complete(kbdev, true);
+}
+
+int kbase_pm_wait_for_poweroff_work_complete(struct kbase_device *kbdev)
+{
+	return pm_wait_for_poweroff_work_complete(kbdev, false);
 }
 KBASE_EXPORT_TEST_API(kbase_pm_wait_for_poweroff_work_complete);
 

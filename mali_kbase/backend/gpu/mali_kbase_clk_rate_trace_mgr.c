@@ -243,8 +243,7 @@ void kbase_clk_rate_trace_manager_gpu_active(struct kbase_device *kbdev)
 	if (!clk_rtm->clk_rate_trace_ops)
 		return;
 
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	spin_lock(&clk_rtm->lock);
+	spin_lock_irqsave(&clk_rtm->lock, flags);
 
 	for (i = 0; i < BASE_MAX_NR_CLOCKS_REGULATORS; i++) {
 		struct kbase_clk_data *clk_data = clk_rtm->clks[i];
@@ -260,8 +259,7 @@ void kbase_clk_rate_trace_manager_gpu_active(struct kbase_device *kbdev)
 	}
 
 	clk_rtm->gpu_idle = false;
-	spin_unlock(&clk_rtm->lock);
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	spin_unlock_irqrestore(&clk_rtm->lock, flags);
 }
 
 void kbase_clk_rate_trace_manager_gpu_idle(struct kbase_device *kbdev)

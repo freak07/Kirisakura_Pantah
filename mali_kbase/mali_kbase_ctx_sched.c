@@ -239,10 +239,11 @@ void kbase_ctx_sched_restore_all_as(struct kbase_device *kbdev)
 
 	WARN_ON(!kbdev->pm.backend.gpu_powered);
 
+	kbdev->mmu_unresponsive = false;
+
 	for (i = 0; i != kbdev->nr_hw_address_spaces; ++i) {
 		struct kbase_context *kctx;
 
-		kbdev->as[i].is_unresponsive = false;
 #if MALI_USE_CSF
 		if ((i == MCU_AS_NR) && kbdev->csf.firmware_inited) {
 			kbase_mmu_update(kbdev, &kbdev->csf.mcu_mmu,
