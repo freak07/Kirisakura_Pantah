@@ -802,20 +802,39 @@ void kbase_device_pcm_dev_term(struct kbase_device *const kbdev);
 #define KBASE_DISJOINT_STATE_INTERLEAVED_CONTEXT_COUNT_THRESHOLD 2
 
 /**
- * kbase_create_realtime_thread - Create a realtime thread with an appropriate coremask
+ * kbase_kthread_run_rt - Create a realtime thread with an appropriate coremask
  *
- * @kbdev:    the kbase device
- * @threadfn: the function the realtime thread will execute
- * @worker:   pointer to the thread's kworker
- * @namefmt:  a name for the thread.
+ * @kbdev:        the kbase device
+ * @threadfn:     the function the realtime thread will execute
+ * @thread_param: data pointer to @threadfn
+ * @namefmt:      a name for the thread.
  *
  * Creates a realtime kthread with priority &KBASE_RT_THREAD_PRIO and restricted
  * to cores defined by &KBASE_RT_THREAD_CPUMASK_MIN and &KBASE_RT_THREAD_CPUMASK_MAX.
  *
+ * Wakes up the task.
+ *
+ * Return: IS_ERR() on failure, or a valid task pointer.
+ */
+struct task_struct *kbase_kthread_run_rt(struct kbase_device *kbdev,
+	int (*threadfn)(void *data), void *thread_param, const char namefmt[], ...);
+
+/**
+ * kbase_kthread_run_worker_rt - Create a realtime kthread_worker_fn with an appropriate coremask
+ *
+ * @kbdev:   the kbase device
+ * @worker:  pointer to the thread's parameters
+ * @namefmt: a name for the thread.
+ *
+ * Creates a realtime kthread_worker_fn thread with priority &KBASE_RT_THREAD_PRIO and restricted
+ * to cores defined by &KBASE_RT_THREAD_CPUMASK_MIN and &KBASE_RT_THREAD_CPUMASK_MAX.
+ *
+ * Wakes up the task.
+ *
  * Return: Zero on success, or an PTR_ERR on failure.
  */
-int kbase_create_realtime_thread(struct kbase_device *kbdev,
-	int (*threadfn)(void *data), struct kthread_worker *worker, const char namefmt[], ...);
+int kbase_kthread_run_worker_rt(struct kbase_device *kbdev,
+	struct kthread_worker *worker, const char namefmt[], ...);
 
 /**
  * kbase_destroy_kworker_stack - Destroy a kthread_worker and it's thread on the stack

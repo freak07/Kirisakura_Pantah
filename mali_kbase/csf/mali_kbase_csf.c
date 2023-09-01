@@ -1682,8 +1682,8 @@ int kbase_csf_ctx_init(struct kbase_context *kctx)
 					err = kbasep_ctx_user_reg_page_mapping_init(kctx);
 
 					if (likely(!err)) {
-						err = kbase_create_realtime_thread(kctx->kbdev, kthread_worker_fn,
-						                                   &kctx->csf.protm_event_worker, "mali_protm_event");
+						err = kbase_kthread_run_worker_rt(kctx->kbdev,
+						                                  &kctx->csf.protm_event_worker, "mali_protm_event");
 						if (unlikely(err)) {
 							dev_err(kctx->kbdev->dev, "error initializing protm event worker thread");
 							kbasep_ctx_user_reg_page_mapping_term(kctx);

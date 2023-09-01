@@ -200,22 +200,34 @@ bool mali_kbase_supports_cap(unsigned long api_version, enum mali_kbase_cap cap)
 	return supported;
 }
 
-int kbase_create_realtime_thread(struct kbase_device *kbdev,
-	int (*threadfn)(void *data), struct kthread_worker *worker, const char namefmt[], ...)
+static void kbase_set_sched_rt(struct kbase_device *kbdev, struct task_struct *task, char *thread_name)
 {
-	struct task_struct *task;
 	unsigned int i;
-	va_list args;
-	char name_buf[128];
-	int len;
-
-	cpumask_t mask = { CPU_BITS_NONE };
-
 	static const struct sched_param param = {
 		.sched_priority = KBASE_RT_THREAD_PRIO,
 	};
 
-	kthread_init_worker(worker);
+	cpumask_t mask = { CPU_BITS_NONE };
+	for (i = KBASE_RT_THREAD_CPUMASK_MIN; i <= KBASE_RT_THREAD_CPUMASK_MAX ; i++)
+		cpumask_set_cpu(i, &mask);
+	kthread_bind_mask(task, &mask);
+
+	wake_up_process(task);
+
+	if (sched_setscheduler_nocheck(task, SCHED_FIFO, &param))
+		dev_warn(kbdev->dev, "%s not set to RT prio", thread_name);
+	else
+		dev_dbg(kbdev->dev, "%s set to RT prio: %i",
+			thread_name, param.sched_priority);
+}
+
+struct task_struct *kbase_kthread_run_rt(struct kbase_device *kbdev,
+	int (*threadfn)(void *data), void *thread_param, const char namefmt[], ...)
+{
+	struct task_struct *task;
+	va_list args;
+	char name_buf[128];
+	int len;
 
 	/* Construct the thread name */
 	va_start(args, namefmt);
@@ -225,28 +237,42 @@ int kbase_create_realtime_thread(struct kbase_device *kbdev,
 		dev_warn(kbdev->dev, "RT thread name truncated to %s", name_buf);
 	}
 
+	task = kthread_create(threadfn, thread_param, name_buf);
+
+	if (!IS_ERR(task)) {
+		kbase_set_sched_rt(kbdev, task, name_buf);
+	}
+
+	return task;
+}
+
+int kbase_kthread_run_worker_rt(struct kbase_device *kbdev,
+	struct kthread_worker *worker, const char namefmt[], ...)
+{
+	struct task_struct *task;
+	va_list args;
+	char name_buf[128];
+	int len;
+
+	/* Construct the thread name */
+	va_start(args, namefmt);
+	len = vsnprintf(name_buf, sizeof(name_buf), namefmt, args);
+	va_end(args);
+	if (len + 1 > sizeof(name_buf)) {
+		dev_warn(kbdev->dev, "RT thread name truncated to %s", name_buf);
+	}
+
+	kthread_init_worker(worker);
+
 	task = kthread_create(kthread_worker_fn, worker, name_buf);
 
 	if (!IS_ERR(task)) {
-		for (i = KBASE_RT_THREAD_CPUMASK_MIN; i <= KBASE_RT_THREAD_CPUMASK_MAX ; i++)
-			cpumask_set_cpu(i, &mask);
-
-		kthread_bind_mask(task, &mask);
-
-		/* Link the worker and the thread */
 		worker->task = task;
-		wake_up_process(task);
-
-		if (sched_setscheduler_nocheck(task, SCHED_FIFO, &param))
-			dev_warn(kbdev->dev, "%s not set to RT prio", name_buf);
-		else
-			dev_dbg(kbdev->dev, "%s set to RT prio: %i",
-				name_buf, param.sched_priority);
-	} else {
-		return PTR_ERR(task);
+		kbase_set_sched_rt(kbdev, task, name_buf);
+		return 0;
 	}
 
-	return 0;
+	return PTR_ERR(task);
 }
 
 void kbase_destroy_kworker_stack(struct kthread_worker *worker)

@@ -330,8 +330,7 @@ int kbase_device_init(struct kbase_device *kbdev)
 	if (err)
 		return err;
 
-	err = kbase_create_realtime_thread(kbdev,
-		kthread_worker_fn, &kbdev->job_done_worker, "mali_jd_thread");
+	err = kbase_kthread_run_worker_rt(kbdev, &kbdev->job_done_worker, "mali_jd_thread");
 	if (err)
 		return err;
 

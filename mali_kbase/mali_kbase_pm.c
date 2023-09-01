@@ -488,8 +488,7 @@ int kbase_pm_apc_init(struct kbase_device *kbdev)
 {
 	int ret;
 
-	ret = kbase_create_realtime_thread(kbdev,
-		kthread_worker_fn, &kbdev->apc.worker, "mali_apc_thread");
+	ret = kbase_kthread_run_worker_rt(kbdev, &kbdev->apc.worker, "mali_apc_thread");
 	if (ret)
 		return ret;
 

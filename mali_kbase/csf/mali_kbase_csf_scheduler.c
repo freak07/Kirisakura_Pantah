@@ -7301,9 +7301,7 @@ int kbase_csf_scheduler_context_init(struct kbase_context *kctx)
 	kctx->csf.sched.num_idle_wait_grps = 0;
 	kctx->csf.sched.ngrp_to_schedule = 0;
 
-	err = kbase_create_realtime_thread(kctx->kbdev, kthread_worker_fn,
-					   &kctx->csf.sched.sync_update_worker,
-					   "csf_sync_update");
+	err = kbase_kthread_run_worker_rt(kctx->kbdev, &kctx->csf.sched.sync_update_worker, "csf_sync_update");
 	if (err) {
 		dev_err(kctx->kbdev->dev,
 			"Failed to initialize scheduler context workqueue");
@@ -7431,8 +7429,8 @@ int kbase_csf_scheduler_init(struct kbase_device *kbdev)
 	init_completion(&scheduler->kthread_signal);
 	scheduler->kthread_running = true;
 	scheduler->gpuq_kthread =
-		kthread_run(&kbase_csf_scheduler_kthread, kbdev, "mali-gpuq-kthread");
-	if (!scheduler->gpuq_kthread) {
+		kbase_kthread_run_rt(kbdev, &kbase_csf_scheduler_kthread, kbdev, "mali-gpuq-kthread");
+	if (IS_ERR(scheduler->gpuq_kthread)) {
 		kfree(scheduler->csg_slots);
 		scheduler->csg_slots = NULL;
 
