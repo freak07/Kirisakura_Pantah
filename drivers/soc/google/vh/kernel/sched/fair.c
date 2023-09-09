@@ -1272,8 +1272,7 @@ static void get_uclamp_on_nice(struct task_struct *p, enum uclamp_id clamp_id,
  * functions.
  */
 
-unsigned int sysctl_sched_latency			= 6000000ULL;
-unsigned int sysctl_sched_base_slice			= 750000ULL;
+
 
 static u64 __sched_period(unsigned long nr_running)
 {

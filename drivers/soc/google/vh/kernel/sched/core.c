@@ -250,17 +250,3 @@ void rvh_rtmutex_prepare_setprio_pixel_mod(void *data, struct task_struct *p,
 	vp->uclamp_pi[UCLAMP_MAX] = uclamp_none(UCLAMP_MAX);
 }
 
-void raw_spin_rq_lock_nested(struct rq *rq, int subclass)
-{
-	raw_spin_lock_nested(rq_lockp(rq), subclass);
-}
-
-bool raw_spin_rq_trylock(struct rq *rq)
-{
-	return raw_spin_trylock(rq_lockp(rq));
-}
-
-void raw_spin_rq_unlock(struct rq *rq)
-{
-	raw_spin_unlock(rq_lockp(rq));
-}
