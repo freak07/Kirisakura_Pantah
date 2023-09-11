@@ -119,7 +119,7 @@ static void get_fw_trace(struct kbase_device *kbdev, struct sscd_segment *seg)
 		.version = 1,
 	};
 
-	tb = kbase_csf_firmware_get_trace_buffer(kbdev, FIRMWARE_LOG_BUF_NAME);
+	tb = kbase_csf_firmware_get_trace_buffer(kbdev, KBASE_CSFFW_LOG_BUF_NAME);
 
 	if (tb == NULL) {
 		dev_err(kbdev->dev, "pixel: failed to open firmware trace buffer");

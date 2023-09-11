@@ -143,12 +143,15 @@
 #define CSG_ACK_IRQ_MASK 0x0004 /* () Global acknowledge interrupt mask */
 #define CSG_DB_REQ 0x0008 /* () Global doorbell request */
 #define CSG_IRQ_ACK 0x000C /* () CS IRQ acknowledge */
+
+
 #define CSG_ALLOW_COMPUTE_LO 0x0020 /* () Allowed compute endpoints, low word */
 #define CSG_ALLOW_COMPUTE_HI 0x0024 /* () Allowed compute endpoints, high word */
 #define CSG_ALLOW_FRAGMENT_LO 0x0028 /* () Allowed fragment endpoints, low word */
 #define CSG_ALLOW_FRAGMENT_HI 0x002C /* () Allowed fragment endpoints, high word */
 #define CSG_ALLOW_OTHER 0x0030 /* () Allowed other endpoints */
-#define CSG_EP_REQ 0x0034 /* () Maximum number of endpoints allowed */
+#define CSG_EP_REQ_LO 0x0034 /* () Maximum number of endpoints allowed, low word */
+#define CSG_EP_REQ_HI 0x0038 /* () Maximum number of endpoints allowed, high word */
 #define CSG_SUSPEND_BUF_LO 0x0040 /* () Normal mode suspend buffer, low word */
 #define CSG_SUSPEND_BUF_HI 0x0044 /* () Normal mode suspend buffer, high word */
 #define CSG_PROTM_SUSPEND_BUF_LO 0x0048 /* () Protected mode suspend buffer, low word */
@@ -645,6 +648,7 @@
 	(((reg_val) & ~CS_STATUS_REQ_RESOURCE_IDVS_RESOURCES_MASK) |  \
 	 (((value) << CS_STATUS_REQ_RESOURCE_IDVS_RESOURCES_SHIFT) & CS_STATUS_REQ_RESOURCE_IDVS_RESOURCES_MASK))
 
+
 /* CS_STATUS_WAIT_SYNC_POINTER register */
 #define CS_STATUS_WAIT_SYNC_POINTER_POINTER_SHIFT 0
 #define CS_STATUS_WAIT_SYNC_POINTER_POINTER_MASK                                                   \
@@ -953,41 +957,46 @@
 
 /* CSG_EP_REQ register */
 #define CSG_EP_REQ_COMPUTE_EP_SHIFT 0
-#define CSG_EP_REQ_COMPUTE_EP_MASK (0xFF << CSG_EP_REQ_COMPUTE_EP_SHIFT)
+#define CSG_EP_REQ_COMPUTE_EP_MASK ((u64)0xFF << CSG_EP_REQ_COMPUTE_EP_SHIFT)
 #define CSG_EP_REQ_COMPUTE_EP_GET(reg_val) (((reg_val)&CSG_EP_REQ_COMPUTE_EP_MASK) >> CSG_EP_REQ_COMPUTE_EP_SHIFT)
-#define CSG_EP_REQ_COMPUTE_EP_SET(reg_val, value) \
-	(((reg_val) & ~CSG_EP_REQ_COMPUTE_EP_MASK) |  \
-	 (((value) << CSG_EP_REQ_COMPUTE_EP_SHIFT) & CSG_EP_REQ_COMPUTE_EP_MASK))
+#define CSG_EP_REQ_COMPUTE_EP_SET(reg_val, value)                                                  \
+	(((reg_val) & ~CSG_EP_REQ_COMPUTE_EP_MASK) |                                               \
+	 ((((u64)value) << CSG_EP_REQ_COMPUTE_EP_SHIFT) & CSG_EP_REQ_COMPUTE_EP_MASK))
 #define CSG_EP_REQ_FRAGMENT_EP_SHIFT 8
-#define CSG_EP_REQ_FRAGMENT_EP_MASK (0xFF << CSG_EP_REQ_FRAGMENT_EP_SHIFT)
+#define CSG_EP_REQ_FRAGMENT_EP_MASK ((u64)0xFF << CSG_EP_REQ_FRAGMENT_EP_SHIFT)
 #define CSG_EP_REQ_FRAGMENT_EP_GET(reg_val) (((reg_val)&CSG_EP_REQ_FRAGMENT_EP_MASK) >> CSG_EP_REQ_FRAGMENT_EP_SHIFT)
-#define CSG_EP_REQ_FRAGMENT_EP_SET(reg_val, value) \
-	(((reg_val) & ~CSG_EP_REQ_FRAGMENT_EP_MASK) |  \
-	 (((value) << CSG_EP_REQ_FRAGMENT_EP_SHIFT) & CSG_EP_REQ_FRAGMENT_EP_MASK))
+#define CSG_EP_REQ_FRAGMENT_EP_SET(reg_val, value)                                                 \
+	(((reg_val) & ~CSG_EP_REQ_FRAGMENT_EP_MASK) |                                              \
+	 ((((u64)value) << CSG_EP_REQ_FRAGMENT_EP_SHIFT) & CSG_EP_REQ_FRAGMENT_EP_MASK))
 #define CSG_EP_REQ_TILER_EP_SHIFT 16
-#define CSG_EP_REQ_TILER_EP_MASK (0xF << CSG_EP_REQ_TILER_EP_SHIFT)
+#define CSG_EP_REQ_TILER_EP_MASK ((u64)0xF << CSG_EP_REQ_TILER_EP_SHIFT)
 #define CSG_EP_REQ_TILER_EP_GET(reg_val) (((reg_val)&CSG_EP_REQ_TILER_EP_MASK) >> CSG_EP_REQ_TILER_EP_SHIFT)
-#define CSG_EP_REQ_TILER_EP_SET(reg_val, value) \
-	(((reg_val) & ~CSG_EP_REQ_TILER_EP_MASK) | (((value) << CSG_EP_REQ_TILER_EP_SHIFT) & CSG_EP_REQ_TILER_EP_MASK))
+#define CSG_EP_REQ_TILER_EP_SET(reg_val, value)                                                    \
+	(((reg_val) & ~CSG_EP_REQ_TILER_EP_MASK) |                                                 \
+	 ((((u64)value) << CSG_EP_REQ_TILER_EP_SHIFT) & CSG_EP_REQ_TILER_EP_MASK))
 #define CSG_EP_REQ_EXCLUSIVE_COMPUTE_SHIFT 20
-#define CSG_EP_REQ_EXCLUSIVE_COMPUTE_MASK (0x1 << CSG_EP_REQ_EXCLUSIVE_COMPUTE_SHIFT)
+#define CSG_EP_REQ_EXCLUSIVE_COMPUTE_MASK ((u64)0x1 << CSG_EP_REQ_EXCLUSIVE_COMPUTE_SHIFT)
 #define CSG_EP_REQ_EXCLUSIVE_COMPUTE_GET(reg_val) \
 	(((reg_val)&CSG_EP_REQ_EXCLUSIVE_COMPUTE_MASK) >> CSG_EP_REQ_EXCLUSIVE_COMPUTE_SHIFT)
-#define CSG_EP_REQ_EXCLUSIVE_COMPUTE_SET(reg_val, value) \
-	(((reg_val) & ~CSG_EP_REQ_EXCLUSIVE_COMPUTE_MASK) |  \
-	 (((value) << CSG_EP_REQ_EXCLUSIVE_COMPUTE_SHIFT) & CSG_EP_REQ_EXCLUSIVE_COMPUTE_MASK))
+#define CSG_EP_REQ_EXCLUSIVE_COMPUTE_SET(reg_val, value)                                           \
+	(((reg_val) & ~CSG_EP_REQ_EXCLUSIVE_COMPUTE_MASK) |                                        \
+	 ((((u64)value) << CSG_EP_REQ_EXCLUSIVE_COMPUTE_SHIFT) &                                   \
+	  CSG_EP_REQ_EXCLUSIVE_COMPUTE_MASK))
 #define CSG_EP_REQ_EXCLUSIVE_FRAGMENT_SHIFT 21
-#define CSG_EP_REQ_EXCLUSIVE_FRAGMENT_MASK (0x1 << CSG_EP_REQ_EXCLUSIVE_FRAGMENT_SHIFT)
+#define CSG_EP_REQ_EXCLUSIVE_FRAGMENT_MASK ((u64)0x1 << CSG_EP_REQ_EXCLUSIVE_FRAGMENT_SHIFT)
 #define CSG_EP_REQ_EXCLUSIVE_FRAGMENT_GET(reg_val) \
 	(((reg_val)&CSG_EP_REQ_EXCLUSIVE_FRAGMENT_MASK) >> CSG_EP_REQ_EXCLUSIVE_FRAGMENT_SHIFT)
-#define CSG_EP_REQ_EXCLUSIVE_FRAGMENT_SET(reg_val, value) \
-	(((reg_val) & ~CSG_EP_REQ_EXCLUSIVE_FRAGMENT_MASK) |  \
-	 (((value) << CSG_EP_REQ_EXCLUSIVE_FRAGMENT_SHIFT) & CSG_EP_REQ_EXCLUSIVE_FRAGMENT_MASK))
+#define CSG_EP_REQ_EXCLUSIVE_FRAGMENT_SET(reg_val, value)                                          \
+	(((reg_val) & ~CSG_EP_REQ_EXCLUSIVE_FRAGMENT_MASK) |                                       \
+	 ((((u64)value) << CSG_EP_REQ_EXCLUSIVE_FRAGMENT_SHIFT) &                                  \
+	  CSG_EP_REQ_EXCLUSIVE_FRAGMENT_MASK))
 #define CSG_EP_REQ_PRIORITY_SHIFT 28
-#define CSG_EP_REQ_PRIORITY_MASK (0xF << CSG_EP_REQ_PRIORITY_SHIFT)
+#define CSG_EP_REQ_PRIORITY_MASK ((u64)0xF << CSG_EP_REQ_PRIORITY_SHIFT)
 #define CSG_EP_REQ_PRIORITY_GET(reg_val) (((reg_val)&CSG_EP_REQ_PRIORITY_MASK) >> CSG_EP_REQ_PRIORITY_SHIFT)
-#define CSG_EP_REQ_PRIORITY_SET(reg_val, value) \
-	(((reg_val) & ~CSG_EP_REQ_PRIORITY_MASK) | (((value) << CSG_EP_REQ_PRIORITY_SHIFT) & CSG_EP_REQ_PRIORITY_MASK))
+#define CSG_EP_REQ_PRIORITY_SET(reg_val, value)                                                    \
+	(((reg_val) & ~CSG_EP_REQ_PRIORITY_MASK) |                                                 \
+	 ((((u64)value) << CSG_EP_REQ_PRIORITY_SHIFT) & CSG_EP_REQ_PRIORITY_MASK))
+
 
 /* CSG_SUSPEND_BUF register */
 #define CSG_SUSPEND_BUF_POINTER_SHIFT 0
@@ -1096,6 +1105,7 @@
 	(((reg_val) & ~CSG_STATUS_EP_CURRENT_TILER_EP_MASK) |  \
 	 (((value) << CSG_STATUS_EP_CURRENT_TILER_EP_SHIFT) & CSG_STATUS_EP_CURRENT_TILER_EP_MASK))
 
+
 /* CSG_STATUS_EP_REQ register */
 #define CSG_STATUS_EP_REQ_COMPUTE_EP_SHIFT 0
 #define CSG_STATUS_EP_REQ_COMPUTE_EP_MASK (0xFF << CSG_STATUS_EP_REQ_COMPUTE_EP_SHIFT)
@@ -1132,6 +1142,7 @@
 #define CSG_STATUS_EP_REQ_EXCLUSIVE_FRAGMENT_SET(reg_val, value) \
 	(((reg_val) & ~CSG_STATUS_EP_REQ_EXCLUSIVE_FRAGMENT_MASK) |  \
 	 (((value) << CSG_STATUS_EP_REQ_EXCLUSIVE_FRAGMENT_SHIFT) & CSG_STATUS_EP_REQ_EXCLUSIVE_FRAGMENT_MASK))
+
 
 /* End of CSG_OUTPUT_BLOCK register set definitions */
 
@@ -1481,6 +1492,20 @@
 #define GLB_PWROFF_TIMER_TIMER_SOURCE_GPU_COUNTER 0x1
 /* End of GLB_PWROFF_TIMER_TIMER_SOURCE values */
 
+/* GLB_PWROFF_TIMER_CONFIG register */
+#ifndef GLB_PWROFF_TIMER_CONFIG
+#define GLB_PWROFF_TIMER_CONFIG 0x0088 /* () Configuration fields for GLB_PWROFF_TIMER */
+#define GLB_PWROFF_TIMER_CONFIG_NO_MODIFIER_SHIFT 0
+#define GLB_PWROFF_TIMER_CONFIG_NO_MODIFIER_MASK (0x1 << GLB_PWROFF_TIMER_CONFIG_NO_MODIFIER_SHIFT)
+#define GLB_PWROFF_TIMER_CONFIG_NO_MODIFIER_GET(reg_val)         \
+	(((reg_val)&GLB_PWROFF_TIMER_CONFIG_NO_MODIFIER_MASK) >> \
+	 GLB_PWROFF_TIMER_CONFIG_NO_MODIFIER_SHIFT)
+#define GLB_PWROFF_TIMER_CONFIG_NO_MODIFIER_SET(reg_val, value)    \
+	(((reg_val) & ~GLB_PWROFF_TIMER_CONFIG_NO_MODIFIER_MASK) | \
+	 (((value) << GLB_PWROFF_TIMER_CONFIG_NO_MODIFIER_SHIFT) & \
+	  GLB_PWROFF_TIMER_CONFIG_NO_MODIFIER_MASK))
+#endif /* End of GLB_PWROFF_TIMER_CONFIG values */
+
 /* GLB_ALLOC_EN register */
 #define GLB_ALLOC_EN_MASK_SHIFT 0
 #define GLB_ALLOC_EN_MASK_MASK (GPU_ULL(0xFFFFFFFFFFFFFFFF) << GLB_ALLOC_EN_MASK_SHIFT)
@@ -1545,6 +1570,20 @@
 #define GLB_IDLE_TIMER_TIMER_SOURCE_SYSTEM_TIMESTAMP 0x0
 #define GLB_IDLE_TIMER_TIMER_SOURCE_GPU_COUNTER 0x1
 /* End of GLB_IDLE_TIMER_TIMER_SOURCE values */
+
+/* GLB_IDLE_TIMER_CONFIG values */
+#ifndef GLB_IDLE_TIMER_CONFIG
+#define GLB_IDLE_TIMER_CONFIG 0x0084 /* () Configuration fields for GLB_IDLE_TIMER */
+#define GLB_IDLE_TIMER_CONFIG_NO_MODIFIER_SHIFT 0
+#define GLB_IDLE_TIMER_CONFIG_NO_MODIFIER_MASK (0x1 << GLB_IDLE_TIMER_CONFIG_NO_MODIFIER_SHIFT)
+#define GLB_IDLE_TIMER_CONFIG_NO_MODIFIER_GET(reg_val)         \
+	(((reg_val)&GLB_IDLE_TIMER_CONFIG_NO_MODIFIER_MASK) >> \
+	 GLB_IDLE_TIMER_CONFIG_NO_MODIFIER_SHIFT)
+#define GLB_IDLE_TIMER_CONFIG_NO_MODIFIER_SET(reg_val, value)    \
+	(((reg_val) & ~GLB_IDLE_TIMER_CONFIG_NO_MODIFIER_MASK) | \
+	 (((value) << GLB_IDLE_TIMER_CONFIG_NO_MODIFIER_SHIFT) & \
+	  GLB_IDLE_TIMER_CONFIG_NO_MODIFIER_MASK))
+#endif /* End of GLB_IDLE_TIMER_CONFIG values */
 
 /* GLB_INSTR_FEATURES register */
 #define GLB_INSTR_FEATURES_OFFSET_UPDATE_RATE_SHIFT (0)
@@ -1669,6 +1708,7 @@
 #define GLB_DEBUG_ACK_RUN_MODE_SET(reg_val, value)                                                 \
 	(((reg_val) & ~GLB_DEBUG_ACK_RUN_MODE_MASK) |                                              \
 	 (((value) << GLB_DEBUG_ACK_RUN_MODE_SHIFT) & GLB_DEBUG_ACK_RUN_MODE_MASK))
+
 
 /* RUN_MODE values */
 #define GLB_DEBUG_RUN_MODE_TYPE_NOP 0x0

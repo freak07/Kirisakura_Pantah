@@ -141,17 +141,21 @@ static bool set_pool_new_page_metadata(struct kbase_mem_pool *pool, struct page 
 	 * Only update page status and add the page to the memory pool if
 	 * it is not isolated.
 	 */
-	spin_lock(&page_md->migrate_lock);
-	if (PAGE_STATUS_GET(page_md->status) == (u8)NOT_MOVABLE) {
+	if (!IS_ENABLED(CONFIG_PAGE_MIGRATION_SUPPORT))
 		not_movable = true;
-	} else if (!WARN_ON_ONCE(IS_PAGE_ISOLATED(page_md->status))) {
-		page_md->status = PAGE_STATUS_SET(page_md->status, (u8)MEM_POOL);
-		page_md->data.mem_pool.pool = pool;
-		page_md->data.mem_pool.kbdev = pool->kbdev;
-		list_add(&p->lru, page_list);
-		(*list_size)++;
+	else {
+		spin_lock(&page_md->migrate_lock);
+		if (PAGE_STATUS_GET(page_md->status) == (u8)NOT_MOVABLE) {
+			not_movable = true;
+		} else if (!WARN_ON_ONCE(IS_PAGE_ISOLATED(page_md->status))) {
+			page_md->status = PAGE_STATUS_SET(page_md->status, (u8)MEM_POOL);
+			page_md->data.mem_pool.pool = pool;
+			page_md->data.mem_pool.kbdev = pool->kbdev;
+			list_add(&p->lru, page_list);
+			(*list_size)++;
+		}
+		spin_unlock(&page_md->migrate_lock);
 	}
-	spin_unlock(&page_md->migrate_lock);
 
 	if (not_movable) {
 		kbase_free_page_later(pool->kbdev, p);
@@ -173,7 +177,7 @@ static void kbase_mem_pool_add_locked(struct kbase_mem_pool *pool,
 
 	lockdep_assert_held(&pool->pool_lock);
 
-	if (!pool->order && kbase_page_migration_enabled) {
+	if (!pool->order && kbase_is_page_migration_enabled()) {
 		if (set_pool_new_page_metadata(pool, p, &pool->page_list, &pool->cur_size))
 			queue_work_to_free = true;
 	} else {
@@ -204,7 +208,7 @@ static void kbase_mem_pool_add_list_locked(struct kbase_mem_pool *pool,
 
 	lockdep_assert_held(&pool->pool_lock);
 
-	if (!pool->order && kbase_page_migration_enabled) {
+	if (!pool->order && kbase_is_page_migration_enabled()) {
 		struct page *p, *tmp;
 
 		list_for_each_entry_safe(p, tmp, page_list, lru) {
@@ -246,7 +250,7 @@ static struct page *kbase_mem_pool_remove_locked(struct kbase_mem_pool *pool,
 
 	p = list_first_entry(&pool->page_list, struct page, lru);
 
-	if (!pool->order && kbase_page_migration_enabled) {
+	if (!pool->order && kbase_is_page_migration_enabled()) {
 		struct kbase_page_metadata *page_md = kbase_page_private(p);
 
 		spin_lock(&page_md->migrate_lock);
@@ -322,7 +326,7 @@ struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool)
 	if (pool->order)
 		gfp |= GFP_HIGHUSER | __GFP_NOWARN;
 	else
-		gfp |= kbase_page_migration_enabled ? GFP_HIGHUSER_MOVABLE : GFP_HIGHUSER;
+		gfp |= kbase_is_page_migration_enabled() ? GFP_HIGHUSER_MOVABLE : GFP_HIGHUSER;
 
 	p = kbdev->mgm_dev->ops.mgm_alloc_page(kbdev->mgm_dev,
 		pool->group_id, gfp, pool->order);
@@ -339,7 +343,7 @@ struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool)
 	}
 
 	/* Setup page metadata for 4KB pages when page migration is enabled */
-	if (!pool->order && kbase_page_migration_enabled) {
+	if (!pool->order && kbase_is_page_migration_enabled()) {
 		INIT_LIST_HEAD(&p->lru);
 		if (!kbase_alloc_page_metadata(kbdev, p, dma_addr, pool->group_id)) {
 			dma_unmap_page(dev, dma_addr, PAGE_SIZE, DMA_BIDIRECTIONAL);
@@ -360,7 +364,7 @@ static void enqueue_free_pool_pages_work(struct kbase_mem_pool *pool)
 {
 	struct kbase_mem_migrate *mem_migrate = &pool->kbdev->mem_migrate;
 
-	if (!pool->order && kbase_page_migration_enabled)
+	if (!pool->order && kbase_is_page_migration_enabled())
 		queue_work(mem_migrate->free_pages_workq, &mem_migrate->free_pages_work);
 }
 
@@ -375,7 +379,7 @@ void kbase_mem_pool_free_page(struct kbase_mem_pool *pool, struct page *p)
 
 	kbdev = pool->kbdev;
 
-	if (!pool->order && kbase_page_migration_enabled) {
+	if (!pool->order && kbase_is_page_migration_enabled()) {
 		kbase_free_page_later(kbdev, p);
 		pool_dbg(pool, "page to be freed to kernel later\n");
 	} else {
@@ -677,9 +681,10 @@ void kbase_mem_pool_term(struct kbase_mem_pool *pool)
 	/* Before returning wait to make sure there are no pages undergoing page isolation
 	 * which will require reference to this pool.
 	 */
-	while (atomic_read(&pool->isolation_in_progress_cnt))
-		cpu_relax();
-
+	if (kbase_is_page_migration_enabled()) {
+		while (atomic_read(&pool->isolation_in_progress_cnt))
+			cpu_relax();
+	}
 	pool_dbg(pool, "terminated\n");
 }
 KBASE_EXPORT_TEST_API(kbase_mem_pool_term);
