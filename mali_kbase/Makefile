@@ -161,7 +161,7 @@ ifeq ($(MALI_KCONFIG_EXT_PREFIX),)
             # Prevent misuse when CONFIG_MALI_DEBUG=n
             CONFIG_MALI_KUTF = y
             CONFIG_MALI_KUTF_IRQ_TEST = n
-            CONFIG_MALI_KUTF_CLK_RATE_TRACE = n
+            CONFIG_MALI_KUTF_CLK_RATE_TRACE = y
             CONFIG_MALI_KUTF_MGM_INTEGRATION_TEST = n
         endif
     else
