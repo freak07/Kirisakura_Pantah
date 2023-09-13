@@ -34,6 +34,7 @@ struct sugov_tunables {
 	unsigned int		spc_threshold;
 	unsigned int		limit_frequency;
 	bool			pmu_limit_enable;
+	bool			pmu_limit_invert;
 };
 
 struct sugov_policy {
@@ -125,9 +126,15 @@ extern int get_ev_data(int cpu, int inst_ev, int cyc_ev, int stall_ev, int cache
 static bool check_pmu_limit_conditions(u64 lcpi, u64 spc, struct sugov_policy *sg_policy)
 {
 	if (sg_policy->tunables->lcpi_threshold <= lcpi &&
-	    sg_policy->tunables->spc_threshold <= spc)
+	    sg_policy->tunables->spc_threshold <= spc &&
+	    sg_policy->tunables->pmu_limit_invert == false) {
+		return true;
+	} else if (sg_policy->tunables->lcpi_threshold >= lcpi &&
+	    sg_policy->tunables->spc_threshold >= spc &&
+	    sg_policy->tunables->pmu_limit_invert == true) {
 		return true;
 
+	} else
 	return false;
 }
 
@@ -1311,6 +1318,27 @@ static ssize_t pmu_limit_enable_store(struct gov_attr_set *attr_set, const char 
 }
 static struct governor_attr pmu_limit_enable = __ATTR_RW(pmu_limit_enable);
 
+static ssize_t pmu_limit_invert_show(struct gov_attr_set *attr_set, char *buf)
+{
+	struct sugov_tunables *tunables = to_sugov_tunables(attr_set);
+
+	return sysfs_emit(buf, "%s\n", tunables->pmu_limit_invert ? "true" : "false");
+}
+
+static ssize_t pmu_limit_invert_store(struct gov_attr_set *attr_set, const char *buf, size_t count)
+{
+	struct sugov_tunables *tunables = to_sugov_tunables(attr_set);
+	bool val;
+
+	if (kstrtobool(buf, &val))
+		return -EINVAL;
+
+	tunables->pmu_limit_invert = val;
+
+	return count;
+}
+static struct governor_attr pmu_limit_invert = __ATTR_RW(pmu_limit_invert);
+
 static struct attribute *sugov_attrs[] = {
 	&up_rate_limit_us.attr,
 	&down_rate_limit_us.attr,
@@ -1321,6 +1349,7 @@ static struct attribute *sugov_attrs[] = {
 	&spc_threshold.attr,
 	&limit_frequency.attr,
 	&pmu_limit_enable.attr,
+	&pmu_limit_invert.attr,
 	NULL
 };
 ATTRIBUTE_GROUPS(sugov);
@@ -1511,6 +1540,7 @@ static int sugov_init(struct cpufreq_policy *policy)
 	tunables->down_rate_limit_us = cpufreq_policy_transition_delay_us(policy);
 	tunables->down_rate_limit_scale_pow = 1;
 	tunables->pmu_limit_enable = false;
+	tunables->pmu_limit_invert = false;
 	tunables->lcpi_threshold = 1000;
 	tunables->spc_threshold = 100;
 	tunables->limit_frequency = policy->cpuinfo.max_freq;
