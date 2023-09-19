@@ -493,7 +493,7 @@ struct kbase_mem_pool {
 	u8                  group_id;
 	spinlock_t          pool_lock;
 	struct list_head    page_list;
-	struct shrinker     reclaim;
+	struct shrinker     *reclaim;
 
 	struct kbase_mem_pool *next_pool;
 
@@ -1858,7 +1858,7 @@ struct kbase_context {
 
 	struct kbase_mem_pool_group mem_pools;
 
-	struct shrinker         reclaim;
+	struct shrinker         *reclaim;
 	struct list_head        evict_list;
 	atomic_t evict_nents;
 

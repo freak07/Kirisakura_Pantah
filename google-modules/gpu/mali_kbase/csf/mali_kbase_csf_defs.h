@@ -1495,7 +1495,7 @@ struct kbase_csf_device {
 	struct kbase_csf_hwcnt hwcnt;
 	struct kbase_csf_mcu_fw fw;
 	struct kbase_csf_firmware_log fw_log;
-	struct shrinker tiler_heap_reclaim;
+	struct shrinker *tiler_heap_reclaim;
 };
 
 /**

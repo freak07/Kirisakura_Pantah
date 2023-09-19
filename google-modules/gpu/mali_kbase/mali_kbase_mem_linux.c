@@ -658,9 +658,7 @@ static
 unsigned long kbase_mem_evictable_reclaim_count_objects(struct shrinker *s,
 		struct shrink_control *sc)
 {
-	struct kbase_context *kctx;
-
-	kctx = container_of(s, struct kbase_context, reclaim);
+	struct kbase_context *kctx = s->private_data;
 
 	WARN((sc->gfp_mask & __GFP_HIGH),
 	     "Shrinkers cannot be called for GFP_HIGH allocations. Check kernel mm for problems. gfp_mask==%x\n",
@@ -695,12 +693,12 @@ static
 unsigned long kbase_mem_evictable_reclaim_scan_objects(struct shrinker *s,
 		struct shrink_control *sc)
 {
-	struct kbase_context *kctx;
+
 	struct kbase_mem_phy_alloc *alloc;
 	struct kbase_mem_phy_alloc *tmp;
 	unsigned long freed = 0;
 
-	kctx = container_of(s, struct kbase_context, reclaim);
+	struct kbase_context *kctx = s->private_data;
 
 	mutex_lock(&kctx->jit_evict_lock);
 
@@ -756,21 +754,25 @@ int kbase_mem_evictable_init(struct kbase_context *kctx)
 	mutex_init(&kctx->jit_evict_lock);
 
 	atomic_set(&kctx->evict_nents, 0);
+	
+	kctx->reclaim = shrinker_alloc(0, "mali_kbase_mem_linux");
+	if (!kctx->reclaim)
+		return -ENOMEM;
 
-	kctx->reclaim.count_objects = kbase_mem_evictable_reclaim_count_objects;
-	kctx->reclaim.scan_objects = kbase_mem_evictable_reclaim_scan_objects;
-	kctx->reclaim.seeks = DEFAULT_SEEKS;
+	kctx->reclaim->count_objects = kbase_mem_evictable_reclaim_count_objects;
+	kctx->reclaim->scan_objects = kbase_mem_evictable_reclaim_scan_objects;
+	kctx->reclaim->private_data = kctx;
 	/* Kernel versions prior to 3.1 :
 	 * struct shrinker does not define batch
 	 */
-	kctx->reclaim.batch = 0;
-	register_shrinker(&kctx->reclaim);
+	kctx->reclaim->batch = 0;
+	shrinker_register(kctx->reclaim);
 	return 0;
 }
 
 void kbase_mem_evictable_deinit(struct kbase_context *kctx)
 {
-	unregister_shrinker(&kctx->reclaim);
+	shrinker_free(kctx->reclaim);
 }
 
 /**
