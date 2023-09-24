@@ -117,12 +117,10 @@ void kbase_pm_update_active(struct kbase_device *kbdev)
 		} else {
 			/* Cancel the invocation of
 			 * kbase_pm_gpu_poweroff_wait_wq() from the L2 state
-			 * machine. This is safe - if
+			 * machine. This is safe - it
 			 * invoke_poweroff_wait_wq_when_l2_off is true, then
 			 * the poweroff work hasn't even been queued yet,
-			 * meaning we can go straight to powering on. We must
-			 * however wake_up(poweroff_wait) in case someone was
-			 * waiting for poweroff_wait_in_progress to become false.
+			 * meaning we can go straight to powering on.
 			 */
 			pm->backend.invoke_poweroff_wait_wq_when_l2_off = false;
 			pm->backend.poweroff_wait_in_progress = false;
@@ -132,7 +130,6 @@ void kbase_pm_update_active(struct kbase_device *kbdev)
 #endif
 
 			spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-			wake_up(&kbdev->pm.backend.poweroff_wait);
 			kbase_pm_do_poweron(kbdev, false);
 		}
 	} else {

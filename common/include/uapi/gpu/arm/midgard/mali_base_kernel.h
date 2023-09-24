@@ -53,10 +53,6 @@
  */
 #define BASE_MEM_GROUP_DEFAULT (0)
 
-/* Physical memory group ID for explicit SLC allocations.
- */
-#define BASE_MEM_GROUP_PIXEL_SLC_EXPLICIT (2)
-
 /* Number of physical memory groups.
  */
 #define BASE_MEM_GROUP_COUNT (16)

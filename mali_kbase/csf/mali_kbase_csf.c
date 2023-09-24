@@ -344,8 +344,9 @@ int kbase_csf_alloc_command_stream_user_pages(struct kbase_context *kctx,
 	if (!reg)
 		return -ENOMEM;
 
-	ret = kbase_mem_pool_alloc_pages(&kctx->mem_pools.small[KBASE_MEM_GROUP_CSF_IO],
-					 num_pages, queue->phys, false, kctx->task);
+	ret = kbase_mem_pool_alloc_pages(
+				&kctx->mem_pools.small[KBASE_MEM_GROUP_CSF_IO],
+				num_pages, queue->phys, false);
 
 	if (ret != num_pages)
 		goto phys_alloc_failed;
@@ -390,10 +391,6 @@ kernel_map_failed:
 		num_pages, queue->phys, false, false);
 
 phys_alloc_failed:
-	/* Marking both the phys to zero for indicating there is no phys allocated */
-	queue->phys[0].tagged_addr = 0;
-	queue->phys[1].tagged_addr = 0;
-
 	kfree(reg);
 
 	return -ENOMEM;
@@ -852,15 +849,6 @@ void kbase_csf_ring_csg_slots_doorbell(struct kbase_device *kbdev,
 	if (WARN_ON(slot_bitmap > allowed_bitmap))
 		return;
 
-	/* The access to GLB_DB_REQ/ACK needs to be ordered with respect to CSG_REQ/ACK and
-	 * CSG_DB_REQ/ACK to avoid a scenario where a CSI request overlaps with a CSG request
-	 * or 2 CSI requests overlap and FW ends up missing the 2nd request.
-	 * Memory barrier is required, both on Host and FW side, to guarantee the ordering.
-	 *
-	 * 'osh' is used as CPU and GPU would be in the same Outer shareable domain.
-	 */
-	dmb(osh);
-
 	value = kbase_csf_firmware_global_output(global_iface, GLB_DB_ACK);
 	value ^= slot_bitmap;
 	kbase_csf_firmware_global_input_mask(global_iface, GLB_DB_REQ, value,
@@ -898,14 +886,6 @@ void kbase_csf_ring_cs_kernel_doorbell(struct kbase_device *kbdev,
 	if (WARN_ON(csi_index < 0) ||
 	    WARN_ON(csi_index >= ginfo->stream_num))
 		return;
-
-	/* The access to CSG_DB_REQ/ACK needs to be ordered with respect to
-	 * CS_REQ/ACK to avoid a scenario where CSG_DB_REQ/ACK becomes visible to
-	 * FW before CS_REQ/ACK is set.
-	 *
-	 * 'osh' is used as CPU and GPU would be in the same outer shareable domain.
-	 */
-	dmb(osh);
 
 	value = kbase_csf_firmware_csg_output(ginfo, CSG_DB_ACK);
 	value ^= (1 << csi_index);
@@ -1154,9 +1134,9 @@ static int create_normal_suspend_buffer(struct kbase_context *const kctx,
 	}
 
 	/* Get physical page for a normal suspend buffer */
-	err = kbase_mem_pool_alloc_pages(&kctx->mem_pools.small[KBASE_MEM_GROUP_CSF_FW], nr_pages,
-					 &s_buf->phy[0], false, kctx->task);
-
+	err = kbase_mem_pool_alloc_pages(
+			&kctx->mem_pools.small[KBASE_MEM_GROUP_CSF_FW],
+			nr_pages, &s_buf->phy[0], false);
 
 	if (err < 0)
 		goto phy_pages_alloc_failed;
@@ -3105,8 +3085,9 @@ int kbase_csf_doorbell_mapping_init(struct kbase_device *kbdev)
 	if (IS_ERR(filp))
 		return PTR_ERR(filp);
 
-	ret = kbase_mem_pool_alloc_pages(&kbdev->mem_pools.small[KBASE_MEM_GROUP_CSF_FW], 1, &phys,
-					 false, NULL);
+	ret = kbase_mem_pool_alloc_pages(
+		&kbdev->mem_pools.small[KBASE_MEM_GROUP_CSF_FW],
+		1, &phys, false);
 
 	if (ret <= 0) {
 		fput(filp);
@@ -3140,8 +3121,9 @@ int kbase_csf_setup_dummy_user_reg_page(struct kbase_device *kbdev)
 
 	kbdev->csf.dummy_user_reg_page = as_tagged(0);
 
-	ret = kbase_mem_pool_alloc_pages(&kbdev->mem_pools.small[KBASE_MEM_GROUP_CSF_FW], 1, &phys,
-					 false, NULL);
+	ret = kbase_mem_pool_alloc_pages(
+		&kbdev->mem_pools.small[KBASE_MEM_GROUP_CSF_FW], 1, &phys,
+		false);
 
 	if (ret <= 0)
 		return ret;

@@ -894,11 +894,11 @@ u32 kbase_backend_get_current_flush_id(struct kbase_device *kbdev)
 	u32 flush_id = 0;
 
 	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_FLUSH_REDUCTION)) {
-		rt_mutex_lock(&kbdev->pm.lock);
+		mutex_lock(&kbdev->pm.lock);
 		if (kbdev->pm.backend.gpu_powered)
 			flush_id = kbase_reg_read(kbdev,
 					GPU_CONTROL_REG(LATEST_FLUSH));
-		rt_mutex_unlock(&kbdev->pm.lock);
+		mutex_unlock(&kbdev->pm.lock);
 	}
 
 	return flush_id;
@@ -1147,7 +1147,7 @@ static void kbasep_reset_timeout_worker(struct work_struct *data)
 		WARN(!max_loops, "L2 power transition timed out while trying to reset\n");
 	}
 
-	rt_mutex_lock(&kbdev->pm.lock);
+	mutex_lock(&kbdev->pm.lock);
 	/* We hold the pm lock, so there ought to be a current policy */
 	if (unlikely(!kbdev->pm.backend.pm_current_policy))
 		dev_warn(kbdev->dev, "No power policy set!");
@@ -1186,7 +1186,7 @@ static void kbasep_reset_timeout_worker(struct work_struct *data)
 	/* Reset the GPU */
 	kbase_pm_init_hw(kbdev, 0);
 
-	rt_mutex_unlock(&kbdev->pm.lock);
+	mutex_unlock(&kbdev->pm.lock);
 
 	mutex_lock(&js_devdata->runpool_mutex);
 
@@ -1202,7 +1202,7 @@ static void kbasep_reset_timeout_worker(struct work_struct *data)
 
 	mutex_unlock(&js_devdata->runpool_mutex);
 
-	rt_mutex_lock(&kbdev->pm.lock);
+	mutex_lock(&kbdev->pm.lock);
 
 	kbase_pm_reset_complete(kbdev);
 
@@ -1214,7 +1214,7 @@ static void kbasep_reset_timeout_worker(struct work_struct *data)
 	 */
 	kbase_pm_wait_for_desired_state(kbdev);
 
-	rt_mutex_unlock(&kbdev->pm.lock);
+	mutex_unlock(&kbdev->pm.lock);
 
 	atomic_set(&kbdev->hwaccess.backend.reset_gpu,
 						KBASE_RESET_GPU_NOT_PENDING);

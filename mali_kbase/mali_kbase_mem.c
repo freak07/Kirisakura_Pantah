@@ -1863,21 +1863,16 @@ int kbase_gpu_munmap(struct kbase_context *kctx, struct kbase_va_region *reg)
 			 * separately.
 			 */
 			for (i = 0; i < alloc->imported.alias.nents; i++) {
-				struct tagged_addr *phys_alloc = NULL;
-				int err_loop;
-
-				if (alloc->imported.alias.aliased[i].alloc != NULL)
-					phys_alloc = alloc->imported.alias.aliased[i].alloc->pages +
-						     alloc->imported.alias.aliased[i].offset;
-
-				err_loop = kbase_mmu_teardown_pages(
-					kctx->kbdev, &kctx->mmu,
-					reg->start_pfn + (i * alloc->imported.alias.stride),
-					phys_alloc, alloc->imported.alias.aliased[i].length,
-					kctx->as_nr);
-
-				if (WARN_ON_ONCE(err_loop))
-					err = err_loop;
+				if (alloc->imported.alias.aliased[i].alloc) {
+					int err_loop = kbase_mmu_teardown_pages(
+						kctx->kbdev, &kctx->mmu,
+						reg->start_pfn + (i * alloc->imported.alias.stride),
+						alloc->pages + (i * alloc->imported.alias.stride),
+						alloc->imported.alias.aliased[i].length,
+						kctx->as_nr);
+					if (WARN_ON_ONCE(err_loop))
+						err = err_loop;
+				}
 			}
 		}
 		break;
@@ -2493,8 +2488,11 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc,
 	if (nr_left >= (SZ_2M / SZ_4K)) {
 		int nr_lp = nr_left / (SZ_2M / SZ_4K);
 
-		res = kbase_mem_pool_alloc_pages(&kctx->mem_pools.large[alloc->group_id],
-						 nr_lp * (SZ_2M / SZ_4K), tp, true, kctx->task);
+		res = kbase_mem_pool_alloc_pages(
+			&kctx->mem_pools.large[alloc->group_id],
+			 nr_lp * (SZ_2M / SZ_4K),
+			 tp,
+			 true);
 
 		if (res > 0) {
 			nr_left -= res;
@@ -2546,8 +2544,9 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc,
 				if (np)
 					break;
 
-				err = kbase_mem_pool_grow(&kctx->mem_pools.large[alloc->group_id],
-							  1, kctx->task);
+				err = kbase_mem_pool_grow(
+					&kctx->mem_pools.large[alloc->group_id],
+					1);
 				if (err)
 					break;
 			} while (1);
@@ -2592,8 +2591,9 @@ no_new_partial:
 #endif
 
 	if (nr_left) {
-		res = kbase_mem_pool_alloc_pages(&kctx->mem_pools.small[alloc->group_id], nr_left,
-						 tp, false, kctx->task);
+		res = kbase_mem_pool_alloc_pages(
+			&kctx->mem_pools.small[alloc->group_id],
+			nr_left, tp, false);
 		if (res <= 0)
 			goto alloc_failed;
 	}
@@ -4091,7 +4091,7 @@ static int kbase_jit_grow(struct kbase_context *kctx,
 		spin_unlock(&kctx->mem_partials_lock);
 
 		kbase_gpu_vm_unlock(kctx);
-		ret = kbase_mem_pool_grow(pool, pool_delta, kctx->task);
+		ret = kbase_mem_pool_grow(pool, pool_delta);
 		kbase_gpu_vm_lock(kctx);
 
 		if (ret)

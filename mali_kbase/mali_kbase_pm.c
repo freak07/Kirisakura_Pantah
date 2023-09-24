@@ -159,13 +159,13 @@ int kbase_pm_driver_suspend(struct kbase_device *kbdev)
 	 */
 	kbase_hwcnt_context_disable(kbdev->hwcnt_gpu_ctx);
 
-	rt_mutex_lock(&kbdev->pm.lock);
+	mutex_lock(&kbdev->pm.lock);
 	if (WARN_ON(kbase_pm_is_suspending(kbdev))) {
-		rt_mutex_unlock(&kbdev->pm.lock);
+		mutex_unlock(&kbdev->pm.lock);
 		return 0;
 	}
 	kbdev->pm.suspending = true;
-	rt_mutex_unlock(&kbdev->pm.lock);
+	mutex_unlock(&kbdev->pm.lock);
 
 #ifdef CONFIG_MALI_ARBITER_SUPPORT
 	if (kbdev->arb.arb_if) {
@@ -194,9 +194,9 @@ int kbase_pm_driver_suspend(struct kbase_device *kbdev)
 	kbasep_js_suspend(kbdev);
 #else
 	if (kbase_csf_scheduler_pm_suspend(kbdev)) {
-		rt_mutex_lock(&kbdev->pm.lock);
+		mutex_lock(&kbdev->pm.lock);
 		kbdev->pm.suspending = false;
-		rt_mutex_unlock(&kbdev->pm.lock);
+		mutex_unlock(&kbdev->pm.lock);
 		return -1;
 	}
 #endif
@@ -215,9 +215,9 @@ int kbase_pm_driver_suspend(struct kbase_device *kbdev)
 	 * kbase_pm_context_idle() call by locking the pm.lock below
 	 */
 	if (kbase_hwaccess_pm_suspend(kbdev)) {
-		rt_mutex_lock(&kbdev->pm.lock);
+		mutex_lock(&kbdev->pm.lock);
 		kbdev->pm.suspending = false;
-		rt_mutex_unlock(&kbdev->pm.lock);
+		mutex_unlock(&kbdev->pm.lock);
 		return -1;
 	}
 
