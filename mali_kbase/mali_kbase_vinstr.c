@@ -457,7 +457,7 @@ static int kbasep_vinstr_client_create(
 
 	errcode = -ENOMEM;
 	vcli->dump_bufs_meta = kmalloc_array(
-		setup->buffer_count, sizeof(*vcli->dump_bufs_meta), GFP_KERNEL);
+		setup->buffer_count, sizeof(*vcli->dump_bufs_meta), GFP_KERNEL | __GFP_ZERO);
 	if (!vcli->dump_bufs_meta)
 		goto error;
 
