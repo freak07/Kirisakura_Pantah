@@ -196,6 +196,18 @@ config MALI_CORESTACK
 
 	  If unsure, say N.
 
+config PAGE_MIGRATION_SUPPORT
+	bool "Compile with page migration support"
+	depends on BACKEND_KERNEL
+	default y
+	default n if ANDROID
+	help
+	  Compile in support for page migration.
+	  If set to disabled ('n') then page migration cannot
+	  be enabled at all. If set to enabled, then page migration
+	  support is explicitly compiled in. This has no effect when
+	  PAGE_MIGRATION_OVERRIDE is disabled.
+
 choice
 	prompt "Error injection level"
 	depends on MALI_MIDGARD && MALI_EXPERT
@@ -351,6 +363,46 @@ config MALI_HOST_CONTROLS_SC_RAILS
 	  shader cores. It is recommended to use PDCA (Power Domain Control
 	  Adapter) inside the GPU to handshake with SoC PMU to control the
 	  power of cores.
+
+config MALI_TRACE_POWER_GPU_WORK_PERIOD
+	bool "Enable per-application GPU metrics tracepoints"
+	depends on MALI_MIDGARD
+	default y
+	help
+	  This option enables per-application GPU metrics tracepoints.
+
+	  If unsure, say N.
+
+choice
+	prompt "CSF Firmware trace mode"
+	depends on MALI_MIDGARD
+	default MALI_FW_TRACE_MODE_MANUAL
+	help
+	  CSF Firmware log operating mode.
+
+config MALI_FW_TRACE_MODE_MANUAL
+	bool "manual mode"
+	depends on MALI_MIDGARD
+	help
+	  firmware log can be read manually by the userspace (and it will
+	  also be dumped automatically into dmesg on GPU reset).
+
+config MALI_FW_TRACE_MODE_AUTO_PRINT
+	bool "automatic printing mode"
+	depends on MALI_MIDGARD
+	help
+	  firmware log will be periodically emptied into dmesg, manual
+	  reading through debugfs is disabled.
+
+config MALI_FW_TRACE_MODE_AUTO_DISCARD
+	bool "automatic discarding mode"
+	depends on MALI_MIDGARD
+	help
+	  firmware log will be periodically discarded, the remaining log can be
+	  read manually by the userspace (and it will also be dumped
+	  automatically into dmesg on GPU reset).
+
+endchoice
 
 source "kernel/drivers/gpu/arm/arbitration/Mconfig"
 source "kernel/drivers/gpu/arm/midgard/tests/Mconfig"

@@ -190,7 +190,7 @@ int kbase_context_common_init(struct kbase_context *kctx)
 	kctx->pid = current->pid;
 
 	/* Check if this is a Userspace created context */
-	if (likely(kctx->filp)) {
+	if (likely(kctx->kfile)) {
 		struct pid *pid_struct;
 
 		rcu_read_lock();
@@ -264,7 +264,7 @@ int kbase_context_common_init(struct kbase_context *kctx)
 	if (err) {
 		dev_err(kctx->kbdev->dev,
 			"(err:%d) failed to insert kctx to kbase_process", err);
-		if (likely(kctx->filp)) {
+		if (likely(kctx->kfile)) {
 			mmdrop(kctx->process_mm);
 			put_task_struct(kctx->task);
 		}
@@ -356,7 +356,7 @@ void kbase_context_common_term(struct kbase_context *kctx)
 	kbase_remove_kctx_from_process(kctx);
 	mutex_unlock(&kctx->kbdev->kctx_list_lock);
 
-	if (likely(kctx->filp)) {
+	if (likely(kctx->kfile)) {
 		mmdrop(kctx->process_mm);
 		put_task_struct(kctx->task);
 	}
