@@ -49,8 +49,8 @@
 #define KBASEP_TICK_PROTM_PEND_SCAN_SEQ_NR_INVALID (U32_MAX)
 
 /* 60ms optimizes power while minimizing latency impact for UI test cases. */
-#define MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_US (600)
-#define FIRMWARE_IDLE_HYSTERESIS_TIME_USEC (60000) /* Default 60 milliseconds */
+#define MALI_HOST_CONTROLS_SC_RAILS_IDLE_TIMER_NS (600 * 1000)
+#define FIRMWARE_IDLE_HYSTERESIS_TIME_NS (60 * 1000 * 1000) /* Default 60 milliseconds */
 
 /* Idle hysteresis time can be scaled down when GPU sleep feature is used */
 #define FIRMWARE_IDLE_HYSTERESIS_GPU_SLEEP_SCALER (5)
@@ -76,6 +76,18 @@ int kbase_csf_ctx_init(struct kbase_context *kctx);
  */
 void kbase_csf_ctx_handle_fault(struct kbase_context *kctx,
 		struct kbase_fault *fault);
+
+/**
+ * kbase_csf_ctx_report_page_fault_for_active_groups - Notify Userspace about GPU page fault
+ *                                                   for active groups of the faulty context.
+ *
+ * @kctx:       Pointer to faulty kbase context.
+ * @fault:      Pointer to the fault.
+ *
+ * This function notifies the event notification thread of the GPU page fault.
+ */
+void kbase_csf_ctx_report_page_fault_for_active_groups(struct kbase_context *kctx,
+						       struct kbase_fault *fault);
 
 /**
  * kbase_csf_ctx_term - Terminate the CSF interface for a GPU address space.
@@ -315,6 +327,19 @@ void kbase_csf_add_group_fatal_error(
 void kbase_csf_interrupt(struct kbase_device *kbdev, u32 val);
 
 /**
+ * kbase_csf_handle_csg_sync_update - Handle SYNC_UPDATE notification for the group.
+ *
+ * @kbdev: The kbase device to handle the SYNC_UPDATE interrupt.
+ * @ginfo: Pointer to the CSG interface used by the @group
+ * @group: Pointer to the GPU command queue group.
+ * @req:   CSG_REQ register value corresponding to @group.
+ * @ack:   CSG_ACK register value corresponding to @group.
+ */
+void kbase_csf_handle_csg_sync_update(struct kbase_device *const kbdev,
+				      struct kbase_csf_cmd_stream_group_info *ginfo,
+				      struct kbase_queue_group *group, u32 req, u32 ack);
+
+/**
  * kbase_csf_doorbell_mapping_init - Initialize the fields that facilitates
  *                                   the update of userspace mapping of HW
  *                                   doorbell page.
@@ -361,6 +386,22 @@ int kbase_csf_setup_dummy_user_reg_page(struct kbase_device *kbdev);
  * @kbdev: Instance of a GPU platform device that implements a CSF interface.
  */
 void kbase_csf_free_dummy_user_reg_page(struct kbase_device *kbdev);
+
+/**
+ * kbase_csf_pending_gpuq_kicks_init - Initialize the data used for handling
+ *                                     GPU queue kicks.
+ *
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
+ */
+void kbase_csf_pending_gpuq_kicks_init(struct kbase_device *kbdev);
+
+/**
+ * kbase_csf_pending_gpuq_kicks_init - De-initialize the data used for handling
+ *                                     GPU queue kicks.
+ *
+ * @kbdev: Instance of a GPU platform device that implements a CSF interface.
+ */
+void kbase_csf_pending_gpuq_kicks_term(struct kbase_device *kbdev);
 
 /**
  * kbase_csf_ring_csg_doorbell - ring the doorbell for a CSG interface.
@@ -504,5 +545,18 @@ static inline u64 kbase_csf_ktrace_gpu_cycle_cnt(struct kbase_device *kbdev)
 	return 0;
 #endif
 }
+
+/**
+ * kbase_csf_process_queue_kick() - Process a pending kicked GPU command queue.
+ *
+ * @queue: Pointer to the queue to process.
+ *
+ * This function starts the pending queue, for which the work
+ * was previously submitted via ioctl call from application thread.
+ * If the queue is already scheduled and resident, it will be started
+ * right away, otherwise once the group is made resident.
+ */
+void kbase_csf_process_queue_kick(struct kbase_queue *queue);
+
 
 #endif /* _KBASE_CSF_H_ */

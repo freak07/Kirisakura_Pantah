@@ -36,6 +36,20 @@
 #include "mali_kbase_hwaccess_jm.h"
 #include <mali_kbase_hwaccess_time.h>
 #include <linux/priority_control_manager.h>
+#if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
+#include <mali_kbase_gpu_metrics.h>
+
+static unsigned long gpu_metrics_tp_emit_interval_ns = DEFAULT_GPU_METRICS_TP_EMIT_INTERVAL_NS;
+
+module_param(gpu_metrics_tp_emit_interval_ns, ulong, 0444);
+MODULE_PARM_DESC(gpu_metrics_tp_emit_interval_ns,
+		 "Time interval in nano seconds at which GPU metrics tracepoints are emitted");
+
+unsigned long kbase_gpu_metrics_get_emit_interval(void)
+{
+	return gpu_metrics_tp_emit_interval_ns;
+}
+#endif
 
 /*
  * Private types
@@ -100,6 +114,118 @@ static int kbase_ktrace_get_ctx_refcnt(struct kbase_context *kctx)
 /*
  * Private functions
  */
+
+#if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
+/**
+ * gpu_metrics_timer_callback() - Callback function for the GPU metrics hrtimer
+ *
+ * @timer: Pointer to the GPU metrics hrtimer
+ *
+ * This function will emit power/gpu_work_period tracepoint for all the active
+ * GPU metrics contexts. The timer will be restarted if needed.
+ *
+ * Return: enum value to indicate that timer should not be restarted.
+ */
+static enum hrtimer_restart gpu_metrics_timer_callback(struct hrtimer *timer)
+{
+	struct kbasep_js_device_data *js_devdata =
+		container_of(timer, struct kbasep_js_device_data, gpu_metrics_timer);
+	struct kbase_device *kbdev =
+		container_of(js_devdata, struct kbase_device, js_data);
+	unsigned long flags;
+
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	kbase_gpu_metrics_emit_tracepoint(kbdev, ktime_get_raw_ns());
+	WARN_ON_ONCE(!js_devdata->gpu_metrics_timer_running);
+	if (js_devdata->gpu_metrics_timer_needed) {
+		hrtimer_start(&js_devdata->gpu_metrics_timer,
+			      HR_TIMER_DELAY_NSEC(gpu_metrics_tp_emit_interval_ns),
+			      HRTIMER_MODE_REL);
+	} else
+		js_devdata->gpu_metrics_timer_running = false;
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	return HRTIMER_NORESTART;
+}
+
+/**
+ * gpu_metrics_ctx_init() - Take a reference on GPU metrics context if it exists,
+ *                          otherwise allocate and initialise one.
+ *
+ * @kctx: Pointer to the Kbase context.
+ *
+ * The GPU metrics context represents an "Application" for the purposes of GPU metrics
+ * reporting. There may be multiple kbase_contexts contributing data to a single GPU
+ * metrics context.
+ * This function takes a reference on GPU metrics context if it already exists
+ * corresponding to the Application that is creating the Kbase context, otherwise
+ * memory is allocated for it and initialised.
+ *
+ * Return: 0 on success, or negative on failure.
+ */
+static inline int gpu_metrics_ctx_init(struct kbase_context *kctx)
+{
+	struct kbase_gpu_metrics_ctx *gpu_metrics_ctx;
+	struct kbase_device *kbdev = kctx->kbdev;
+	unsigned long flags;
+	int ret = 0;
+
+	const struct cred *cred = get_current_cred();
+	const unsigned int aid = cred->euid.val;
+
+	put_cred(cred);
+
+	/* Return early if this is not a Userspace created context */
+	if (unlikely(!kctx->kfile))
+		return 0;
+
+	/* Serialize against the other threads trying to create/destroy Kbase contexts. */
+	mutex_lock(&kbdev->kctx_list_lock);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+	gpu_metrics_ctx = kbase_gpu_metrics_ctx_get(kbdev, aid);
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+
+	if (!gpu_metrics_ctx) {
+		gpu_metrics_ctx = kmalloc(sizeof(*gpu_metrics_ctx), GFP_KERNEL);
+
+		if (gpu_metrics_ctx) {
+			spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+			kbase_gpu_metrics_ctx_init(kbdev, gpu_metrics_ctx, aid);
+			spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+		} else {
+			dev_err(kbdev->dev, "Allocation for gpu_metrics_ctx failed");
+			ret = -ENOMEM;
+		}
+	}
+
+	kctx->gpu_metrics_ctx = gpu_metrics_ctx;
+	mutex_unlock(&kbdev->kctx_list_lock);
+
+	return ret;
+}
+
+/**
+ * gpu_metrics_ctx_term() - Drop a reference on a GPU metrics context and free it
+ *                          if the refcount becomes 0.
+ *
+ * @kctx: Pointer to the Kbase context.
+ */
+static inline void gpu_metrics_ctx_term(struct kbase_context *kctx)
+{
+	unsigned long flags;
+
+	/* Return early if this is not a Userspace created context */
+	if (unlikely(!kctx->kfile))
+		return;
+
+	/* Serialize against the other threads trying to create/destroy Kbase contexts. */
+	mutex_lock(&kctx->kbdev->kctx_list_lock);
+	spin_lock_irqsave(&kctx->kbdev->hwaccess_lock, flags);
+	kbase_gpu_metrics_ctx_put(kctx->kbdev, kctx->gpu_metrics_ctx);
+	spin_unlock_irqrestore(&kctx->kbdev->hwaccess_lock, flags);
+	mutex_unlock(&kctx->kbdev->kctx_list_lock);
+}
+#endif
 
 /**
  * core_reqs_from_jsn_features - Convert JSn_FEATURES to core requirements
@@ -602,6 +728,21 @@ int kbasep_js_devdata_init(struct kbase_device * const kbdev)
 		}
 	}
 
+#if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
+	if (!gpu_metrics_tp_emit_interval_ns || (gpu_metrics_tp_emit_interval_ns > NSEC_PER_SEC)) {
+		dev_warn(
+			kbdev->dev,
+			"Invalid value (%lu ns) for module param gpu_metrics_tp_emit_interval_ns. Using default value: %u ns",
+			gpu_metrics_tp_emit_interval_ns, DEFAULT_GPU_METRICS_TP_EMIT_INTERVAL_NS);
+		gpu_metrics_tp_emit_interval_ns = DEFAULT_GPU_METRICS_TP_EMIT_INTERVAL_NS;
+	}
+
+	hrtimer_init(&jsdd->gpu_metrics_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	jsdd->gpu_metrics_timer.function = gpu_metrics_timer_callback;
+	jsdd->gpu_metrics_timer_needed = false;
+	jsdd->gpu_metrics_timer_running = false;
+#endif
+
 	return 0;
 }
 
@@ -626,15 +767,28 @@ void kbasep_js_devdata_term(struct kbase_device *kbdev)
 				  zero_ctx_attr_ref_count,
 				  sizeof(zero_ctx_attr_ref_count)) == 0);
 	CSTD_UNUSED(zero_ctx_attr_ref_count);
+
+#if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
+	js_devdata->gpu_metrics_timer_needed = false;
+	hrtimer_cancel(&js_devdata->gpu_metrics_timer);
+#endif
 }
 
 int kbasep_js_kctx_init(struct kbase_context *const kctx)
 {
 	struct kbasep_js_kctx_info *js_kctx_info;
 	int i, j;
+	int ret;
 	CSTD_UNUSED(js_kctx_info);
 
 	KBASE_DEBUG_ASSERT(kctx != NULL);
+
+	CSTD_UNUSED(ret);
+#if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
+	ret = gpu_metrics_ctx_init(kctx);
+	if (ret)
+		return ret;
+#endif
 
 	kbase_ctx_sched_init_ctx(kctx);
 
@@ -715,6 +869,9 @@ void kbasep_js_kctx_term(struct kbase_context *kctx)
 	}
 
 	kbase_ctx_sched_remove_ctx(kctx);
+#if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
+	gpu_metrics_ctx_term(kctx);
+#endif
 }
 
 /*

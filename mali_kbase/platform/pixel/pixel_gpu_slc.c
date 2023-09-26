@@ -308,25 +308,34 @@ static void gpu_slc_liveness_update(struct kbase_context* kctx,
 int gpu_pixel_handle_buffer_liveness_update_ioctl(struct kbase_context* kctx,
                                                   struct kbase_ioctl_buffer_liveness_update* update)
 {
-	int err = 0;
+	int err = -EINVAL;
 	struct gpu_slc_liveness_update_info info;
-	u64* buff;
+	u64* buff = NULL;
+	u64 total_buff_size;
 
 	/* Compute the sizes of the user space arrays that we need to copy */
 	u64 const buffer_info_size = sizeof(u64) * update->buffer_count;
 	u64 const live_ranges_size =
 	    sizeof(struct kbase_pixel_gpu_slc_liveness_mark) * update->live_ranges_count;
 
-	/* Nothing to do */
+	/* Guard against overflows and empty sizes */
 	if (!buffer_info_size || !live_ranges_size)
 		goto done;
-
+	if (U64_MAX / sizeof(u64) < update->buffer_count)
+		goto done;
+	if (U64_MAX / sizeof(struct kbase_pixel_gpu_slc_liveness_mark) < update->live_ranges_count)
+		goto done;
 	/* Guard against nullptr */
 	if (!update->live_ranges_address || !update->buffer_va_address || !update->buffer_sizes_address)
 		goto done;
+	/* Calculate the total buffer size required and detect overflows */
+	if ((U64_MAX - live_ranges_size) / 2 < buffer_info_size)
+		goto done;
+
+	total_buff_size = buffer_info_size * 2 + live_ranges_size;
 
 	/* Allocate the memory we require to copy from user space */
-	buff = kmalloc(buffer_info_size * 2 + live_ranges_size, GFP_KERNEL);
+	buff = kmalloc(total_buff_size, GFP_KERNEL);
 	if (buff == NULL) {
 		dev_err(kctx->kbdev->dev, "pixel: failed to allocate buffer for liveness update");
 		err = -ENOMEM;
