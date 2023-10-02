@@ -326,6 +326,7 @@ static struct kbase_file *kbase_file_new(struct kbase_device *const kbdev,
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 		init_waitqueue_head(&kfile->zero_fops_count_wait);
 #endif
+		init_waitqueue_head(&kfile->event_queue);
 	}
 	return kfile;
 }
@@ -2501,7 +2502,7 @@ static ssize_t kbase_read(struct file *filp, char __user *buf, size_t count, lof
 				goto out;
 			}
 
-			if (wait_event_interruptible(kctx->event_queue,
+			if (wait_event_interruptible(kctx->kfile->event_queue,
 					kbase_event_pending(kctx)) != 0) {
 				err = -ERESTARTSYS;
 				goto out;
@@ -2556,7 +2557,7 @@ static __poll_t kbase_poll(struct file *filp, poll_table *wait)
 		goto out;
 	}
 
-	poll_wait(filp, &kctx->event_queue, wait);
+	poll_wait(filp, &kfile->event_queue, wait);
 	if (kbase_event_pending(kctx)) {
 #if (KERNEL_VERSION(4, 19, 0) > LINUX_VERSION_CODE)
 		ret = POLLIN | POLLRDNORM;
@@ -2576,12 +2577,12 @@ void _kbase_event_wakeup(struct kbase_context *kctx, bool sync)
         if(sync) {
 	    dev_dbg(kctx->kbdev->dev,
                     "Waking event queue for context %pK (sync)\n", (void *)kctx);
-	    wake_up_interruptible_sync(&kctx->event_queue);
+	    wake_up_interruptible_sync(&kctx->kfile->event_queue);
         }
         else {
 	    dev_dbg(kctx->kbdev->dev,
                     "Waking event queue for context %pK (nosync)\n",(void *)kctx);
-	    wake_up_interruptible(&kctx->event_queue);
+	    wake_up_interruptible(&kctx->kfile->event_queue);
         }
 }
 
