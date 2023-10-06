@@ -490,7 +490,7 @@ static int cmd_device_enable(struct lwis_client *lwis_client, struct lwis_cmd_pk
 	lwis_dev->is_suspended = false;
 	dev_info(lwis_dev->dev, "Device enabled\n");
 #ifdef CONFIG_UCI
-    if (strstr(lwis_dev->name,"imx")) {
+    if (strstr(lwis_dev->name,"kraken") || strstr(lwis_dev->name,"dokkaebi")) {
         ntf_camera_started();
     }
 #endif
@@ -555,7 +555,7 @@ static int cmd_device_disable(struct lwis_client *lwis_client, struct lwis_cmd_p
 	lwis_dev->is_suspended = false;
 	dev_info(lwis_dev->dev, "Device disabled\n");
 #ifdef CONFIG_UCI
-    if (strstr(lwis_dev->name,"imx")) {
+    if (strstr(lwis_dev->name,"kraken") || strstr(lwis_dev->name,"dokkaebi")) {
         ntf_camera_stopped();
     }
 #endif
