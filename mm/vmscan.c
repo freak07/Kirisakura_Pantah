@@ -4805,14 +4805,14 @@ static ssize_t store_enabled(struct kobject *kobj, struct kobj_attribute *attr,
 	return len;
 }
 
-static struct kobj_attribute lru_gen_enabled_attr = __ATTR(
-	enabled, 0644, show_enabled, store_enabled
+static struct kobj_attribute lru_gen_enabled_1_attr = __ATTR(
+	enabled_1, 0644, show_enabled, store_enabled
 );
 
 static struct attribute *lru_gen_attrs[] = {
 	&lru_gen_min_ttl_unsatisfied_attr.attr,
 	&lru_gen_min_ttl_attr.attr,
-	&lru_gen_enabled_attr.attr,
+	&lru_gen_enabled_1_attr.attr,
 	NULL
 };
 
