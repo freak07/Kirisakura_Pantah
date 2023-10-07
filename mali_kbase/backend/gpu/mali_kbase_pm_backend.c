@@ -153,7 +153,7 @@ int kbase_hwaccess_pm_init(struct kbase_device *kbdev)
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 
-	mutex_init(&kbdev->pm.lock);
+	rt_mutex_init(&kbdev->pm.lock);
 
 	kbase_pm_init_event_log(kbdev);
 
@@ -693,36 +693,39 @@ static bool is_poweroff_in_progress(struct kbase_device *kbdev)
 
 void kbase_pm_wait_for_poweroff_work_complete(struct kbase_device *kbdev)
 {
-#define POWEROFF_TIMEOUT_MSEC 200
+#define POWEROFF_TIMEOUT_MSEC 500
 	long remaining = msecs_to_jiffies(POWEROFF_TIMEOUT_MSEC);
 	remaining = wait_event_killable_timeout(kbdev->pm.backend.poweroff_wait,
 			is_poweroff_in_progress(kbdev), remaining);
 	if (!remaining) {
-		unsigned long flags;
-		kbasep_platform_event_core_dump(kbdev, "poweroff work timeout");
-		dev_err(kbdev->dev, "failed to wait for poweroff worker after %ims",
-			POWEROFF_TIMEOUT_MSEC);
-		kbase_gpu_timeout_debug_message(kbdev);
-		dev_err(kbdev->dev, "gpu_poweroff_wait_work pending %d",
-				work_pending(&kbdev->pm.backend.gpu_poweroff_wait_work));
+		/* If work is now pending, kbase_pm_gpu_poweroff_wait_wq() will
+		 * definitely be called, so it's safe to continue waiting for it.
+		 */
+		if (!work_pending(&kbdev->pm.backend.gpu_poweroff_wait_work)) {
+			unsigned long flags;
+			kbasep_platform_event_core_dump(kbdev, "poweroff work timeout");
+			dev_err(kbdev->dev, "failed to wait for poweroff worker after %ims",
+				POWEROFF_TIMEOUT_MSEC);
+			kbase_gpu_timeout_debug_message(kbdev);
 #if MALI_USE_CSF
-		//csf.scheduler.state should be accessed with scheduler lock!
-		//callchains go through this function though holding that lock
-		//so just print without locking.
-		dev_err(kbdev->dev, "scheduler.state %d", kbdev->csf.scheduler.state);
-		dev_err(kbdev->dev, "Firmware ping %d", kbase_csf_firmware_ping_wait(kbdev));
+			//csf.scheduler.state should be accessed with scheduler lock!
+			//callchains go through this function though holding that lock
+			//so just print without locking.
+			dev_err(kbdev->dev, "scheduler.state %d", kbdev->csf.scheduler.state);
+			dev_err(kbdev->dev, "Firmware ping %d", kbase_csf_firmware_ping_wait(kbdev));
 #endif
-		//Attempt another state machine transition prompt.
-		dev_err(kbdev->dev, "Attempt to prompt state machine");
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		kbase_pm_update_state(kbdev);
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+			//Attempt another state machine transition prompt.
+			dev_err(kbdev->dev, "Attempt to prompt state machine");
+			spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+			kbase_pm_update_state(kbdev);
+			spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
-		dev_err(kbdev->dev, "GPU state after re-prompt of state machine");
-		kbase_gpu_timeout_debug_message(kbdev);
+			dev_err(kbdev->dev, "GPU state after re-prompt of state machine");
+			kbase_gpu_timeout_debug_message(kbdev);
 
-		dev_err(kbdev->dev, "retrying wait, this is likely to still hang. %d",
-			is_poweroff_in_progress(kbdev));
+			dev_err(kbdev->dev, "retrying wait, this is likely to still hang. %d",
+				is_poweroff_in_progress(kbdev));
+		}
 		wait_event_killable(kbdev->pm.backend.poweroff_wait,
 			is_poweroff_in_progress(kbdev));
 	}
@@ -853,9 +856,9 @@ void kbase_hwaccess_pm_halt(struct kbase_device *kbdev)
 #if MALI_USE_CSF && defined(KBASE_PM_RUNTIME)
 	WARN_ON(kbase_pm_do_poweroff_sync(kbdev));
 #else
-	mutex_lock(&kbdev->pm.lock);
+	rt_mutex_lock(&kbdev->pm.lock);
 	kbase_pm_do_poweroff(kbdev);
-	mutex_unlock(&kbdev->pm.lock);
+	rt_mutex_unlock(&kbdev->pm.lock);
 
 	kbase_pm_wait_for_poweroff_work_complete(kbdev);
 #endif
@@ -1292,8 +1295,10 @@ void kbase_pm_turn_on_sc_power_rails_locked(struct kbase_device *kbdev)
 	lockdep_assert_held(&kbdev->pm.lock);
 	WARN_ON(!kbdev->pm.backend.gpu_powered);
 	if (kbdev->pm.backend.sc_power_rails_off) {
-		if (kbdev->pm.backend.callback_power_on_sc_rails)
+		if (kbdev->pm.backend.callback_power_on_sc_rails) {
 			kbdev->pm.backend.callback_power_on_sc_rails(kbdev);
+			KBASE_KTRACE_ADD(kbdev, PM_RAIL_ON, NULL, 0);
+		}
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 		kbdev->pm.backend.sc_power_rails_off = false;
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
@@ -1320,8 +1325,10 @@ void kbase_pm_turn_off_sc_power_rails(struct kbase_device *kbdev)
 		/* Work around for b/234962632 */
 		abort = WARN_ON(!kbdev->pm.backend.sc_pwroff_safe);
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		if (kbdev->pm.backend.callback_power_off_sc_rails && !abort)
+		if (kbdev->pm.backend.callback_power_off_sc_rails && !abort) {
 			kbdev->pm.backend.callback_power_off_sc_rails(kbdev);
+			KBASE_KTRACE_ADD(kbdev, PM_RAIL_OFF, NULL, 0);
+		}
 	}
 	kbase_pm_unlock(kbdev);
 }

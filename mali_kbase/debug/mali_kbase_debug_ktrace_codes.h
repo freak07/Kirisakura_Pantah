@@ -157,6 +157,10 @@ int dummy_array[] = {
 	KBASE_KTRACE_CODE_MAKE_CODE(ARB_VM_STATE),
 	KBASE_KTRACE_CODE_MAKE_CODE(ARB_VM_EVT),
 #endif
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	KBASE_KTRACE_CODE_MAKE_CODE(PM_RAIL_ON),
+	KBASE_KTRACE_CODE_MAKE_CODE(PM_RAIL_OFF),
+#endif
 
 #if MALI_USE_CSF
 #include "debug/backend/mali_kbase_debug_ktrace_codes_csf.h"

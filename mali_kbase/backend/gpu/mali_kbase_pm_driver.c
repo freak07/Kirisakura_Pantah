@@ -2367,11 +2367,14 @@ void kbase_gpu_timeout_debug_message(struct kbase_device *kbdev) {
 		kbase_pm_is_mcu_desired(kbdev));
 	dev_err(kbdev->dev, "  MCU sw state = %d\n",
 		kbdev->pm.backend.mcu_state);
-	dev_err(kbdev->dev, "  L2 desired = %d (locked_off: %d)\n",
-		kbase_pm_is_l2_desired(kbdev),
-		kbdev->pm.backend.policy_change_clamp_state_to_off);
-	dev_err(kbdev->dev, "  L2 sw state = %d\n",
+	dev_err(kbdev->dev, "\tL2 desired = %d (locked_off: %d)\n",
+		kbase_pm_is_l2_desired(kbdev), kbdev->pm.backend.policy_change_clamp_state_to_off);
+	dev_err(kbdev->dev, "\tL2 sw state = %d\n",
 		kbdev->pm.backend.l2_state);
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+	dev_err(kbdev->dev, "\tbackend.sc_power_rails_off = %d\n",
+		kbdev->pm.backend.sc_power_rails_off);
+#endif
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 #endif
 	dev_err(kbdev->dev, "Current state :\n");
@@ -2409,6 +2412,8 @@ void kbase_gpu_timeout_debug_message(struct kbase_device *kbdev) {
 					L2_PWRTRANS_HI)),
 			kbase_reg_read(kbdev, GPU_CONTROL_REG(
 					L2_PWRTRANS_LO)));
+
+	dump_stack();
 }
 
 static void kbase_pm_timed_out(struct kbase_device *kbdev)
@@ -2416,8 +2421,22 @@ static void kbase_pm_timed_out(struct kbase_device *kbdev)
 	dev_err(kbdev->dev, "Power transition timed out unexpectedly\n");
 	kbase_gpu_timeout_debug_message(kbdev);
 	dev_err(kbdev->dev, "Sending reset to GPU - all running jobs will be lost\n");
+
+	/* pixel: If either:
+	 *   1. L2/MCU power transition timed out, or,
+	 *   2. kbase state machine fell out of sync with the hw state,
+	 * a soft/hard reset (ie writing to SOFT/HARD_RESET regs) is insufficient to resume
+	 * operation.
+	 *
+	 * Besides, Odin TRM advises against touching SOFT/HARD_RESET
+	 * regs if L2_PWRTRANS is 1 to avoid undefined state.
+	 *
+	 * We have already lost work if we end up here, so send a powercycle to reset the hw,
+	 * which is more reliable.
+	 */
 	if (kbase_prepare_to_reset_gpu(kbdev,
-				       RESET_FLAGS_HWC_UNRECOVERABLE_ERROR))
+				       RESET_FLAGS_HWC_UNRECOVERABLE_ERROR |
+				       RESET_FLAGS_FORCE_PM_HW_RESET))
 		kbase_reset_gpu(kbdev);
 }
 
@@ -2450,6 +2469,11 @@ int kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev)
 #endif
 
 	if (!remaining) {
+		const struct gpu_uevent evt = {
+			.type = GPU_UEVENT_TYPE_KMD_ERROR,
+			.info = GPU_UEVENT_INFO_L2_PM_TIMEOUT
+		};
+		pixel_gpu_uevent_send(kbdev, &evt);
 		kbase_pm_timed_out(kbdev);
 		err = -ETIMEDOUT;
 	} else if (remaining < 0) {
@@ -2490,6 +2514,11 @@ int kbase_pm_wait_for_desired_state(struct kbase_device *kbdev)
 #endif
 
 	if (!remaining) {
+		const struct gpu_uevent evt = {
+			.type = GPU_UEVENT_TYPE_KMD_ERROR,
+			.info = GPU_UEVENT_INFO_PM_TIMEOUT
+		};
+		pixel_gpu_uevent_send(kbdev, &evt);
 		kbase_pm_timed_out(kbdev);
 		err = -ETIMEDOUT;
 	} else if (remaining < 0) {
@@ -3173,6 +3202,14 @@ static int kbase_pm_do_reset(struct kbase_device *kbdev)
 {
 	struct kbasep_reset_timeout_data rtdata;
 	int ret;
+
+#if MALI_USE_CSF
+	if (kbdev->csf.reset.force_pm_hw_reset && kbdev->pm.backend.callback_hardware_reset) {
+		dev_err(kbdev->dev, "Power Cycle reset mali");
+		kbdev->csf.reset.force_pm_hw_reset = false;
+		return kbase_pm_hw_reset(kbdev);
+	}
+#endif
 
 	KBASE_KTRACE_ADD(kbdev, CORE_GPU_SOFT_RESET, NULL, 0);
 

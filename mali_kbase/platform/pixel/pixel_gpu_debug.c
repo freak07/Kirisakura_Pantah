@@ -33,10 +33,13 @@ static bool gpu_debug_check_dbg_active(struct kbase_device *kbdev)
 		val = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_STATUS));
 	} while ((val & GPU_DBG_ACTIVE_BIT) && i++ < GPU_DBG_ACTIVE_MAX_LOOPS);
 
-	if (i == GPU_DBG_ACTIVE_MAX_LOOPS) {
+	if (val & GPU_DBG_ACTIVE_BIT) {
 		dev_err(kbdev->dev, "Timed out waiting for GPU DBG command to complete");
 		return false;
 	}
+
+	dev_dbg(kbdev->dev, "Waited for %d iterations before GPU DBG command completed", i);
+
 	return true;
 }
 

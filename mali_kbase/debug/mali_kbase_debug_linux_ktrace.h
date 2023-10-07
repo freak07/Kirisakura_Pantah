@@ -107,6 +107,11 @@ DEFINE_MALI_ADD_EVENT(ARB_VM_STATE);
 DEFINE_MALI_ADD_EVENT(ARB_VM_EVT);
 
 #endif
+#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
+DEFINE_MALI_ADD_EVENT(PM_RAIL_ON);
+DEFINE_MALI_ADD_EVENT(PM_RAIL_OFF);
+#endif
+
 #if MALI_USE_CSF
 #include "backend/mali_kbase_debug_linux_ktrace_csf.h"
 #else
