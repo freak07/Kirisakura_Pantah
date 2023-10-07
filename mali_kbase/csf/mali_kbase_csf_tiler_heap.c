@@ -1331,7 +1331,7 @@ static u32 count_kctx_unused_heap_pages_cb(struct kbase_context *kctx)
 static unsigned long kbase_csf_tiler_heap_reclaim_count_objects(struct shrinker *s,
 								struct shrink_control *sc)
 {
-	struct kbase_device *kbdev = container_of(s, struct kbase_device, csf.tiler_heap_reclaim);
+	struct kbase_device *kbdev = s->private_data;
 	struct kbase_csf_tiler_heap_shrink_control shrink_ctrl = {
 		.sc = sc,
 		.count_cb = count_kctx_unused_heap_pages_cb,
@@ -1344,7 +1344,7 @@ static unsigned long kbase_csf_tiler_heap_reclaim_count_objects(struct shrinker 
 static unsigned long kbase_csf_tiler_heap_reclaim_scan_objects(struct shrinker *s,
 							       struct shrink_control *sc)
 {
-	struct kbase_device *kbdev = container_of(s, struct kbase_device, csf.tiler_heap_reclaim);
+	struct kbase_device *kbdev = s->private_data;
 	struct kbase_csf_tiler_heap_shrink_control shrink_ctrl = {
 		.sc = sc,
 		.count_cb = count_kctx_unused_heap_pages_cb,
@@ -1354,19 +1354,25 @@ static unsigned long kbase_csf_tiler_heap_reclaim_scan_objects(struct shrinker *
 	return kbase_csf_scheduler_scan_free_heap_pages(kbdev, &shrink_ctrl);
 }
 
-void kbase_csf_tiler_heap_register_shrinker(struct kbase_device *kbdev)
+int kbase_csf_tiler_heap_register_shrinker(struct kbase_device *kbdev)
 {
-	struct shrinker *reclaim = &kbdev->csf.tiler_heap_reclaim;
+	struct shrinker *reclaim = kbdev->csf.tiler_heap_reclaim;
+
+	reclaim = shrinker_alloc(0, "mali_kbase_mem_linux");
+	if (!reclaim)
+		return -ENOMEM;
 
 	reclaim->count_objects = kbase_csf_tiler_heap_reclaim_count_objects;
 	reclaim->scan_objects = kbase_csf_tiler_heap_reclaim_scan_objects;
-	reclaim->seeks = HEAP_SHRINKER_SEEKS;
+	reclaim->private_data = kbdev;
 	reclaim->batch = HEAP_SHRINKER_BATCH;
 
-	register_shrinker(reclaim);
+	shrinker_register(reclaim);
+	
+	return 0;
 }
 
 void kbase_csf_tiler_heap_unregister_shrinker(struct kbase_device *kbdev)
 {
-	unregister_shrinker(&kbdev->csf.tiler_heap_reclaim);
+	shrinker_free(kbdev->csf.tiler_heap_reclaim);
 }

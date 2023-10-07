@@ -123,7 +123,7 @@ int kbase_csf_tiler_heap_alloc_new_chunk(struct kbase_context *kctx,
  * @kbdev: Pointer to the device.
  *
  */
-void kbase_csf_tiler_heap_register_shrinker(struct kbase_device *kbdev);
+int kbase_csf_tiler_heap_register_shrinker(struct kbase_device *kbdev);
 
 /**
  * kbase_csf_tiler_heap_unregister_shrinker - Unregister shrinker for tiler heap on device

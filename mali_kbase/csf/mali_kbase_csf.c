@@ -1780,7 +1780,7 @@ int kbase_csf_ctx_init(struct kbase_context *kctx)
 	bitmap_fill(kctx->csf.cookies, KBASE_CSF_NUM_USER_IO_PAGES_HANDLE);
 
 	kctx->csf.wq = alloc_workqueue("mali_kbase_csf_wq",
-					WQ_UNBOUND, 1);
+					WQ_HIGHPRI | WQ_UNBOUND, 1);
 	if (unlikely(!kctx->csf.wq))
 		goto out;
 
