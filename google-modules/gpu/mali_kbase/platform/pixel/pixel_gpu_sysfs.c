@@ -724,7 +724,7 @@ static ssize_t ifpo_store(struct device *dev, struct device_attribute *attr,
 	if (ret)
 		return -EINVAL;
 
-	rt_mutex_lock(&kbdev->csf.scheduler.lock);
+	mutex_lock(&kbdev->csf.scheduler.lock);
 
 	if (!enabled) {
 		turn_on_sc_power_rails(kbdev);
@@ -733,7 +733,7 @@ static ssize_t ifpo_store(struct device *dev, struct device_attribute *attr,
 	mutex_lock(&pc->pm.lock);
 	pc->pm.ifpo_enabled = enabled;
 	mutex_unlock(&pc->pm.lock);
-	rt_mutex_unlock(&kbdev->csf.scheduler.lock);
+	mutex_unlock(&kbdev->csf.scheduler.lock);
 
 	return count;
 #else
