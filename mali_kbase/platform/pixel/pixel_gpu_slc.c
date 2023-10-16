@@ -28,6 +28,7 @@ struct dirty_region {
  *
  * @buffer_va:         Array of buffer base virtual addresses
  * @buffer_sizes:      Array of buffer sizes
+ * @buffer_count:      Number of elements in the va and sizes buffers
  * @live_ranges:       Array of &struct kbase_pixel_gpu_slc_liveness_mark denoting live ranges for
  *                     each buffer
  * @live_ranges_count: Number of elements in the live ranges buffer
@@ -35,6 +36,7 @@ struct dirty_region {
 struct gpu_slc_liveness_update_info {
 	u64* buffer_va;
 	u64* buffer_sizes;
+	u64 buffer_count;
 	struct kbase_pixel_gpu_slc_liveness_mark* live_ranges;
 	u64 live_ranges_count;
 };
@@ -234,8 +236,15 @@ static void gpu_slc_liveness_update(struct kbase_context* kctx,
 	for (i = 0; i < info->live_ranges_count; ++i)
 	{
 		struct kbase_va_region *reg;
-		u64 const size = info->buffer_sizes[info->live_ranges[i].index];
-		u64 const va = info->buffer_va[info->live_ranges[i].index];
+                u64 size;
+                u64 va;
+		u32 index = info->live_ranges[i].index;
+
+		if (unlikely(index >= info->buffer_count))
+			continue;
+
+		size = info->buffer_sizes[index];
+		va = info->buffer_va[index];
 
 		reg = gpu_slc_get_region(kctx, va);
 		if(!reg)
@@ -346,6 +355,7 @@ int gpu_pixel_handle_buffer_liveness_update_ioctl(struct kbase_context* kctx,
 	info = (struct gpu_slc_liveness_update_info){
 	    .buffer_va = buff,
 	    .buffer_sizes = buff + update->buffer_count,
+	    .buffer_count = update->buffer_count,
 	    .live_ranges = (struct kbase_pixel_gpu_slc_liveness_mark*)(buff + update->buffer_count * 2),
 	    .live_ranges_count = update->live_ranges_count,
 	};
