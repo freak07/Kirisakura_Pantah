@@ -606,7 +606,7 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 #if MALI_USE_CSF
 	fwcd_err = fw_core_dump_create(kbdev);
 	if (fwcd_err)
-		dev_err(kbdev->dev, "pixel: failed to create firmware core dump");
+		dev_err(kbdev->dev, "pixel: failed to create firmware core dump (%d)", fwcd_err);
 #endif
 
 	ec = segments_init(kbdev, segs);
