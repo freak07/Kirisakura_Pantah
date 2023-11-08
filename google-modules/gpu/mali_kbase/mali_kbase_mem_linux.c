@@ -3456,13 +3456,7 @@ static unsigned long get_queue_doorbell_pfn(struct kbase_device *kbdev,
 			 (u64)queue->doorbell_nr * CSF_HW_DOORBELL_PAGE_SIZE));
 }
 
-static int
-#if (KERNEL_VERSION(5, 13, 0) <= LINUX_VERSION_CODE || \
-	KERNEL_VERSION(5, 11, 0) > LINUX_VERSION_CODE)
-kbase_csf_user_io_pages_vm_mremap(struct vm_area_struct *vma)
-#else
-kbase_csf_user_io_pages_vm_mremap(struct vm_area_struct *vma, unsigned long flags)
-#endif
+static int kbase_csf_user_io_pages_vm_mremap(struct vm_area_struct *vma, unsigned long flags)
 {
 	pr_debug("Unexpected call to mremap method for User IO pages mapping vma\n");
 	return -EINVAL;
