@@ -67,7 +67,7 @@ void kbase_csf_tiler_heap_reclaim_ctx_init(struct kbase_context *kctx);
  * @kbdev: Pointer to the device.
  *
  */
-void kbase_csf_tiler_heap_reclaim_mgr_init(struct kbase_device *kbdev);
+int kbase_csf_tiler_heap_reclaim_mgr_init(struct kbase_device *kbdev);
 
 /**
  * kbase_csf_tiler_heap_reclaim_mgr_term - Termination call for the tiler heap reclaim manger.
