@@ -63,7 +63,7 @@ typedef unsigned int __poll_t;
 
 #endif
 
-#if KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE
+#if KERNEL_VERSION(5, 1, 0) <= LINUX_VERSION_CODE
 /* This is defined inside kbase for matching the default to kernel's
  * mmap_min_addr, used inside file mali_kbase_mmap.c.
  * Note: the value is set at compile time, matching a kernel's configuration

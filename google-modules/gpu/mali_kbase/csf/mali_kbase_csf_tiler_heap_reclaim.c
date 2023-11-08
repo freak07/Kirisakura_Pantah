@@ -329,8 +329,7 @@ static unsigned long kbase_csf_tiler_heap_reclaim_scan_free_pages(struct kbase_d
 static unsigned long kbase_csf_tiler_heap_reclaim_count_objects(struct shrinker *s,
 								struct shrink_control *sc)
 {
-	struct kbase_device *kbdev =
-		container_of(s, struct kbase_device, csf.scheduler.reclaim_mgr.heap_reclaim);
+	struct kbase_device *kbdev = s->private_data;
 
 	return kbase_csf_tiler_heap_reclaim_count_free_pages(kbdev, sc);
 }
@@ -338,8 +337,7 @@ static unsigned long kbase_csf_tiler_heap_reclaim_count_objects(struct shrinker 
 static unsigned long kbase_csf_tiler_heap_reclaim_scan_objects(struct shrinker *s,
 							       struct shrink_control *sc)
 {
-	struct kbase_device *kbdev =
-		container_of(s, struct kbase_device, csf.scheduler.reclaim_mgr.heap_reclaim);
+	struct kbase_device *kbdev = s->private_data;
 
 	return kbase_csf_tiler_heap_reclaim_scan_free_pages(kbdev, sc);
 }
@@ -351,11 +349,15 @@ void kbase_csf_tiler_heap_reclaim_ctx_init(struct kbase_context *kctx)
 	INIT_LIST_HEAD(&kctx->csf.sched.heap_info.mgr_link);
 }
 
-void kbase_csf_tiler_heap_reclaim_mgr_init(struct kbase_device *kbdev)
+int kbase_csf_tiler_heap_reclaim_mgr_init(struct kbase_device *kbdev)
 {
 	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
-	struct shrinker *reclaim = &scheduler->reclaim_mgr.heap_reclaim;
+	struct shrinker *reclaim = scheduler->reclaim_mgr.heap_reclaim;
 	u8 prio;
+	
+	reclaim = shrinker_alloc(0, "mali_kbase_mem_linux");
+	if (!reclaim)
+		return -ENOMEM;
 
 	for (prio = KBASE_QUEUE_GROUP_PRIORITY_REALTIME; prio < KBASE_QUEUE_GROUP_PRIORITY_COUNT;
 	     prio++)
@@ -365,16 +367,12 @@ void kbase_csf_tiler_heap_reclaim_mgr_init(struct kbase_device *kbdev)
 
 	reclaim->count_objects = kbase_csf_tiler_heap_reclaim_count_objects;
 	reclaim->scan_objects = kbase_csf_tiler_heap_reclaim_scan_objects;
-	reclaim->seeks = HEAP_SHRINKER_SEEKS;
+	reclaim->private_data = kbdev;
 	reclaim->batch = HEAP_SHRINKER_BATCH;
 
-#if !defined(CONFIG_MALI_VECTOR_DUMP)
-#if KERNEL_VERSION(6, 0, 0) > LINUX_VERSION_CODE
-	register_shrinker(reclaim);
-#else
-	register_shrinker(reclaim, "mali-csf-tiler-heap");
-#endif
-#endif
+shrinker_register(reclaim);
+
+	return 0;
 }
 
 void kbase_csf_tiler_heap_reclaim_mgr_term(struct kbase_device *kbdev)
@@ -383,7 +381,7 @@ void kbase_csf_tiler_heap_reclaim_mgr_term(struct kbase_device *kbdev)
 	u8 prio;
 
 #if !defined(CONFIG_MALI_VECTOR_DUMP)
-	unregister_shrinker(&scheduler->reclaim_mgr.heap_reclaim);
+	shrinker_free(scheduler->reclaim_mgr.heap_reclaim);
 #endif
 
 	for (prio = KBASE_QUEUE_GROUP_PRIORITY_REALTIME; prio < KBASE_QUEUE_GROUP_PRIORITY_COUNT;
