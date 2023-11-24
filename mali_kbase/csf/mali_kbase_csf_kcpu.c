@@ -2833,8 +2833,6 @@ int kbase_csf_kcpu_queue_new(struct kbase_context *kctx,
 		goto out;
 	}
 
-	bitmap_set(kctx->csf.kcpu_queues.in_use, idx, 1);
-	kctx->csf.kcpu_queues.array[idx] = queue;
 	mutex_init(&queue->lock);
 	queue->kctx = kctx;
 	queue->start_offset = 0;
@@ -2894,6 +2892,8 @@ int kbase_csf_kcpu_queue_new(struct kbase_context *kctx,
 	atomic_set(&queue->fence_signal_pending_cnt, 0);
 	kbase_timer_setup(&queue->fence_signal_timeout, fence_signal_timeout_cb);
 #endif
+	bitmap_set(kctx->csf.kcpu_queues.in_use, idx, 1);
+	kctx->csf.kcpu_queues.array[idx] = queue;
 out:
 	mutex_unlock(&kctx->csf.kcpu_queues.lock);
 
