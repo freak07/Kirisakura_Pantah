@@ -63,7 +63,7 @@ typedef unsigned int __poll_t;
 
 #endif
 
-#if KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE
+#if KERNEL_VERSION(5, 1, 0) <= LINUX_VERSION_CODE
 /* This is defined inside kbase for matching the default to kernel's
  * mmap_min_addr, used inside file mali_kbase_mmap.c.
  * Note: the value is set at compile time, matching a kernel's configuration
@@ -222,8 +222,8 @@ static inline void dma_fence_set_error_helper(
 }
 
 #include <linux/mm.h>
-#if !((KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE) || \
-      ((KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE) && defined(__ANDROID_COMMON_KERNEL__)))
+#if !((KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE) || \
+      ((KERNEL_VERSION(5, 1, 25) <= LINUX_VERSION_CODE) && defined(__ANDROID_COMMON_KERNEL__)))
 static inline void vm_flags_set(struct vm_area_struct *vma, vm_flags_t flags)
 {
 	vma->vm_flags |= flags;

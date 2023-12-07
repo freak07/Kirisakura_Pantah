@@ -132,7 +132,7 @@ static bool align_and_check(unsigned long *gap_end, unsigned long gap_start,
 static unsigned long kbase_unmapped_area_topdown(struct vm_unmapped_area_info
 		*info, bool is_shader_code, bool is_same_4gb_page)
 {
-#if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(5, 1, 0) > LINUX_VERSION_CODE)
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	unsigned long length, low_limit, high_limit, gap_start, gap_end;
@@ -273,7 +273,7 @@ unsigned long kbase_context_get_unmapped_area(struct kbase_context *const kctx,
 	struct vm_unmapped_area_info info;
 	unsigned long align_offset = 0;
 	unsigned long align_mask = 0;
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(5, 1, 0) <= LINUX_VERSION_CODE)
 	unsigned long high_limit = arch_get_mmap_base(addr, mm->mmap_base);
 	unsigned long low_limit = max_t(unsigned long, PAGE_SIZE, kbase_mmap_min_addr);
 #else
