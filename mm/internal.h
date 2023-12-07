@@ -257,7 +257,6 @@ struct compact_control {
 	struct list_head migratepages;	/* List of pages being migrated */
 	unsigned int nr_freepages;	/* Number of isolated free pages */
 	unsigned int nr_migratepages;	/* Number of pages to migrate */
-	unsigned int nr_migrate_file_pages;	/* Number of file pages to migrate */
 	unsigned long free_pfn;		/* isolate_freepages search base */
 	/*
 	 * Acts as an in/out parameter to page isolation for migration.
@@ -291,6 +290,11 @@ struct compact_control {
 					 * ensure forward progress.
 					 */
 	bool alloc_contig;		/* alloc_contig_range allocation */
+};
+
+struct compact_control_ext {
+	struct compact_control *cc;
+	unsigned int nr_migrate_file_pages;	/* Number of file pages to migrate */
 };
 
 /*

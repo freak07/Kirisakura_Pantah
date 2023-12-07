@@ -364,6 +364,7 @@
   debugfs_create_devm_seqfile
   debugfs_create_dir
   debugfs_create_file
+  debugfs_create_file_unsafe
   debugfs_create_size_t
   debugfs_create_symlink
   debugfs_create_u16
@@ -637,6 +638,7 @@
   drm_atomic_add_affected_connectors
   drm_atomic_add_affected_planes
   drm_atomic_bridge_chain_disable
+  drm_atomic_bridge_chain_post_disable
   drm_atomic_commit
   drm_atomic_get_connector_state
   drm_atomic_get_crtc_state
@@ -647,6 +649,7 @@
   drm_atomic_helper_bridge_destroy_state
   drm_atomic_helper_bridge_duplicate_state
   drm_atomic_helper_bridge_reset
+  drm_atomic_helper_calc_timestamping_constants
   drm_atomic_helper_check_modeset
   drm_atomic_helper_check_planes
   drm_atomic_helper_check_plane_state
@@ -675,6 +678,7 @@
   drm_atomic_helper_setup_commit
   drm_atomic_helper_shutdown
   drm_atomic_helper_swap_state
+  drm_atomic_helper_update_legacy_modeset_state
   drm_atomic_helper_update_plane
   drm_atomic_helper_wait_for_dependencies
   drm_atomic_helper_wait_for_fences
@@ -1768,7 +1772,6 @@
   register_pm_notifier
   register_reboot_notifier
   register_restart_handler
-  register_shrinker
   register_syscore_ops
   register_sysctl
   register_sysctl_table
@@ -1942,6 +1945,9 @@
   sg_pcopy_from_buffer
   sg_scsi_ioctl
   shmem_file_setup
+  shrinker_alloc
+  shrinker_free
+  shrinker_register
   simple_attr_open
   simple_attr_read
   simple_attr_release
@@ -2201,6 +2207,8 @@
   tcpm_sourcing_vbus
   tcpm_update_sink_capabilities
   tcpm_vbus_change
+  teo_cpu_get_util_threshold
+  teo_cpu_set_util_threshold
   thermal_cdev_update
   thermal_cooling_device_unregister
   thermal_of_cooling_device_register
@@ -2231,6 +2239,7 @@
   __traceiter_android_rvh_arm64_serror_panic
   __traceiter_android_rvh_attach_entity_load_avg
   __traceiter_android_rvh_bad_mode
+  __traceiter_android_rvh_can_migrate_task
   __traceiter_android_rvh_cgroup_force_kthread_migration
   __traceiter_android_rvh_check_preempt_wakeup
   __traceiter_android_rvh_cpu_cgroup_online
@@ -2324,6 +2333,7 @@
   __traceiter_android_vh_typec_tcpm_get_timer
   __traceiter_android_vh_typec_tcpm_log
   __traceiter_android_vh_typec_tcpm_modify_src_caps
+  __traceiter_android_vh_uclamp_validate
   __traceiter_android_vh_ufs_check_int_errors
   __traceiter_android_vh_ufs_compl_command
   __traceiter_android_vh_ufs_fill_prdt
@@ -2369,6 +2379,7 @@
   __tracepoint_android_rvh_arm64_serror_panic
   __tracepoint_android_rvh_attach_entity_load_avg
   __tracepoint_android_rvh_bad_mode
+  __tracepoint_android_rvh_can_migrate_task
   __tracepoint_android_rvh_cgroup_force_kthread_migration
   __tracepoint_android_rvh_check_preempt_wakeup
   __tracepoint_android_rvh_cpu_cgroup_online
@@ -2462,6 +2473,7 @@
   __tracepoint_android_vh_typec_tcpm_get_timer
   __tracepoint_android_vh_typec_tcpm_log
   __tracepoint_android_vh_typec_tcpm_modify_src_caps
+  __tracepoint_android_vh_uclamp_validate
   __tracepoint_android_vh_ufs_check_int_errors
   __tracepoint_android_vh_ufs_compl_command
   __tracepoint_android_vh_ufs_fill_prdt
@@ -2569,7 +2581,6 @@
   unregister_pernet_subsys
   unregister_pm_notifier
   unregister_reboot_notifier
-  unregister_shrinker
   unregister_syscore_ops
   unregister_sysctl_table
   unregister_virtio_device
