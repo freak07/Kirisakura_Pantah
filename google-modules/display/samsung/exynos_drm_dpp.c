@@ -492,9 +492,8 @@ static void __dpp_enable(struct dpp_device *dpp)
 	dpp_reg_init(dpp->id, dpp->attr);
 
 	dpp->state = DPP_STATE_ON;
-	if (dpp->dma_irq)
-		enable_irq(dpp->dma_irq);
-	if (dpp->dpp_irq)
+	enable_irq(dpp->dma_irq);
+	if (test_bit(DPP_ATTR_DPP, &dpp->attr))
 		enable_irq(dpp->dpp_irq);
 
 	dpp_debug(dpp, "enabled\n");
@@ -635,9 +634,8 @@ static void __dpp_disable(struct dpp_device *dpp)
 		hdr_reg_set_tm(dpp->id, NULL);
 	}
 
-	if (dpp->dpp_irq)
+	if (test_bit(DPP_ATTR_DPP, &dpp->attr))
 		disable_irq(dpp->dpp_irq);
-	if (dpp->dma_irq)
 	disable_irq(dpp->dma_irq);
 
 	dpp_reg_deinit(dpp->id, false, dpp->attr);
@@ -1106,7 +1104,6 @@ fail:
 	return ret;
 }
 
-#ifdef CONFIG_DRM_SAMSUNG_ENABLE_DEBUG_IRQS
 static irqreturn_t dpp_irq_handler(int irq, void *priv)
 {
 	struct dpp_device *dpp = priv;
@@ -1213,7 +1210,6 @@ static irqreturn_t cgc_irq_handler(int irq, void *priv)
 	spin_unlock(&dma->dma_slock);
 	return IRQ_HANDLED;
 }
-#endif
 
 static int dpp_init_resources(struct dpp_device *dpp)
 {
@@ -1237,7 +1233,6 @@ static int dpp_init_resources(struct dpp_device *dpp)
 	}
 	dpp_regs_desc_init(dpp->regs.dma_base_regs, res.start, "dma", REGS_DMA, dpp->id);
 
-#ifdef CONFIG_DRM_SAMSUNG_ENABLE_DEBUG_IRQS
 	dpp->dma_irq = of_irq_get_byname(np, "dma");
 	dpp_info(dpp, "dma irq no = %d\n", dpp->dma_irq);
 	ret = devm_request_irq(dev, dpp->dma_irq, dma_irq_handler, 0,
@@ -1247,7 +1242,6 @@ static int dpp_init_resources(struct dpp_device *dpp)
 		return -EINVAL;
 	}
 	disable_irq(dpp->dma_irq);
-#endif
 
 	if (test_bit(DPP_ATTR_DPP, &dpp->attr)) {
 		i = of_property_match_string(np, "reg-names", "dpp");
@@ -1263,7 +1257,6 @@ static int dpp_init_resources(struct dpp_device *dpp)
 		dpp_regs_desc_init(dpp->regs.dpp_base_regs, res.start, "dpp", REGS_DPP,
 				dpp->id);
 
-#ifdef CONFIG_DRM_SAMSUNG_ENABLE_DEBUG_IRQS
 		dpp->dpp_irq = of_irq_get_byname(np, "dpp");
 		dpp_info(dpp, "dpp irq no = %d\n", dpp->dpp_irq);
 		ret = devm_request_irq(dev, dpp->dpp_irq, dpp_irq_handler, 0,
@@ -1273,7 +1266,6 @@ static int dpp_init_resources(struct dpp_device *dpp)
 			return -EINVAL;
 		}
 		disable_irq(dpp->dpp_irq);
-#endif
 	}
 
 	if (test_bit(DPP_ATTR_HDR, &dpp->attr) ||
@@ -1337,7 +1329,6 @@ struct exynos_dma *exynos_cgc_dma_register(struct decon_device *decon)
 	dpp_regs_desc_init(dma->regs, res.start, "cgc-dma", REGS_DMA, dma->id);
 
 	spin_lock_init(&dma->dma_slock);
-#ifdef CONFIG_DRM_SAMSUNG_ENABLE_DEBUG_IRQS
 	dma->dma_irq = of_irq_get_byname(np, "cgc-dma");
 	ret = devm_request_irq(dev, dma->dma_irq, cgc_irq_handler, 0,
 			pdev->name, decon);
@@ -1345,7 +1336,6 @@ struct exynos_dma *exynos_cgc_dma_register(struct decon_device *decon)
 		pr_err("failed to install CGC DMA irq\n");
 		return NULL;
 	}
-#endif
 
 	pr_debug("cgc-dma is supported\n");
 
