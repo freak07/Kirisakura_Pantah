@@ -2424,6 +2424,7 @@ int kbase_csf_firmware_early_init(struct kbase_device *kbdev)
 	INIT_WORK(&kbdev->csf.fw_error_work, firmware_error_worker);
 	INIT_WORK(&kbdev->csf.coredump_work, coredump_worker);
 
+	init_rwsem(&kbdev->csf.pmode_sync_sem);
 	mutex_init(&kbdev->csf.reg_lock);
 	kbase_csf_pending_gpuq_kicks_init(kbdev);
 
@@ -3022,8 +3023,6 @@ void kbase_csf_enter_protected_mode(struct kbase_device *kbdev)
 int kbase_csf_wait_protected_mode_enter(struct kbase_device *kbdev)
 {
 	int err;
-
-	lockdep_assert_held(&kbdev->mmu_hw_mutex);
 
 	err = wait_for_global_request(kbdev, GLB_REQ_PROTM_ENTER_MASK);
 
