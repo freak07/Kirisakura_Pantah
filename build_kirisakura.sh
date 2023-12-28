@@ -18,7 +18,7 @@ BASE_PATH=/media/miles/development/aosp_p7/prebuilts/clang/host
 BASE_PATH_GCC=/home/miles/Android_Build/GCC_Google_Arm64
 BASE_PATH_GCC_32=/home/miles/Android_Build/GCC_Google_Arm32
 export DTC_EXT=/home/miles/Downloads/DU_Tools/dtc-aosp
-export CLANG_PATH=$BASE_PATH/linux-x86/clang-r498229b/bin
+export CLANG_PATH=$BASE_PATH/linux-x86/clang-r510928/bin
 export PATH=${CLANG_PATH}:${PATH}
 
 export CLANG_TRIPLE=aarch64-linux-gnu-
