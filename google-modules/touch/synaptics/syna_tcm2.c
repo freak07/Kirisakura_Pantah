@@ -2758,7 +2758,7 @@ int syna_set_bus_ref(struct syna_tcm *tcm, u32 ref, bool enable)
 }
 
 #if defined(USE_DRM_BRIDGE)
-static struct drm_connector *syna_get_bridge_connector(struct drm_bridge *bridge)
+struct drm_connector *syna_get_bridge_connector(struct drm_bridge *bridge)
 {
 	struct drm_connector *connector;
 	struct drm_connector_list_iter conn_iter;
@@ -3154,8 +3154,6 @@ static int syna_dev_probe(struct platform_device *pdev)
 	init_completion(&tcm->bus_resumed);
 	complete_all(&tcm->bus_resumed);
 
-	tcm->pm_qos_req.type = PM_QOS_REQ_AFFINE_IRQ;
-	tcm->pm_qos_req.irq = gpio_to_irq(hw_if->bdata_attn.irq_gpio);
 	cpu_latency_qos_add_request(&tcm->pm_qos_req, PM_QOS_DEFAULT_VALUE);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
@@ -3319,7 +3317,8 @@ static int syna_dev_probe(struct platform_device *pdev)
 			(void *)tcm);
 #endif
 
-	LOGI("%s TouchComm driver v%d.%s installed\n",
+	LOGI("%s: %s TouchComm driver v%d.%s installed\n",
+		__func__,
 		PLATFORM_DRIVER_NAME,
 		SYNAPTICS_TCM_DRIVER_VERSION,
 		SYNAPTICS_TCM_DRIVER_SUBVER);
