@@ -358,6 +358,6 @@ int lwis_platform_update_bts(struct lwis_device *lwis_dev, int block, unsigned i
 
 int lwis_plaform_set_default_irq_affinity(unsigned int irq)
 {
-	const int cpu = 0x2;
+	const int cpu = 0x7;
 	return irq_set_affinity_hint(irq, cpumask_of(cpu));
 }
