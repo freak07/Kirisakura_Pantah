@@ -1367,7 +1367,7 @@ wl_cfgscan_notify_pfn_complete(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgd
 		WL_INFORM_MEM(("bss list empty. report sched_scan_stop\n"));
 		wl_cfg80211_stop_pno(cfg,  bcmcfg_to_prmry_ndev(cfg));
 		/* schedule the work to indicate sched scan stop to cfg layer */
-		queue_delayed_work(system_power_efficient_wq, &cfg->sched_scan_stop_work, 0);
+		schedule_delayed_work(&cfg->sched_scan_stop_work, 0);
 	}
 exit:
 	mutex_unlock(&cfg->scan_sync);
