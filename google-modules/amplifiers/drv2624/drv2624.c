@@ -47,10 +47,6 @@
 
 #include "drv2624.h"
 
-#ifdef CONFIG_UCI
-#include <linux/uci/uci.h>
-#endif
-
 static struct drv2624_data *drv2624_plat_data;
 
 static bool drv2624_is_volatile_reg(struct device *dev, unsigned int reg);
@@ -221,16 +217,10 @@ static int drv2624_set_go_bit(struct drv2624_data *drv2624, unsigned char val)
 
 	return ret;
 }
-#ifdef CONFIG_UCI
-unsigned char uci_work_mode = 0;
-#endif
 
 static void drv2624_change_mode(struct drv2624_data *drv2624,
 				unsigned char work_mode)
 {
-#ifdef CONFIG_UCI
-	uci_work_mode = work_mode;
-#endif
 	drv2624_set_bits(drv2624, DRV2624_REG_MODE, WORKMODE_MASK, work_mode);
 }
 
@@ -313,256 +303,12 @@ static void vibrator_enable(struct led_classdev *led_cdev,
 	struct drv2624_data *drv2624 =
 			container_of(led_cdev, struct drv2624_data, led_dev);
 
-#ifdef CONFIG_UCI
-	pr_info("%s drv2624 - val: %d\n",__func__, value);
-#endif
 	if (value == LED_OFF)
 		queue_work(drv2624->drv2624_wq, &drv2624->stop_work);
 	else
 		queue_work(drv2624->drv2624_wq, &drv2624->work);
 
 }
-#ifdef CONFIG_UCI
-struct drv2624_data *g_drv2624 = NULL;
-
-static int vib_func_num = 0;
-static int vib_func_boost_level = 0;
-static bool vib_func_start = 0;
-static bool vib_func_stop = 0;
-static bool vib_func_params_read = true;
-
-static int booster_percentage = 0;
-static bool booster_in_pocket = false;
-
-static int haptic_percentage = 0;
-
-static struct workqueue_struct *vib_func_wq;
-
-#define MAX_GAIN 127
-
-static int uci_calc_gain(int gain) {
-        if (booster_in_pocket) {
-                int c = (gain * (100+(booster_percentage*2)))/100;
-                if (c>MAX_GAIN) c = MAX_GAIN;
-                return c;
-        }
-        return gain;
-}
-
-// 10 - 107 - normal. 180+ rattles...
-#define MAX_CLAMP 180
-static int uci_calc_clamp(int clamp, int mode) {
-	if (mode == MODE_RTP) {
-	        if (booster_in_pocket) {
-	                int c = (clamp * (100+(booster_percentage+60)))/100;
-	                if (c>MAX_CLAMP) c = MAX_CLAMP;
-			pr_info("%s drv2624: calc override (rtp) calc: %d -> %d\n",__func__,clamp,c);
-	                return c;
-	        }
-	} else {
-		// haptic
-		int c = (clamp * (100+(haptic_percentage)))/100;
-		if (c>MAX_CLAMP) c = MAX_CLAMP;
-		pr_info("%s drv2624: calc override (waveform) calc: %d -> %d\n",__func__,clamp,c);
-		return c;
-	}
-        return clamp;
-}
-
-
-static void uci_vib_enable(struct drv2624_data *drv2624, enum led_brightness value) {
-	if (value == LED_OFF)
-		queue_work(drv2624->drv2624_wq, &drv2624->stop_work);
-	else
-		queue_work(drv2624->drv2624_wq, &drv2624->work);
-}
-
-// set_sequencer_store drv2624 - val: 2
-// ctrl_loop_store drv2624 - val: 1
-// mode_store drv2624 - val: waveform - id: 1
-// lra_wave_shape_store drv2624 - val: 1
-// od_clamp_store drv2624 - val: 50
-static int drv2624_set_waveform(struct drv2624_data *drv2624,
-				struct drv2624_waveform_sequencer *sequencer);
-
-
-/* sample script:
-#!/bin/sh
-
-DPATH=/sys/devices/platform/soc/98c000.i2c/i2c-1/1-005a
-echo "waveform" > $DPATH/mode
-echo "1 12 1 12 1 12 1 12 1 12 1 12 1 12 1 12" > $DPATH/set_sequencer
-echo "0" > $DPATH/ctrl_loop
-echo "1" > $DPATH/lra_period
-echo "1" > $DPATH/lra_wave_shape
-echo "95" > $DPATH/od_clamp
-echo "0" > $DPATH/interval
-
-echo "1" > /sys/class/leds/vibrator/activate
-*/
-
-static void uci_prepare(struct drv2624_data *drv2624, int boost, int length) {
-	mutex_lock(&drv2624->lock);
-
-	// new mode: waveform - 1
-	drv2624_change_mode(drv2624, 1);
-
-	// seq: 2 0
-	{
-	        struct drv2624_waveform_sequencer sequencer;
-	        int n;
-		static char buf[] = "2 0";
-		static char buf1[] = "1 12 1 12 1 12 1 12 1 12";
-		static char buf2[] = "1 12 1 12 1 12 1 12 1 12 1 12 1 12 1 12";
-		char *p = buf;
-	        memset(&sequencer, 0, sizeof(sequencer));
-
-		if (length>=50) p = buf1;
-		if (length>=250) p = buf2;
-	        n = sscanf(p, "%hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu %hhu",
-    	                   &sequencer.waveform[0].effect, &sequencer.waveform[0].loop,
-	                   &sequencer.waveform[1].effect, &sequencer.waveform[1].loop,
-	                   &sequencer.waveform[2].effect, &sequencer.waveform[2].loop,
-	                   &sequencer.waveform[3].effect, &sequencer.waveform[3].loop,
-	                   &sequencer.waveform[4].effect, &sequencer.waveform[4].loop,
-	                   &sequencer.waveform[5].effect, &sequencer.waveform[5].loop,
-	                   &sequencer.waveform[6].effect, &sequencer.waveform[6].loop,
-	                   &sequencer.waveform[7].effect, &sequencer.waveform[7].loop);
-
-		drv2624_set_waveform(drv2624, &sequencer);
-	}
-
-	// ctrl loop = 1 / 0 (0 is much stronger)
-	drv2624_set_bits(drv2624, DRV2624_REG_CONTROL1, LOOP_MASK,
-		length>=50?0:1 << LOOP_SHIFT);
-
-
-	// lra_wave_shape = 1
-	drv2624_set_bits(drv2624, DRV2624_REG_LRA_OL_CTRL,
-			 LRA_WAVE_SHAPE_MASK, 1);
-
-	// od_clamp = 50/74
-	if (boost<30) boost = 30;
-	boost = uci_calc_clamp(boost,MODE_WAVEFORM_SEQUENCER);
-	drv2624_reg_write(drv2624, DRV2624_REG_OVERDRIVE_CLAMP, boost);
-
-	// interval = 0 long, 1 tactile short
-	drv2624_set_bits(drv2624, DRV2624_REG_CONTROL2, INTERVAL_MASK,
-		(length>=50?0:1) << INTERVAL_SHIFT);
-
-	mutex_unlock(&drv2624->lock);
-}
-static void uci_finish(struct drv2624_data *drv2624) {
-	mutex_lock(&drv2624->lock);
-	// set back to 1, short default
-	drv2624_set_bits(drv2624, DRV2624_REG_CONTROL2, INTERVAL_MASK,
-		1 << INTERVAL_SHIFT);
-	// set back ctrl_loop to 1
-	drv2624_set_bits(drv2624, DRV2624_REG_CONTROL1, LOOP_MASK,
-		1 << LOOP_SHIFT);
-	mutex_unlock(&drv2624->lock);
-}
-
-static void uci_vibrate_func(struct work_struct * uci_vibrate_func_work)
-{
-
-    int num = vib_func_num;
-    int boost_level = vib_func_boost_level;
-    bool start = vib_func_start;
-    bool stop = vib_func_stop;
-
-    pr_info("%s enter\n",__func__);
-    pr_info("%s inside vib func, params read -- num: %d boost %d start %u stop %u \n",__func__, num, boost_level,start,stop);
-
-    vib_func_params_read = true;
-    if (g_drv2624==NULL) goto out;
-
-    if (start) {
-// start
-	uci_prepare(g_drv2624, boost_level,num);
-	uci_vib_enable(g_drv2624,255);
-    }
-    if (start && stop) {
-        if(num>50) {
-                mdelay(num); // cannot sleep, as this can be in atomic context as well
-        }
-    }
-
-    if (stop) {
-// stop
-	uci_vib_enable(g_drv2624,LED_OFF);
-	uci_finish(g_drv2624);
-    }
-out:
-    pr_info("%s exit\n",__func__);
-
-}
-
-static DECLARE_WORK(uci_vibrate_func_work, uci_vibrate_func);
-
-static DEFINE_MUTEX(vib_int);
-
-static void set_vibrate_int(int num, int boost_level, bool start, bool stop) {
-
-        int count = 30;
-        pr_debug("%s enter\n",__func__);
-        mutex_lock(&vib_int);
-        pr_debug("%s scheduling vib func, setting up params...\n",__func__);
-        while (!vib_func_params_read) {
-                mdelay(10);
-                count--;
-                if (count<=0) break;
-        }
-
-        // this is to set up params, and make sure they are read by the work (TODO use INIT_WORK instead)...
-        vib_func_params_read = false;
-        vib_func_num = num;
-        vib_func_boost_level = boost_level;
-        vib_func_start = start;
-        vib_func_stop = stop;
-        pr_info("%s scheduling vib func, params set, schedule! num: %d boost %d start %u stop %u \n",__func__, num, boost_level,start,stop);
-        queue_work(vib_func_wq,&uci_vibrate_func_work);
-        mutex_unlock(&vib_int);
-        pr_debug("%s exit\n",__func__);
-}
-
-
-static void set_vibrate_boosted(int num) {
-        set_vibrate_int(num, 107, true,true);
-}
-static void set_vibrate(int num) {
-        set_vibrate_int(num, 30, true,true);
-}
-static void set_vibrate_2(int num, int boost_level) {
-        set_vibrate_int(num, boost_level, true,true);
-}
-
-
-static void uci_call_handler(char* event, int num_param[], char* str_param) {
-        pr_info("%s vibrate event %s %d %s\n",__func__,event,num_param[0],str_param);
-        if (g_drv2624!=NULL) {
-            if (!strcmp(event,"vibrate_boosted")) {
-                    set_vibrate_boosted(num_param[0]);
-            } else
-            if (!strcmp(event,"vibrate")) {
-                    set_vibrate(num_param[0]);
-            } else
-            if (!strcmp(event,"vibrate_2")) {
-                    set_vibrate_2(num_param[0],num_param[1]);
-            }
-        }
-        if (!strcmp(event,"vibration_set_haptic")) {
-            haptic_percentage = num_param[0];
-	    } else
-	    if (!strcmp(event,"vibration_set_in_pocket")) {
-            booster_percentage = num_param[0];
-            booster_in_pocket = num_param[1];
-        }
-
-}
-
-
-#endif
 
 static void vibrator_work_routine(struct work_struct *work)
 {
@@ -1305,11 +1051,6 @@ static ssize_t rtp_input_store(struct device *dev,
 		pr_err("Invalid input for rtp_input: ret = %d\n", ret);
 		return ret;
 	}
-#ifdef CONFIG_UCI
-	pr_info("%s drv2624 - val: %d\n",__func__, rtp_input);
-	rtp_input = uci_calc_gain(rtp_input);
-	pr_info("%s drv2624 - calced new val: %d\n",__func__, rtp_input);
-#endif
 
 	mutex_lock(&drv2624->lock);
 	drv2624_reg_write(drv2624, DRV2624_REG_RTP_INPUT, rtp_input);
@@ -1355,9 +1096,6 @@ static ssize_t mode_store(struct device *dev,
 	for (new_mode = 0; new_mode < ARRAY_SIZE(drv2624_modes); new_mode++) {
 		if (!strcmp(mode_name, drv2624_modes[new_mode])) {
 			mutex_lock(&drv2624->lock);
-#ifdef CONFIG_UCI
-			pr_info("%s drv2624 - val: %s - id: %u \n",__func__, mode_name, new_mode);
-#endif
 			drv2624_change_mode(drv2624, new_mode);
 			mutex_unlock(&drv2624->lock);
 			break;
@@ -1400,9 +1138,6 @@ static ssize_t loop_store(struct device *dev,
 
 	loop = max(min(loop, MAIN_LOOP_MASK), -1);
 
-#ifdef CONFIG_UCI
-	pr_info("%s drv2624 - val: %d\n",__func__, loop);
-#endif
 	if (loop == -1)
 		loop = MAIN_LOOP_MASK; /*infinite */
 
@@ -1440,9 +1175,6 @@ static ssize_t interval_store(struct device *dev,
 		pr_err("Invalid input for loop: ret = %d\n", ret);
 		return ret;
 	}
-#ifdef CONFIG_UCI
-	pr_info("%s drv2624 - val: %d\n",__func__, interval);
-#endif
 
 	interval = max(min(interval, 1), 0);
 
@@ -1481,9 +1213,6 @@ static ssize_t scale_store(struct device *dev,
 		pr_err("Invalid input for loop: ret = %d\n", ret);
 		return ret;
 	}
-#ifdef CONFIG_UCI
-	pr_info("%s drv2624 - val: %d\n",__func__, interval);
-#endif
 
 	interval = max(min(interval, 3), 0);
 
@@ -1523,9 +1252,6 @@ static ssize_t ctrl_loop_store(struct device *dev,
 	}
 
 	ctrl_loop = max(min(ctrl_loop, 1), 0);
-#ifdef CONFIG_UCI
-	pr_info("%s drv2624 - val: %d\n",__func__, ctrl_loop);
-#endif
 
 	mutex_lock(&drv2624->lock);
 	drv2624_set_bits(drv2624, DRV2624_REG_CONTROL1, LOOP_MASK,
@@ -1556,10 +1282,6 @@ static ssize_t set_sequencer_store(struct device *dev,
 		   &sequencer.waveform[7].effect, &sequencer.waveform[7].loop);
 	if (n > DRV2624_SEQUENCER_SIZE * 2)
 		return -EINVAL;
-
-#ifdef CONFIG_UCI
-	pr_info("%s drv2624 - val: %d buf: '%s' \n",__func__, n, buf);
-#endif
 
 	mutex_lock(&drv2624->lock);
 	drv2624_set_waveform(drv2624, &sequencer);
@@ -1594,12 +1316,6 @@ static ssize_t od_clamp_store(struct device *dev,
 		pr_err("Invalid input for rtp_input: ret = %d\n", ret);
 		return ret;
 	}
-
-#ifdef CONFIG_UCI
-	pr_info("%s drv2624 - val: %d - workmode: %d\n",__func__, od_clamp, uci_work_mode);
-	od_clamp = uci_calc_clamp(od_clamp, uci_work_mode);
-	pr_info("%s drv2624 - new calculated val: %d - workmode: %d\n",__func__, od_clamp, uci_work_mode);
-#endif
 
 	mutex_lock(&drv2624->lock);
 	drv2624_reg_write(drv2624, DRV2624_REG_OVERDRIVE_CLAMP, od_clamp);
@@ -1761,9 +1477,6 @@ static ssize_t lra_wave_shape_store(struct device *dev,
 			"Invalid input for ol_lra_period: ret = %d\n", ret);
 		return ret;
 	}
-#ifdef CONFIG_UCI
-	pr_info("%s drv2624 - val: %d\n",__func__, lra_wave_shape);
-#endif
 
 	mutex_lock(&drv2624->lock);
 	drv2624_set_bits(drv2624, DRV2624_REG_LRA_OL_CTRL,
@@ -1969,10 +1682,6 @@ static int drv2624_i2c_probe(struct i2c_client *client,
 		dev_err(&client->dev, "%s:no memory\n", __func__);
 		return -ENOMEM;
 	}
-#ifdef CONFIG_UCI
-	g_drv2624 = drv2624;
-	uci_add_call_handler(uci_call_handler);
-#endif
 
 	drv2624->dev = &client->dev;
 	i2c_set_clientdata(client, drv2624);
@@ -2083,11 +1792,6 @@ static int drv2624_i2c_probe(struct i2c_client *client,
 				drv2624_firmware_load);
 
 	dev_info(drv2624->dev, "drv2624 probe succeeded\n");
-
-#ifdef CONFIG_UCI
-        vib_func_wq = alloc_workqueue("vib_func_wq",
-                WQ_HIGHPRI | WQ_MEM_RECLAIM, 1);
-#endif
 
 	return 0;
 

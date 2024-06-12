@@ -13,19 +13,6 @@
 
 #include "cs40l26.h"
 
-#ifdef CONFIG_UCI
-#include <linux/uci/uci.h>
-#include <linux/notification/notification.h>
-//struct cs40l2x_private *g_cs40l2x = NULL;
-struct input_dev *g_dev = NULL;
-
-static int booster_percentage = 0;
-static bool booster_in_pocket = false;
-
-static int haptic_percentage = 0;
-static int curr_effect_id = 0;
-#endif
-
 static inline bool section_complete(struct cs40l26_owt_section *s)
 {
 	return s->delay ? true : false;
@@ -2127,44 +2114,6 @@ mutex_exit:
 #endif
 }
 
-#ifdef CONFIG_UCI
-static u16 calculate_boosted_gain(u16 gain) {
-	pr_info("%s calc BOOST: screen %d wake by user %d booster_in_pocket %d booster_perc %d\n",__func__,ntf_is_screen_on(),ntf_wake_by_user(),booster_in_pocket,booster_percentage);
-        if (!ntf_is_screen_on() || !ntf_wake_by_user()) { // screen off
-                if (!booster_in_pocket && haptic_percentage>0) {
-                        if (!ntf_is_camera_on()) { // do not boost haptics when camera is on, it can make noises
-                                gain = (gain * (100+haptic_percentage))/100;
-                                if (gain>100) gain = 100;
-                        } else { // less boost when screen is on
-                                gain = gain / 2;
-                                pr_info("%s camera mode, deboosted gain = %d\n",__func__,gain);
-                        }
-                } else {
-                        if (booster_in_pocket) {
-                                int n_gain = 50+booster_percentage; // constant gain, for in pocket, not increase/decrease type
-                                if (gain<n_gain) gain = n_gain;
-                                if (gain > 100) gain = 100;
-                        }
-                }
-        } else if (!booster_in_pocket && ntf_is_camera_on()) { // screen on, not booster in pocket (like call ringing) and camera is on, deboost...
-                gain = gain / 2;
-                pr_info("%s camera mode, deboosted gain = %d\n",__func__,gain);
-        } else { // screen is on, but camera isn't on
-                if (curr_effect_id!=0 && haptic_percentage>0) { // if not notification long vibration, but short vibs, do the boosting
-                        gain = (gain * (100+haptic_percentage))/100;
-                        if (gain>100) gain = 100;
-                } else {
-                        if (booster_in_pocket) { // screen on, in proximity -> probably ringing, do the boost
-                                int n_gain = 50+booster_percentage; // constant gain, for in pocket, not increase/decrease type
-                                if (gain<n_gain) gain = n_gain;
-                                if (gain > 100) gain = 100;
-                        }
-                }
-        }
-        return gain;
-}
-#endif
-
 static void cs40l26_set_gain(struct input_dev *dev, u16 gain)
 {
 	struct cs40l26_private *cs40l26 = input_get_drvdata(dev);
@@ -2175,15 +2124,6 @@ static void cs40l26_set_gain(struct input_dev *dev, u16 gain)
 		return;
 	}
 
-#ifdef CONFIG_UCI
-	pr_info("%s cs set gain %u%%\n",__func__,gain);
-	{
-		u16 new_gain = calculate_boosted_gain(gain);
-		//if (new_gain!=gain) 
-		pr_info("%s cs set gain %u%% -> BOOSTED: %u%%\n",__func__,gain, new_gain);
-		gain = new_gain;
-	}
-#endif
 	cs40l26->gain_pct = gain;
 
 	queue_work(cs40l26->vibe_workqueue, &cs40l26->set_gain_work);
@@ -2200,10 +2140,6 @@ static int cs40l26_playback_effect(struct input_dev *dev,
 	dev_dbg(cs40l26->dev, "%s: effect ID = %d, val = %d\n", __func__,
 			effect_id, val);
 
-#ifdef CONFIG_UCI
-	pr_info("%s cs playback eff_id: %d val: %d\n",__func__,effect_id,val);
-	curr_effect_id = effect_id;
-#endif
 	effect = &dev->ff->effects[effect_id];
 	if (!effect) {
 		dev_err(cs40l26->dev, "No such effect to playback\n");
@@ -2220,163 +2156,6 @@ static int cs40l26_playback_effect(struct input_dev *dev,
 	ATRACE_END();
 	return 0;
 }
-
-#ifdef CONFIG_UCI
-static int set_gain(int gain) {
-    if (g_dev) {
-	struct cs40l26_private *cs40l26 = input_get_drvdata(g_dev);
-
-	if (gain >= CS40L26_NUM_PCT_MAP_VALUES) {
-		dev_err(cs40l26->dev, "Gain value %u %% out of bounds\n", gain);
-		return 0;
-	}
-	pr_info("%s uci cs set gain %u%%\n",__func__,gain);
-
-	cs40l26->gain_pct = gain;
-
-	queue_work(cs40l26->vibe_workqueue, &cs40l26->set_gain_work);
-    }
-    return 0;
-}
-
-static int vib_func_num = 0;
-static int vib_func_boost_level = 0;
-static bool vib_func_start = 0;
-static bool vib_func_stop = 0;
-static bool vib_func_params_read = true;
-static int vib_func_pause_length = 0;
-
-static struct workqueue_struct *vib_func_wq;
-
-static void uci_vibrate_func(struct work_struct * uci_vibrate_func_work)
-{
-
-    int num = vib_func_num;
-    int boost_level = vib_func_boost_level;
-    bool start = vib_func_start;
-    bool stop = vib_func_stop;
-    int pause = vib_func_pause_length;
-
-    int scale = 20 + boost_level;
-    bool long_mode = (num >= 50);
-
-    pr_info("%s enter\n",__func__);
-    pr_info("%s inside vib func, params read -- num: %d boost %d start %u stop %u pause %d \n",__func__, num, boost_level,start,stop,pause);
-    vib_func_params_read = true;
-
-    if (g_dev == NULL) return;
-
-    if (scale < 1) scale = 1;
-
-
-// short
-//[  485.972191] cs40l26_set_gain cs set gain 50%
-//[  485.972555] cs40l26_playback_effect cs set gain eff_id: 2 val: 1
-
-// long
-//[ 4790.779208] cs40l26_playback_effect cs playback eff_id: 0 val: 1
-//[ 4790.780262] cs40l26_set_gain cs set gain 28%
-//[ 4790.876211] cs40l26_set_gain cs set gain 29%
-//[ 4791.226980] cs40l26_set_gain cs set gain 42%
-//[ 4791.259664] cs40l26_playback_effect cs playback eff_id: 0 val: 0
-
-    set_gain(scale);
-
-
-    if (start) {
-	if (long_mode) {
-            cs40l26_playback_effect(g_dev, 0, 1);
-	} else {
-            cs40l26_playback_effect(g_dev, 2, 1);
-        }
-    }
-    if (start && stop) {
-        if (num<50) mdelay(50);
-            else mdelay(num); // cannot sleep, as this can be in atomic context as well
-    }
-
-    if (stop) {
-	if (long_mode) {
-            cs40l26_playback_effect(g_dev, 0, 0);
-	}
-    }
-
-    if (start && stop && pause>0) {
-        mdelay(pause);
-	if (long_mode) {
-            cs40l26_playback_effect(g_dev, 0, 1);
-	} else {
-            cs40l26_playback_effect(g_dev, 2, 1);
-        }
-            mdelay(num);
-	if (long_mode) {
-            cs40l26_playback_effect(g_dev, 0, 0);
-	}
-    }
-
-    pr_info("%s exit\n",__func__);
-
-}
-static DECLARE_WORK(uci_vibrate_func_work, uci_vibrate_func);
-
-static DEFINE_MUTEX(vib_int);
-
-static void set_vibrate_int(int num, int boost_level, bool start, bool stop, int pause_length) {
-
-#if 1
-    int count = 30;
-    pr_debug("%s enter\n",__func__);
-    mutex_lock(&vib_int);
-    {
-    pr_debug("%s scheduling vib func, setting up params...\n",__func__);
-    while (!vib_func_params_read) {
-	mdelay(10);
-	count--;
-	if (count<=0) break;
-    }
-
-    // this is to set up params, and make sure they are read by the work (TODO use INIT_WORK instead)...
-    vib_func_params_read = false;
-    vib_func_num = num;
-    vib_func_boost_level = boost_level;
-    vib_func_start = start;
-    vib_func_stop = stop;
-    vib_func_pause_length = pause_length;
-    pr_info("%s scheduling vib func, params set, schedule! num: %d boost %d start %u stop %u pause_length %d\n",__func__, num, boost_level,start,stop, pause_length);
-    queue_work(vib_func_wq,&uci_vibrate_func_work);
-    mutex_unlock(&vib_int);
-    }
-#endif
-    pr_info("%s exit\n",__func__);
-}
-
-
-static void uci_call_handler(char* event, int num_param[], char* str_param) {
-        pr_info("%s vibrate event %s %d %s\n",__func__,event,num_param[0],str_param);
-        if (g_dev) {
-
-            if (!strcmp(event,"vibrate_boosted")) {
-                set_vibrate_int(num_param[0],80,true,true,0);
-	    } else
-	    if (!strcmp(event,"vibrate")) {
-                set_vibrate_int(num_param[0],48,true,true,0);
-            } else
-	    if (!strcmp(event,"vibrate_2")) {
-	        pr_info("%s vibrate_2 %d %d %s\n",__func__,num_param[0],num_param[1],str_param);
-                set_vibrate_int(num_param[0],num_param[1],true,true,0);
-	    };
-	}
-        if (!strcmp(event,"vibration_set_haptic")) {
-            haptic_percentage = num_param[0];
-    } else
-        if (!strcmp(event,"vibration_set_in_pocket")) {
-            booster_percentage = num_param[0];
-            booster_in_pocket = num_param[1];
-            pr_info("%s vibrate event %s perc: %d pocketed: %d\n",__func__,event,num_param[0],num_param[1]);
-        }
-
-}
-#endif
 
 int cs40l26_get_num_waves(struct cs40l26_private *cs40l26, u32 *num_waves)
 {
@@ -3474,13 +3253,6 @@ static int cs40l26_input_init(struct cs40l26_private *cs40l26)
 #endif
 
 	cs40l26->vibe_init_success = true;
-
-#ifdef CONFIG_UCI
-    g_dev = cs40l26->input;
-    uci_add_call_handler(uci_call_handler);
-    vib_func_wq = alloc_workqueue("vib_func_wq",
-	WQ_HIGHPRI | WQ_MEM_RECLAIM, 1);
-#endif
 
 	return ret;
 }
